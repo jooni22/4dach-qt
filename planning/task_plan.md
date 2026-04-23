@@ -4,7 +4,7 @@
 Doprowadzić aplikację do stanu roboczego dla kalkulacji rozkroju blachodachówki 2D w klasycznym UI PySide6, zachowując istniejący shell okna i rozwijając domenę iteracyjnie, testowalnie i bez przebudowy `ui_form.py`.
 
 ## Current Phase
-Phase 7
+Project Complete
 
 ## Phases
 
@@ -47,10 +47,10 @@ Phase 7
 - **Status:** complete
 
 ### Phase 7: Delivery
-- [ ] Ustabilizować końcowy kontrakt danych
-- [ ] Zaktualizować dokumentację roboczą
-- [ ] Wypisać finalne założenia i ograniczenia
-- **Status:** pending
+- [x] Ustabilizować końcowy kontrakt danych
+- [x] Zaktualizować dokumentację roboczą
+- [x] Wypisać finalne założenia i ograniczenia
+- **Status:** complete
 
 ## Key Questions
 1. Jak bezpiecznie rozciągnąć `config.json` o `project_state`, nie psując istniejących danych i dialogów?

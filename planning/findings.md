@@ -89,3 +89,28 @@
 - Główne okno posiada `QTabWidget` z zakładką canvasa i zakładką raportu; pomocnicza instancja `DrawingCanvas` nadal istnieje, ale nie jest eksponowana jako aktywny panel UI.
 - Status bar już pełni funkcję lekkiego feedbacku dla akcji użytkownika.
 - Obecny stan repo nadaje się do przejęcia przez kolejnego agenta implementacyjnego bez dodatkowego researchu.
+
+## Final Assumptions and Constraints
+### Założenia projektowe
+1. **Architektura klasycznego UI PySide6** - zachowanie istniejącego shell okna bez przebudowy `ui_form.py`, rozwój domenowy w osobnych modułach.
+2. **Separacja stanu UI od stanu domenowego** - `ProjectState` zarządza danymi projektu niezależnie od konfiguracji dialogów.
+3. **Persystencja przez `config.json`** - rozszerzenie istniejącego formatu o `project_state` bez psucia istniejących danych.
+4. **Geometria 2D z wycinkami** - outline połaci + lista holes (wycinków) z walidacją zawierania.
+5. **Layout engine dla aktywnej połaci** - generowanie arkuszy pasami (bands) dla pojedynczej połaci i aktywnego materiału.
+6. **Ręczne korekty arkuszy** - możliwość dodawania/usuwania arkuszy z zachowaniem dirty-state layoutu.
+7. **Dynamiczne zakładki połaci** - QTabWidget synchronizowany z listą połaci w `ProjectState`.
+
+### Ograniczenia pierwszej wersji
+1. **Brak edycji outline po utworzeniu** - połaci nie można edytować po dodaniu, tylko dodawać/usuwać wycinki.
+2. **Brak multi-połaciowego layoutu** - layout generowany jest tylko dla aktywnej połaci, nie dla całego projektu.
+3. **Brak zaawansowanych operacji geometrii** - tylko prosty workflow wycinków przez menu, bez interaktywnego edytora outline.
+4. **Brak automatycznej migracji danych** - zmiany w kontrakcie danych wymagają ręcznej aktualizacji `config.json`.
+5. **Brak walidacji biznesowej** - nie sprawdzamy, czy wymiary połaci są sensowne dla danego materiału.
+6. **Brak obsługi błędów UI w runtime** - dialogi i akcje menu zakładają poprawne dane użytkownika.
+
+### Stabilny kontrakt danych
+- **core/models.py**: Point2D, Bounds2D, Polygon2D, CompanyData, Material, GenerationSettings, SheetPlacement, RoofPlane
+- **core/project_state.py**: ProjectState z metodami from_config/apply_to_config
+- **config.json**: struktura z company_data, blachy, ksztalty, project_state
+- Wszystkie dataclassy mają to_dict/from_dict dla serializacji
+- Round-trip ProjectState przez config dict jest w pełni testowany
