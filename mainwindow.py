@@ -6,6 +6,7 @@ from PySide6.QtGui import QAction, QColor, QFont, QKeySequence, QMouseEvent, QPa
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
+    QDialog,
     QMainWindow,
     QSizePolicy,
     QTabWidget,
@@ -22,6 +23,17 @@ from app_icons import build_icon
 #     pyside6-uic form.ui -o ui_form.py, or
 #     pyside2-uic form.ui -o ui_form.py
 from ui_form import Ui_MainWindow
+
+from dialogs import (
+    BlachyDialog,
+    DaneFirmyDialog,
+    ProstokatDialog,
+    TrapezDialog,
+    TrojkatDialog,
+    load_config,
+    save_config,
+    show_ostrzezenie_dialog,
+)
 
 
 class DrawingCanvas(QWidget):
@@ -130,6 +142,7 @@ class MainWindow(QMainWindow):
         self._actions = []
         self._toolbar_actions = []
         self._theme = "light"
+        self._config = load_config()
         self.ui.setupUi(self)
         self.setWindowTitle("4Dach wersja 1.0 Super Dach sp.j. instalacja 3, plik: testmarcin (zmieniony)")
         self.resize(1120, 720)
@@ -166,66 +179,66 @@ class MainWindow(QMainWindow):
             (
                 "Plik",
                 [
-                    ("Nowy dach", "Ctrl+N"),
-                    ("Otwórz...", "Ctrl+O"),
-                    ("Zapisz", "Ctrl+S"),
-                    ("Zapisz jako...", "Shift+Ctrl+S"),
+                    ("Nowy dach", "Ctrl+N", None),
+                    ("Otwórz...", "Ctrl+O", None),
+                    ("Zapisz", "Ctrl+S", None),
+                    ("Zapisz jako...", "Shift+Ctrl+S", None),
                     None,
-                    ("Drukuj raport", "Ctrl+P"),
-                    ("Drukuj raport ciągły", "Shift+Ctrl+P"),
-                    ("Drukuj raport skrócony", None),
+                    ("Drukuj raport", "Ctrl+P", None),
+                    ("Drukuj raport ciągły", "Shift+Ctrl+P", None),
+                    ("Drukuj raport skrócony", None, None),
                     None,
-                    ("Zakończ", "Ctrl+Q"),
+                    ("Zakończ", "Ctrl+Q", None),
                 ],
             ),
             (
                 "Kształt",
                 [
-                    ("Prostokąt...", None),
-                    ("Trójkąt...", None),
-                    ("Trapez...", None),
-                    ("Dowolny", None),
+                    ("Prostokąt...", None, self._open_prostokat_dialog),
+                    ("Trójkąt...", None, self._open_trojkat_dialog),
+                    ("Trapez...", None, self._open_trapez_dialog),
+                    ("Dowolny", None, None),
                     None,
-                    ("Przesuń", None),
-                    ("Przesuń punkt", None),
+                    ("Przesuń", None, None),
+                    ("Przesuń punkt", None, None),
                     None,
-                    ("Odwróć w pionie", None),
-                    ("Odwróć w poziomie", None),
-                    ("Obracanie...", None),
+                    ("Odwróć w pionie", None, None),
+                    ("Odwróć w poziomie", None, None),
+                    ("Obracanie...", None, None),
                     None,
-                    ("Wyrównaj punkt w poziomie", "Ctrl+W"),
-                    ("Wyrównaj punkt w pionie", "Ctrl+E"),
+                    ("Wyrównaj punkt w poziomie", "Ctrl+W", None),
+                    ("Wyrównaj punkt w pionie", "Ctrl+E", None),
                 ],
             ),
             (
                 "Wycinki",
                 [
-                    ("Dodaj wycinek", None),
-                    ("Usuń wycinek", None),
-                    ("Przesuń wycinek", None),
-                    ("Skopiuj wycinek", None),
-                    ("Wklej wycinek", None),
+                    ("Dodaj wycinek", None, None),
+                    ("Usuń wycinek", None, None),
+                    ("Przesuń wycinek", None, None),
+                    ("Skopiuj wycinek", None, None),
+                    ("Wklej wycinek", None, None),
                 ],
             ),
             (
                 "Katalog",
                 [
-                    ("Blachy...", None),
-                    ("Dane firmy...", None),
+                    ("Blachy...", None, self._open_blachy_dialog),
+                    ("Dane firmy...", None, self._open_dane_firmy_dialog),
                 ],
             ),
             (
                 "Arkusze",
                 [
-                    ("Dodaj arkusz", "Insert"),
-                    ("Usuń arkusz", "Delete"),
-                    ("Podgląd arkuszy", "Ctrl+A"),
-                    ("Aktywne arkusze", None),
+                    ("Dodaj arkusz", "Insert", None),
+                    ("Usuń arkusz", "Delete", None),
+                    ("Podgląd arkuszy", "Ctrl+A", None),
+                    ("Aktywne arkusze", None, None),
                     None,
-                    ("Ustaw linię podziału", None),
-                    ("Usuń linię podziału", None),
+                    ("Ustaw linię podziału", None, None),
+                    ("Usuń linię podziału", None, None),
                     None,
-                    ("Zmień rodzaj blachy", None),
+                    ("Zmień rodzaj blachy", None, None),
                 ],
             ),
         ]
@@ -237,8 +250,11 @@ class MainWindow(QMainWindow):
                     menu.addSeparator()
                     continue
 
-                title, shortcut = entry
-                menu.addAction(self._create_menu_action(title, shortcut))
+                title, shortcut, callback = entry
+                action = self._create_menu_action(title, shortcut)
+                if callback:
+                    action.triggered.connect(callback)
+                menu.addAction(action)
 
     def _add_toolbar_action(self, toolbar: QToolBar, icon_kind: str, text: str):
         action = QAction(text, self)
@@ -319,10 +335,14 @@ class MainWindow(QMainWindow):
         variant_combo.setObjectName("variant_combo")
         variant_combo.setEditable(True)
         variant_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
-        variant_combo.lineEdit().setReadOnly(True)
         variant_combo.setFixedWidth(146)
         variant_combo.addItems(["PD510", "PD610", "PD710"])
         variant_combo.setCurrentText("PD510")
+        try:
+            if variant_combo.lineEdit():
+                variant_combo.lineEdit().setReadOnly(True)
+        except AttributeError:
+            pass
         variant_combo.setToolTip("Wybór aktywnej blachy")
         variant_combo.currentTextChanged.connect(lambda text: self.statusBar().showMessage(f"Aktywna blacha: {text}", 2500))
         self.variant_combo = variant_combo
@@ -377,6 +397,8 @@ class MainWindow(QMainWindow):
 
     def _apply_theme(self):
         app = QApplication.instance()
+        if not app or not isinstance(app, QApplication):
+            return
         palette = QPalette()
 
         if self._theme == "dark":
@@ -477,6 +499,53 @@ class MainWindow(QMainWindow):
         self.menuBar().setCornerWidget(self.theme_toggle, Qt.Corner.TopRightCorner)
         self.primary_canvas.update()
         self.secondary_canvas.update()
+
+    def _open_prostokat_dialog(self):
+        dialog = ProstokatDialog(self._config, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            values = dialog.get_values()
+            self._config["ksztalty"]["prostokat"] = values
+            save_config(self._config)
+            self.statusBar().showMessage(f"Prostokąt: {values['szerokosc']} x {values['wysokosc']} cm", 3000)
+
+    def _open_trojkat_dialog(self):
+        dialog = TrojkatDialog(self._config, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            values = dialog.get_values()
+            self._config["ksztalty"]["trojkat"] = values
+            save_config(self._config)
+            self.statusBar().showMessage(f"Trójkąt: {values['typ']}, podstawa: {values['podstawa']} cm", 3000)
+
+    def _open_trapez_dialog(self):
+        dialog = TrapezDialog(self._config, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            values = dialog.get_values()
+            self._config["ksztalty"]["trapez"] = values
+            save_config(self._config)
+            self.statusBar().showMessage(f"Trapez: {values['typ']}, podstawa dolna: {values['podstawa_dolna']} cm", 3000)
+
+    def _open_dane_firmy_dialog(self):
+        dialog = DaneFirmyDialog(self._config, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            values = dialog.get_values()
+            self._config["company_data"] = values
+            save_config(self._config)
+            self.statusBar().showMessage(f"Dane firmy zapisane: {values['name']}", 3000)
+
+    def _open_blachy_dialog(self):
+        dialog = BlachyDialog(self._config, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            values = dialog.get_values()
+            self._config["blachy"] = values
+            save_config(self._config)
+            self.statusBar().showMessage(f"Lista blach zaktualizowana: {len(values)} pozycji", 3000)
+
+    def _show_ostrzezenie_dialog(self):
+        result = show_ostrzezenie_dialog(self)
+        if result:
+            self.statusBar().showMessage("Aktywna połać wyczyszczona", 3000)
+        else:
+            self.statusBar().showMessage("Anulowano czyszczenie", 3000)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,46 @@
+{
+  "company_data": {
+    "name": "Super Dach Bis Jerzy Zimnoch",
+    "nip": "542-030-52-23",
+    "address": "Ogrodniki ul. Rubinowa 10\n16-002 Dobrzyniewo Duże",
+    "website": "superdachbis.pl",
+    "logo": "test"
+  },
+  "blachy": [
+    {
+      "id": "PD510",
+      "type": "dachówkowa",
+      "nazwa": "PD510",
+      "szerokosc_efektywna": 51,
+      "dlugosc_modulu": 25,
+      "zapas_dolny": 10,
+      "zapas_gorny": 80,
+      "min_dlugosc_arkusza": 20,
+      "odleglosc_miedzy_latami": 10,
+      "odleglosc_miedzy_kontrlatami": 0,
+      "moduly": [],
+      "cena_za": "m2",
+      "cena_zl": 10,
+      "cena_gr": 0
+    }
+  ],
+  "ksztalty": {
+    "prostokat": {
+      "szerokosc": 300,
+      "wysokosc": 300
+    },
+    "trojkat": {
+      "typ": "równoramienny",
+      "podstawa": 300,
+      "wysokosc": 300,
+      "ramie": 400,
+      "ramie_enabled": false
+    },
+    "trapez": {
+      "typ": "prostokątny",
+      "podstawa_dolna": 500,
+      "podstawa_gorna": 300,
+      "wysokosc": 300
+    }
+  }
+}
