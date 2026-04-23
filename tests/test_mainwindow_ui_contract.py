@@ -4,9 +4,10 @@ import pytest
 
 from core.geometry import build_rectangle_outline
 
-
 pytest.importorskip("PySide6")
 pytest.importorskip("pytestqt")
+
+from PySide6.QtWidgets import QMenu
 
 from mainwindow import MainWindow
 
@@ -17,12 +18,16 @@ def test_mainwindow_exposes_expected_ui_contract(qtbot):
     window.show()
 
     menu_titles = [action.text() for action in window.menuBar().actions()]
+    sheets_menu = window.menuBar().actions()[-1].menu()
+    assert isinstance(sheets_menu, QMenu)
+    sheets_actions = [action.text() for action in sheets_menu.actions() if not action.isSeparator()]
 
     assert menu_titles == ["Plik", "Kształt", "Wycinki", "Katalog", "Arkusze"]
     assert window.workspace_tabs.count() == 2
     assert window.variant_combo.count() >= 1
     assert window.variant_combo.currentText() == "PD510"
     assert window.project_state.available_material_ids() == ["PD510"]
+    assert "Przelicz aktywną połać" in sheets_actions
 
 
 def test_mainwindow_refreshes_active_plane_on_primary_canvas(qtbot):

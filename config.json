@@ -45,7 +45,7 @@
   },
   "project_state": {
     "version": 1,
-    "active_plane_id": "plane-4",
+    "active_plane_id": "plane-7",
     "roof_planes": [
       {
         "id": "plane-1",
@@ -57,7 +57,9 @@
         },
         "auto_sheet_placements": [],
         "manual_sheet_placements": [],
+        "manually_removed_auto_sheet_ids": [],
         "layout_revision": 0,
+        "layout_dirty_reason": null,
         "outline": [
           {
             "x": 0.0,
@@ -88,7 +90,9 @@
         },
         "auto_sheet_placements": [],
         "manual_sheet_placements": [],
+        "manually_removed_auto_sheet_ids": [],
         "layout_revision": 0,
+        "layout_dirty_reason": null,
         "outline": [
           {
             "x": 0.0,
@@ -111,11 +115,13 @@
         "selected_material_id": "PD510",
         "generation_settings": {
           "layout_origin": "left",
-          "base_line_y_cm": 300
+          "base_line_y_cm": 300.0
         },
         "auto_sheet_placements": [],
         "manual_sheet_placements": [],
+        "manually_removed_auto_sheet_ids": [],
         "layout_revision": 0,
+        "layout_dirty_reason": null,
         "outline": [
           {
             "x": 0.0,
@@ -138,11 +144,13 @@
         "selected_material_id": "PD510",
         "generation_settings": {
           "layout_origin": "left",
-          "base_line_y_cm": 300
+          "base_line_y_cm": 300.0
         },
         "auto_sheet_placements": [],
         "manual_sheet_placements": [],
+        "manually_removed_auto_sheet_ids": [],
         "layout_revision": 1,
+        "layout_dirty_reason": null,
         "outline": [
           {
             "x": 0.0,
@@ -181,6 +189,258 @@
             }
           ]
         ]
+      },
+      {
+        "id": "plane-5",
+        "name": "5",
+        "selected_material_id": "PD510",
+        "generation_settings": {
+          "layout_origin": "left",
+          "base_line_y_cm": 300.0
+        },
+        "auto_sheet_placements": [],
+        "manual_sheet_placements": [],
+        "manually_removed_auto_sheet_ids": [],
+        "layout_revision": 0,
+        "layout_dirty_reason": null,
+        "outline": [
+          {
+            "x": 0.0,
+            "y": 0.0
+          },
+          {
+            "x": 300.0,
+            "y": 0.0
+          },
+          {
+            "x": 300.0,
+            "y": 300.0
+          },
+          {
+            "x": 0.0,
+            "y": 300.0
+          }
+        ],
+        "holes": []
+      },
+      {
+        "id": "plane-6",
+        "name": "6",
+        "selected_material_id": "PD510",
+        "generation_settings": {
+          "layout_origin": "left",
+          "base_line_y_cm": 300.0
+        },
+        "auto_sheet_placements": [
+          {
+            "id": "plane-6-b0-s0",
+            "band_index": 0,
+            "x_left_cm": 0.0,
+            "x_right_cm": 51.0,
+            "y_top_cm": 50.0,
+            "y_bottom_cm": 300.0,
+            "raw_length_cm": 250.0,
+            "final_length_cm": 350.0,
+            "source": "auto",
+            "split_reason": null
+          },
+          {
+            "id": "plane-6-b1-s0",
+            "band_index": 1,
+            "x_left_cm": 51.0,
+            "x_right_cm": 102.0,
+            "y_top_cm": 0.0,
+            "y_bottom_cm": 300.0,
+            "raw_length_cm": 300.0,
+            "final_length_cm": 400.0,
+            "source": "auto",
+            "split_reason": null
+          },
+          {
+            "id": "plane-6-b2-s0",
+            "band_index": 2,
+            "x_left_cm": 102.0,
+            "x_right_cm": 153.0,
+            "y_top_cm": 0.0,
+            "y_bottom_cm": 300.0,
+            "raw_length_cm": 300.0,
+            "final_length_cm": 400.0,
+            "source": "auto",
+            "split_reason": null
+          },
+          {
+            "id": "plane-6-b3-s0",
+            "band_index": 3,
+            "x_left_cm": 153.0,
+            "x_right_cm": 204.0,
+            "y_top_cm": 0.0,
+            "y_bottom_cm": 300.0,
+            "raw_length_cm": 300.0,
+            "final_length_cm": 400.0,
+            "source": "auto",
+            "split_reason": null
+          },
+          {
+            "id": "plane-6-b4-s0",
+            "band_index": 4,
+            "x_left_cm": 204.0,
+            "x_right_cm": 255.0,
+            "y_top_cm": 0.0,
+            "y_bottom_cm": 300.0,
+            "raw_length_cm": 300.0,
+            "final_length_cm": 400.0,
+            "source": "auto",
+            "split_reason": null
+          },
+          {
+            "id": "plane-6-b5-s0",
+            "band_index": 5,
+            "x_left_cm": 255.0,
+            "x_right_cm": 306.0,
+            "y_top_cm": 0.0,
+            "y_bottom_cm": 300.0,
+            "raw_length_cm": 300.0,
+            "final_length_cm": 400.0,
+            "source": "auto",
+            "split_reason": null
+          },
+          {
+            "id": "plane-6-b6-s0",
+            "band_index": 6,
+            "x_left_cm": 306.0,
+            "x_right_cm": 357.0,
+            "y_top_cm": 47.25,
+            "y_bottom_cm": 300.0,
+            "raw_length_cm": 252.75,
+            "final_length_cm": 350.0,
+            "source": "auto",
+            "split_reason": null
+          },
+          {
+            "id": "plane-6-b7-s0",
+            "band_index": 7,
+            "x_left_cm": 357.0,
+            "x_right_cm": 408.0,
+            "y_top_cm": 123.75,
+            "y_bottom_cm": 300.0,
+            "raw_length_cm": 176.25,
+            "final_length_cm": 275.0,
+            "source": "auto",
+            "split_reason": null
+          },
+          {
+            "id": "plane-6-b8-s0",
+            "band_index": 8,
+            "x_left_cm": 408.0,
+            "x_right_cm": 459.0,
+            "y_top_cm": 200.25,
+            "y_bottom_cm": 300.0,
+            "raw_length_cm": 99.75,
+            "final_length_cm": 200.0,
+            "source": "auto",
+            "split_reason": null
+          },
+          {
+            "id": "plane-6-b9-s0",
+            "band_index": 9,
+            "x_left_cm": 459.0,
+            "x_right_cm": 500.0,
+            "y_top_cm": 269.25,
+            "y_bottom_cm": 300.0,
+            "raw_length_cm": 30.75,
+            "final_length_cm": 125.0,
+            "source": "auto",
+            "split_reason": null
+          }
+        ],
+        "manual_sheet_placements": [
+          {
+            "id": "plane-6-manual-2",
+            "band_index": 0,
+            "x_left_cm": 0.0,
+            "x_right_cm": 50.0,
+            "y_top_cm": 0.0,
+            "y_bottom_cm": 100.0,
+            "raw_length_cm": 100.0,
+            "final_length_cm": 100.0,
+            "source": "manual",
+            "split_reason": null
+          }
+        ],
+        "manually_removed_auto_sheet_ids": [],
+        "layout_revision": 3,
+        "layout_dirty_reason": null,
+        "outline": [
+          {
+            "x": 0.0,
+            "y": 300
+          },
+          {
+            "x": 0.0,
+            "y": 0.0
+          },
+          {
+            "x": 300,
+            "y": 0.0
+          },
+          {
+            "x": 500,
+            "y": 300
+          }
+        ],
+        "holes": [
+          [
+            {
+              "x": 0.0,
+              "y": 0.0
+            },
+            {
+              "x": 50.0,
+              "y": 0.0
+            },
+            {
+              "x": 50.0,
+              "y": 50.0
+            },
+            {
+              "x": 0.0,
+              "y": 50.0
+            }
+          ]
+        ]
+      },
+      {
+        "id": "plane-7",
+        "name": "7",
+        "selected_material_id": "PD510",
+        "generation_settings": {
+          "layout_origin": "left",
+          "base_line_y_cm": 300
+        },
+        "auto_sheet_placements": [],
+        "manual_sheet_placements": [],
+        "manually_removed_auto_sheet_ids": [],
+        "layout_revision": 0,
+        "layout_dirty_reason": null,
+        "outline": [
+          {
+            "x": 0.0,
+            "y": 300
+          },
+          {
+            "x": 0.0,
+            "y": 0.0
+          },
+          {
+            "x": 300,
+            "y": 0.0
+          },
+          {
+            "x": 500,
+            "y": 300
+          }
+        ],
+        "holes": []
       }
     ]
   }

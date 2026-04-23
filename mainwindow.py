@@ -288,6 +288,7 @@ class MainWindow(QMainWindow):
                     ("Usuń arkusz", "Delete", self._open_remove_sheet_dialog),
                     ("Podgląd arkuszy", "Ctrl+A", self._open_sheet_preview_dialog),
                     ("Aktywne arkusze", None, self._open_active_sheets_dialog),
+                    ("Przelicz aktywną połać", "F5", self._open_recalculate_active_plane),
                     None,
                     ("Zmień rodzaj blachy", None, self._open_change_material_dialog),
                 ],
@@ -714,6 +715,25 @@ class MainWindow(QMainWindow):
         if hasattr(self, "report_view"):
             self._refresh_report_view()
 
+    def _layout_dirty_reason_label(self, reason: str | None) -> str:
+        labels = {
+            None: "aktualny",
+            "geometry_changed": "nieaktualny po zmianie geometrii",
+            "material_changed": "nieaktualny po zmianie materiału",
+            "manual_override": "zmieniony ręczną korektą arkuszy",
+        }
+        return labels.get(reason, f"nieaktualny ({reason})")
+
+    def _layout_dirty_reason_hint(self, reason: str | None) -> str:
+        hints = {
+            "geometry_changed": "Użyj akcji Arkusze -> Przelicz aktywną połać, aby odświeżyć layout i raport po zmianie geometrii.",
+            "material_changed": "Użyj akcji Arkusze -> Przelicz aktywną połać, aby przeliczyć układ dla nowego materiału.",
+            "manual_override": "Jeśli chcesz odtworzyć automatyczny układ po ręcznych korektach, użyj akcji Arkusze -> Przelicz aktywną połać.",
+        }
+        if reason is None:
+            return "Użyj akcji Plik -> Drukuj raport lub Arkusze -> Przelicz aktywną połać, aby wygenerować aktualny wynik."
+        return hints.get(reason, "Użyj akcji Plik -> Drukuj raport lub Arkusze -> Przelicz aktywną połać, aby wygenerować aktualny wynik.")
+
     def _refresh_report_view(self, html: str | None = None):
         active_plane = self.project_state.active_roof_plane()
         content = html if html is not None else ""
@@ -730,16 +750,18 @@ class MainWindow(QMainWindow):
             else:
                 dirty_message = ""
                 if active_plane.layout_dirty_reason:
+                    reason_label = self._layout_dirty_reason_label(active_plane.layout_dirty_reason)
+                    reason_hint = self._layout_dirty_reason_hint(active_plane.layout_dirty_reason)
                     dirty_message = (
-                        f"<p><strong>Stan layoutu:</strong> wynik jest nieaktualny "
-                        f"({active_plane.layout_dirty_reason}).</p>"
+                        f"<p><strong>Stan layoutu:</strong> {reason_label}.</p>"
+                        f"<p>{reason_hint}</p>"
                     )
                 content = (
                     "<html><body>"
                     f"<h1>Raport 4Dach - {active_plane.name}</h1>"
                     "<p>Raport nie został jeszcze wygenerowany dla aktywnej połaci.</p>"
                     f"{dirty_message}"
-                    "<p>Użyj akcji <strong>Plik -> Drukuj raport</strong>, aby przeliczyć layout, BOM i ostrzeżenia.</p>"
+                    "<p>Użyj akcji <strong>Plik -> Drukuj raport</strong> lub <strong>Arkusze -> Przelicz aktywną połać</strong>, aby przeliczyć layout, BOM i ostrzeżenia.</p>"
                     "</body></html>"
                 )
         self.report_view.setHtml(content)
@@ -840,14 +862,22 @@ class MainWindow(QMainWindow):
         active_sheets = self.project_state.active_sheet_placements_for_plane(plane.id)
         manual_count = len(plane.manual_sheet_placements)
         removed_count = len(plane.manually_removed_auto_sheet_ids)
+        layout_status = self._layout_dirty_reason_label(plane.layout_dirty_reason)
+        hint = self._layout_dirty_reason_hint(plane.layout_dirty_reason) if plane.layout_dirty_reason else ""
         message = (
             f"Aktywne arkusze: {len(active_sheets)}\n"
             f"Ręczne arkusze: {manual_count}\n"
             f"Ukryte auto-arkusze: {removed_count}\n"
-            f"Stan layoutu: {plane.layout_dirty_reason or 'aktualny'}"
+            f"Stan layoutu: {layout_status}"
         )
+        if hint:
+            message = f"{message}\n\n{hint}"
         QMessageBox.information(self, f"Aktywne arkusze - {plane.name}", message)
         self.statusBar().showMessage(f"Pokazano podsumowanie arkuszy połaci {plane.name}", 3000)
+
+    def _open_recalculate_active_plane(self):
+        if self._generate_report_preview("standard"):
+            self.statusBar().showMessage("Przeliczono aktywną połać i odświeżono raport", 4000)
 
     def _open_change_material_dialog(self):
         plane = self._active_plane_or_warn()
