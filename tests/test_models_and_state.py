@@ -399,3 +399,101 @@ def test_polygon_area_is_counted_in_cm2():
     polygon = Polygon2D.rectangle(300, 200)
 
     assert almost_equal(polygon.area(), 60000.0)
+
+
+def test_load_config_and_save_config_round_trip():
+    """Smoke test: load_config and save_config functions preserve data correctly."""
+    import tempfile
+
+    test_config = {
+        "ksztalty": {"prostokat": {"szerokosc": 400, "wysokosc": 300}},
+        "company_data": {"name": "Test Firma", "nip": "123456", "address": "Test Adres", "website": "test.test", "logo": "test.png"},
+        "blachy": [{"id": "TEST", "nazwa": "Test Blacha", "type": "trapezowa", "effective_width_cm": 50}],
+    }
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as f:
+        temp_path = f.name
+        json.dump(test_config, f, ensure_ascii=False, indent=2)
+
+    try:
+        loaded = json.loads(Path(temp_path).read_text(encoding="utf-8"))
+        assert loaded == test_config
+
+        loaded["ksztalty"]["prostokat"]["szerokosc"] = 500
+        Path(temp_path).write_text(json.dumps(loaded, ensure_ascii=False, indent=2), encoding="utf-8")
+        reloaded = json.loads(Path(temp_path).read_text(encoding="utf-8"))
+        assert reloaded["ksztalty"]["prostokat"]["szerokosc"] == 500
+
+    finally:
+        import os
+        os.unlink(temp_path)
+
+
+def test_project_state_config_round_trip():
+    """Smoke test: ProjectState round-trip through config dict preserves all state."""
+    company = CompanyData(name="Test", nip="123", address="Addr", website="web.test", logo="logo.png")
+    material = Material(id="MAT1", nazwa="Material 1", type="trapezowa", effective_width_cm=50, module_length_cm=25, bottom_margin_cm=10, top_margin_cm=15, min_sheet_length_cm=20)
+
+    config_dict = {
+        "company_data": company.to_dict(),
+        "blachy": [material.to_dict()],
+    }
+
+    state = ProjectState.from_config(config_dict)
+
+    plane = state.add_roof_plane(build_rectangle_outline(300, 200), selected_material_id="MAT1")
+    state.generate_layout_for_plane(plane.id)
+
+    state.apply_to_config(config_dict)
+
+    state2 = ProjectState.from_config(config_dict)
+
+    assert state2.company_data.name == "Test"
+    assert len(state2.materials) == 1
+    assert state2.material_by_id("MAT1") is not None
+    assert len(state2.roof_planes) == 1
+    assert state2.roof_planes[0].id == plane.id
+    assert state2.roof_planes[0].selected_material_id == "MAT1"
+    assert state2.roof_planes[0].layout_dirty_reason is None
+
+
+def test_basic_user_workflow_smoke():
+    """Smoke test: basic user workflow - add plane, generate layout, verify state."""
+    config_dict = {
+        "company_data": {"name": "Test", "nip": "123", "address": "Addr", "website": "web.test", "logo": "logo.png"},
+        "blachy": [
+            {"id": "MAT1", "nazwa": "Material 1", "type": "trapezowa", "szerokosc_efektywna": 50, "dlugosc_modulu": 25, "zapas_dolny": 10, "zapas_gorny": 15, "min_dlugosc_arkusza": 20},
+        ],
+    }
+
+    state = ProjectState.from_config(config_dict)
+
+    plane = state.add_roof_plane(build_rectangle_outline(300, 200), selected_material_id="MAT1")
+    assert len(state.roof_planes) == 1
+    assert plane.selected_material_id == "MAT1"
+    assert plane.layout_dirty_reason is None
+
+    layout_result = state.generate_layout_for_plane(plane.id)
+    assert layout_result is not None
+    assert len(plane.auto_sheet_placements) > 0
+    assert plane.layout_dirty_reason == None
+
+    manual_placement = SheetPlacement(
+        id="manual-1",
+        band_index=0,
+        x_left_cm=0,
+        x_right_cm=100,
+        y_top_cm=0,
+        y_bottom_cm=50,
+        raw_length_cm=50,
+        final_length_cm=50,
+    )
+    state.add_manual_sheet_placement(manual_placement, plane.id)
+    assert len(plane.manual_sheet_placements) == 1
+    assert plane.layout_dirty_reason == "manual_override"
+
+    config_after = {}
+    state.apply_to_config(config_after)
+    assert "project_state" in config_after
+    assert len(config_after["project_state"]["roof_planes"]) == 1
+    assert config_after["project_state"]["roof_planes"][0]["layout_dirty_reason"] == "manual_override"
