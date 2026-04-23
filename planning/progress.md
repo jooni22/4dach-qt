@@ -210,3 +210,17 @@
 | What's the goal? | Rozwijać realne workflow domenowe małymi krokami bez przebudowy UI |
 | What have I learned? | Najbezpieczniej rozwijać repo przez stabilne kontrakty domenowe i dopiero potem doszywać UI; osadzony preview raportu dobrze mieści się w istniejącym shellu Qt |
 | What have I done? | Usunięto odłożony zakres z menu i planu, wdrożono raportowanie domenowe, generator HTML raportu i podgląd raportu bezpośrednio w UI |
+
+### Phase 13: Smoke Tests for Load/Save and Basic Workflow
+- **Status:** complete
+- Actions taken:
+  - Dodano smoke test `test_load_config_and_save_config_round_trip` weryfikujący, że zapis/odczyt JSON config zachowuje dane.
+  - Dodano smoke test `test_project_state_config_round_trip` weryfikujący round-trip przez config dict z `company_data` i `blachy`.
+  - Dodano smoke test `test_basic_user_workflow_smoke` weryfikujący podstawowy workflow: dodanie połaci, generowanie layoutu, ręczne arkusze, persystencję.
+  - Naprawiono błędy w testach: poprawiono wywołanie `add_manual_sheet_placement` z obiektem `SheetPlacement`, dodano brakujące parametry `Material`.
+  - Wszystkie 28 testów przechodzą (1 skipped przez brak PySide6).
+- Files created/modified:
+  - `tests/test_models_and_state.py`
+  - `planning/task_plan.md`
+  - `planning/findings.md`
+  - `planning/progress.md`

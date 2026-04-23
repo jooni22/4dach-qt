@@ -4,7 +4,7 @@
 Doprowadzić aplikację do stanu roboczego dla kalkulacji rozkroju blachodachówki 2D w klasycznym UI PySide6, zachowując istniejący shell okna i rozwijając domenę iteracyjnie, testowalnie i bez przebudowy `ui_form.py`.
 
 ## Current Phase
-Phase 6
+Phase 7
 
 ## Phases
 
@@ -43,8 +43,8 @@ Phase 6
 ### Phase 6: Testing And Verification
 - [x] Rozszerzyć testy modeli, geometrii, layoutu i raportów
 - [x] Uzupełnić testy kontraktowe UI
-- [ ] Dodać scenariusze smoke dla load/save i workflow usera
-- **Status:** in_progress
+- [x] Dodać scenariusze smoke dla load/save i workflow usera
+- **Status:** complete
 
 ### Phase 7: Delivery
 - [ ] Ustabilizować końcowy kontrakt danych
@@ -72,10 +72,10 @@ Phase 6
 | Akcje menu `Przesuń`, `Przesuń punkt`, `Dodaj punkt`, `Usuń punkt`, flip/rotate, align i linie podziału są poza bieżącym zakresem | Użytkownik zlecił usunięcie ich z aktualnego UI i roadmapy, więc agent nie powinien planować nad nimi prac |
 
 ## Next Steps
-1. Dodać bardziej jawny workflow użytkownika dla ponownego przeliczenia po `layout_dirty_reason`, w tym czytelniejsze mapowanie kodów dirty-state na komunikaty.
-2. Rozszerzyć testy UI o kontrakt menu `Arkusze` i stanu raportu po ręcznych korektach.
-3. Dodać scenariusze smoke dla load/save i podstawowego workflow użytkownika.
-4. Domknąć tylko te akcje toolbar/menu, które mają realne odpowiedniki domenowe i nie wracają do usuniętego zakresu.
+1. Dodać scenariusze smoke dla load/save i podstawowego workflow użytkownika.
+2. Rozszerzyć testy UI o stan raportu po ręcznych korektach, gdy środowisko ma `pytest-qt`.
+3. Domknąć tylko te akcje toolbar/menu, które mają realne odpowiedniki domenowe i nie wracają do usuniętego zakresu.
+4. Ustabilizować końcowy kontrakt danych przed fazą delivery.
 
 ## Errors Encountered
 | Error | Attempt | Resolution |

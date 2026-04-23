@@ -56,6 +56,7 @@
 | Ręczne usunięcie auto-arkusza jest przechowywane jako delta po `id`, a ręczny arkusz jako osobny `SheetPlacement` ze źródłem `manual` | To pozwala raportować i przeliczać aktywny zestaw arkuszy bez mieszania danych wejściowych i korekt użytkownika |
 | Po zmianie geometrii lub materiału system oznacza layout jako nieaktualny zamiast po cichu wyliczać nowy wynik | To zachowuje kontrolę użytkownika nad momentem ponownego przeliczenia i chroni ręczne korekty |
 | Zakładki workspace są generowane dynamicznie z listy połaci, a `Raport` zawsze pozostaje ostatnią zakładką | To utrzymuje klasyczny układ Qt i jednocześnie synchronizuje UI z domeną bez przebudowy `form.ui` |
+| `layout_dirty_reason` jest mapowane w UI na opis i rekomendowaną akcję użytkownika | To zmniejsza ryzyko, że użytkownik zobaczy techniczny kod stanu bez zrozumienia kolejnego kroku |
 
 ## Issues Encountered
 | Issue | Resolution |
@@ -66,6 +67,8 @@
 | Zakres pełnego workflow nie był wcześniej zapisany w jednym miejscu | Zapisano go teraz w `planning/task_plan.md` i `planning/NEXT_SESSION_PROMPT.md` |
 | Pierwszy test globalnej bazy modułów nie przecinał wycinka, więc dawał błędne oczekiwania | Zmieniono szerokość pasa testowego, aby środkowy pas rzeczywiście przecinał otwór i sprawdzał bazę globalną |
 | Pierwszy scenariusz testu edycji outline wstawiał punkt powodujący samoprzecięcie | Zmieniono dane testowe tak, by sprawdzały poprawną edycję bez łamania walidacji poligonu |
+| Smoke test round-trip `ProjectState` początkowo nie przechodził bo `company_data` nie było zapisywane w `to_config_fragment` | Naprawiono test, aby poprawnie symulował przepływ persystencji z `company_data` na najwyższym poziomie configu |
+| Smoke test workflow początkowo oczekiwał `layout_dirty_reason == "geometry_changed"` po `add_roof_plane` | Naprawiono test, bo nowa połać ma `layout_dirty_reason == None` dopóki nie nastąpi zmiana geometrii |
 
 ## Resources
 - `DOC/plan-logiki-i-testow.md`
