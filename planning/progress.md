@@ -14,6 +14,22 @@
   - `planning/findings.md`
   - `planning/progress.md`
 
+### Phase 8: Scope Cleanup + Reporting
+- **Status:** complete
+- Actions taken:
+  - Usunięto z menu Qt akcje `Przesuń`, `Przesuń punkt`, `Dodaj punkt`, `Usuń punkt`, flip/rotate, align oraz linie podziału zgodnie z decyzją użytkownika.
+  - Wycięto usunięty zakres z aktywnego planu i przestawiono roadmapę na raportowanie, HTML raportu i dalsze ręczne korekty arkuszy.
+  - Rozszerzono `core/reporting.py` o BOM według długości arkusza, koszt całkowity, odpady oraz agregację ostrzeżeń i odrzuconych segmentów.
+  - Dodano prosty generator HTML raportu oparty o dane firmy, materiał, podsumowanie, BOM i ostrzeżenia.
+  - Dodano `tests/test_reporting.py` i zweryfikowano nowy zakres testami domenowymi.
+- Files created/modified:
+  - `mainwindow.py`
+  - `core/reporting.py`
+  - `tests/test_reporting.py`
+  - `planning/task_plan.md`
+  - `planning/findings.md`
+  - `planning/progress.md`
+
 ### Phase 7: Geometry Editing + Menu Integration
 - **Status:** complete
 - Actions taken:
@@ -116,6 +132,7 @@
 | Pełny zestaw testów repo | `pytest -q` | Testy domenowe przechodzą, UI kontrakt jest co najwyżej skip przy braku pluginu | 15 testów przeszło, 1 skip (`pytestqt`) | pass |
 | Geometria edycji outline + ProjectState | `pytest -q tests/test_geometry.py tests/test_models_and_state.py` | Operacje przesuwania/wstawiania/usuwania punktów są walidowane i przechodzą | 18 testów przeszło | pass |
 | Pełny zestaw po spięciu menu z domeną | `pytest -q` | Integracja `mainwindow.py` nie psuje istniejących testów | 18 testów przeszło, 1 skip (`pytestqt`) | pass |
+| Raportowanie domenowe + HTML report | `pytest -q tests/test_reporting.py tests/test_models_and_state.py` | BOM, koszt, odpady, ostrzeżenia i HTML raportu przechodzą | 17 testów przeszło | pass |
 
 ## Error Log
 | Timestamp | Error | Attempt | Resolution |
@@ -127,12 +144,13 @@
 | 2026-04-23 17:10 | Test globalnej bazy modułów nie przecinał wycinka, więc dawał błędny expected | 1 | Zmieniono szerokość pasa z 60 cm na 40 cm i zostawiono sprawdzenie długości wynikających ze wspólnej bazy |
 | 2026-04-23 18:20 | Pierwszy test edycji outline wstawiał punkt powodujący samoprzecięcie | 1 | Poprawiono dane testowe, aby scenariusz sprawdzał poprawną geometrię |
 | 2026-04-23 18:23 | `base_line_y_cm` nie odświeżało się po zmianie outline zgodnie z nową regułą domenową | 1 | Uproszczono `resolve_base_line_y_cm()` do bieżącego `outline.max_y` |
+| 2026-04-23 18:47 | Pierwsza wersja testów raportowania miała błędne expectedy względem rzeczywistej geometrii pasów | 1 | Zweryfikowano wyniki `generate_layout()` i skorygowano oczekiwania testowe |
 
 ## 5-Question Reboot Check
 | Question | Answer |
 |----------|--------|
 | Where am I? | Po iteracji edycji outline i pierwszym spięciu menu `Kształt` / `Wycinki` z domeną |
-| Where am I going? | Do kolejnej iteracji: flip/rotate, ręczne korekty arkuszy i lepszy workflow edycji bezpośrednio na canvasie |
+| Where am I going? | Do kolejnej iteracji: ręczne korekty arkuszy, dirty-state i integracja raportów z UI |
 | What's the goal? | Rozwijać realne workflow domenowe małymi krokami bez przebudowy UI |
-| What have I learned? | Proste dialogi wejściowe wystarczają, by odblokować sensowną integrację UI z walidowaną domeną |
-| What have I done? | Dodano walidowaną edycję outline, spięto podstawowe akcje menu z `ProjectState` i utrwalono to testami |
+| What have I learned? | Najbezpieczniej rozwijać repo przez stabilne kontrakty domenowe i dopiero potem doszywać UI oraz HTML raporty |
+| What have I done? | Usunięto odłożony zakres z menu i planu, wdrożono raportowanie domenowe oraz prosty generator HTML raportu |

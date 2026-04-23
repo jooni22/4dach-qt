@@ -45,7 +45,7 @@
   },
   "project_state": {
     "version": 1,
-    "active_plane_id": "plane-2",
+    "active_plane_id": "plane-4",
     "roof_planes": [
       {
         "id": "plane-1",
@@ -55,6 +55,9 @@
           "layout_origin": "left",
           "base_line_y_cm": null
         },
+        "auto_sheet_placements": [],
+        "manual_sheet_placements": [],
+        "layout_revision": 0,
         "outline": [
           {
             "x": 0.0,
@@ -83,6 +86,9 @@
           "layout_origin": "left",
           "base_line_y_cm": null
         },
+        "auto_sheet_placements": [],
+        "manual_sheet_placements": [],
+        "layout_revision": 0,
         "outline": [
           {
             "x": 0.0,
@@ -98,6 +104,83 @@
           }
         ],
         "holes": []
+      },
+      {
+        "id": "plane-3",
+        "name": "3",
+        "selected_material_id": "PD510",
+        "generation_settings": {
+          "layout_origin": "left",
+          "base_line_y_cm": 300
+        },
+        "auto_sheet_placements": [],
+        "manual_sheet_placements": [],
+        "layout_revision": 0,
+        "outline": [
+          {
+            "x": 0.0,
+            "y": 300
+          },
+          {
+            "x": 150.0,
+            "y": 0.0
+          },
+          {
+            "x": 300,
+            "y": 300
+          }
+        ],
+        "holes": []
+      },
+      {
+        "id": "plane-4",
+        "name": "4",
+        "selected_material_id": "PD510",
+        "generation_settings": {
+          "layout_origin": "left",
+          "base_line_y_cm": 300
+        },
+        "auto_sheet_placements": [],
+        "manual_sheet_placements": [],
+        "layout_revision": 1,
+        "outline": [
+          {
+            "x": 0.0,
+            "y": 300
+          },
+          {
+            "x": 0.0,
+            "y": 0.0
+          },
+          {
+            "x": 300,
+            "y": 0.0
+          },
+          {
+            "x": 500,
+            "y": 300
+          }
+        ],
+        "holes": [
+          [
+            {
+              "x": 0.0,
+              "y": 0.0
+            },
+            {
+              "x": 50.0,
+              "y": 0.0
+            },
+            {
+              "x": 50.0,
+              "y": 50.0
+            },
+            {
+              "x": 0.0,
+              "y": 50.0
+            }
+          ]
+        ]
       }
     ]
   }

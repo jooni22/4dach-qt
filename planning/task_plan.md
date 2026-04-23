@@ -4,7 +4,7 @@
 Doprowadzić aplikację do stanu roboczego dla kalkulacji rozkroju blachodachówki 2D w klasycznym UI PySide6, zachowując istniejący shell okna i rozwijając domenę iteracyjnie, testowalnie i bez przebudowy `ui_form.py`.
 
 ## Current Phase
-Phase 3
+Phase 4
 
 ## Phases
 
@@ -18,26 +18,26 @@ Phase 3
 - [x] Ustabilizować `ProjectState`, serializację i migrację `config.json`
 - [ ] Domknąć modele połaci, materiałów, arkuszy i wyników layoutu
 - [x] Rozdzielić stan UI od stanu domenowego
-- **Status:** in_progress
+- **Status:** complete
 
 ### Phase 3: Geometry And Editing
 - [ ] Dokończyć fabryki kształtów parametrycznych
 - [x] Dodać walidację outline i hole
-- [ ] Wprowadzić tryby edycji geometrii i wycinków
-- [ ] Dodać operacje: move, insert point, delete point, flip, rotate
-- **Status:** in_progress
+- [x] Wprowadzić podstawowy workflow wycinków przez menu i dialogi wejściowe
+- [ ] Utrzymać tylko wspierane akcje geometrii w menu bez wracania do usuniętego zakresu edycji outline
+- **Status:** complete
 
 ### Phase 4: Layout And Reports
 - [x] Dokończyć layout engine dla aktywnej połaci i aktywnego materiału
-- [ ] Obsłużyć ręczne korekty arkuszy i dirty-state
 - [ ] Dodać raportowanie BOM, kosztów i ostrzeżeń
 - [ ] Przygotować HTML report generator
+- [ ] Obsłużyć ręczne korekty arkuszy i dirty-state
 - **Status:** in_progress
 
 ### Phase 5: UI Integration
-- [ ] Podłączyć akcje menu i toolbar do domeny
+- [ ] Podłączyć wspierane akcje menu i toolbar do domeny
 - [ ] Ujednolicić zakładki z połaciami i canvasy z modelem projektu
-- [ ] Pokazać stany layoutu i ostrzeżenia w UI
+- [ ] Pokazać stany layoutu, BOM i ostrzeżenia w UI
 - **Status:** pending
 
 ### Phase 6: Testing And Verification
@@ -69,6 +69,13 @@ Phase 3
 | Layout engine jest diagnostyczny i zwraca warnings/rejected segments | Ułatwia debug i testy nietypowych połaci |
 | Ręczne korekty mają być zachowywane między przeliczeniami | To wymaganie z planu i warunek użyteczności |
 | `base_line_y_cm` na start jest automatycznie ustawiane na `max_y` obrysu aktywnej połaci | To bezpieczne uproszczenie zgodne z planem i pozwala wdrożyć wspólną bazę modułów bez zmian UI |
+| Akcje menu `Przesuń`, `Przesuń punkt`, `Dodaj punkt`, `Usuń punkt`, flip/rotate, align i linie podziału są poza bieżącym zakresem | Użytkownik zlecił usunięcie ich z aktualnego UI i roadmapy, więc agent nie powinien planować nad nimi prac |
+
+## Next Steps
+1. Domknąć `core/reporting.py`: BOM według długości arkusza, koszt całkowity, odpady i ostrzeżenia.
+2. Dodać testy domenowe raportowania w osobnym pliku testowym.
+3. Przygotować prosty generator HTML raportu na bazie wyniku raportowania.
+4. Dopiero po raporcie wrócić do ręcznych korekt arkuszy i dirty-state.
 
 ## Errors Encountered
 | Error | Attempt | Resolution |

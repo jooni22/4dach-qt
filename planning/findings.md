@@ -21,6 +21,8 @@
 - `ProjectState` obsługuje już walidowaną edycję obrysu połaci: przesunięcie całej połaci, przesunięcie punktu, wstawienie punktu i usunięcie punktu.
 - Menu `Kształt` i `Wycinki` ma już pierwszy działający workflow oparty o `QInputDialog`, bez przebudowy canvasa i bez przenoszenia logiki domenowej do UI.
 - Reguła `base_line_y_cm` została dopięta do aktualnej geometrii obrysu, więc po zmianach outline bazuje na bieżącym `max_y` połaci.
+- Na żądanie użytkownika usunięto z bieżącego zakresu UI i roadmapy akcje edycji outline połaci, flip/rotate, align oraz linie podziału, więc kolejny agent nie powinien planować prac nad nimi.
+- `core/reporting.py` agreguje już BOM według długości arkusza, liczy koszt, odpady i scala ostrzeżenia z layoutu oraz odrzuconych segmentów.
 
 ## Technical Decisions
 | Decision | Rationale |
@@ -42,6 +44,7 @@
 | W pełnej implementacji ręczne korekty mają przetrwać kolejne przeliczenia | To kluczowy wymóg użyteczności systemu rozkroju |
 | Raport HTML może być na początku prosty, ale musi zawierać dane firmy, materiał, BOM i ostrzeżenia | To wystarczy jako pierwsza użyteczna wersja bez nadmiarowej złożoności |
 | Rdzeń i planowanie trzymamy w osobnych katalogach | To porządkuje repo bez naruszania klasycznej architektury UI |
+| Usunięte akcje edycji outline i linii podziału nie wracają do planu bez nowej decyzji użytkownika | To chroni repo przed przypadkowym wznowieniem odłożonego zakresu |
 
 ## Issues Encountered
 | Issue | Resolution |

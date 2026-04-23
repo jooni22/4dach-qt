@@ -251,18 +251,6 @@ class MainWindow(QMainWindow):
                     ("Trójkąt...", None, self._open_trojkat_dialog),
                     ("Trapez...", None, self._open_trapez_dialog),
                     ("Dowolny", None, None),
-                    None,
-                    ("Przesuń", None, self._open_move_roof_plane_dialog),
-                    ("Przesuń punkt", None, self._open_move_roof_plane_point_dialog),
-                    ("Dodaj punkt", None, self._open_insert_roof_plane_point_dialog),
-                    ("Usuń punkt", None, self._open_delete_roof_plane_point_dialog),
-                    None,
-                    ("Odwróć w pionie", None, None),
-                    ("Odwróć w poziomie", None, None),
-                    ("Obracanie...", None, None),
-                    None,
-                    ("Wyrównaj punkt w poziomie", "Ctrl+W", None),
-                    ("Wyrównaj punkt w pionie", "Ctrl+E", None),
                 ],
             ),
             (
@@ -289,9 +277,6 @@ class MainWindow(QMainWindow):
                     ("Usuń arkusz", "Delete", None),
                     ("Podgląd arkuszy", "Ctrl+A", None),
                     ("Aktywne arkusze", None, None),
-                    None,
-                    ("Ustaw linię podziału", None, None),
-                    ("Usuń linię podziału", None, None),
                     None,
                     ("Zmień rodzaj blachy", None, None),
                 ],
@@ -649,95 +634,6 @@ class MainWindow(QMainWindow):
             self._config["ksztalty"]["trapez"] = values
             outline = build_trapezoid_outline(values["typ"], values["podstawa_dolna"], values["podstawa_gorna"], values["wysokosc"])
             self._add_roof_plane(outline, "Trapez", f"{values['typ']}, podstawa dolna: {values['podstawa_dolna']} cm")
-
-    def _open_move_roof_plane_dialog(self):
-        plane = self._active_plane_or_warn()
-        if plane is None:
-            return
-
-        dx, accepted = self._ask_float("Przesuń połać", f"Przesunięcie X dla połaci {plane.name} [cm]:")
-        if not accepted:
-            return
-        dy, accepted = self._ask_float("Przesuń połać", f"Przesunięcie Y dla połaci {plane.name} [cm]:")
-        if not accepted:
-            return
-
-        self._apply_project_edit(
-            lambda: self.project_state.move_roof_plane(dx, dy, plane.id),
-            f"Przesunięto połać {plane.name} o ({dx:.2f}, {dy:.2f}) cm",
-        )
-
-    def _open_move_roof_plane_point_dialog(self):
-        plane = self._active_plane_or_warn()
-        if plane is None:
-            return
-
-        point_index, accepted = self._ask_int(
-            "Przesuń punkt",
-            f"Indeks punktu 0-{len(plane.outline.points) - 1}:",
-            0,
-            0,
-            len(plane.outline.points) - 1,
-        )
-        if not accepted:
-            return
-        dx, accepted = self._ask_float("Przesuń punkt", "Przesunięcie X [cm]:")
-        if not accepted:
-            return
-        dy, accepted = self._ask_float("Przesuń punkt", "Przesunięcie Y [cm]:")
-        if not accepted:
-            return
-
-        self._apply_project_edit(
-            lambda: self.project_state.move_roof_plane_point(point_index, dx, dy, plane.id),
-            f"Przesunięto punkt {point_index} połaci {plane.name}",
-        )
-
-    def _open_insert_roof_plane_point_dialog(self):
-        plane = self._active_plane_or_warn()
-        if plane is None:
-            return
-
-        edge_index, accepted = self._ask_int(
-            "Dodaj punkt",
-            f"Wstaw po krawędzi 0-{len(plane.outline.points) - 1}:",
-            0,
-            0,
-            len(plane.outline.points) - 1,
-        )
-        if not accepted:
-            return
-        x, accepted = self._ask_float("Dodaj punkt", "Pozycja X [cm]:")
-        if not accepted:
-            return
-        y, accepted = self._ask_float("Dodaj punkt", "Pozycja Y [cm]:")
-        if not accepted:
-            return
-
-        self._apply_project_edit(
-            lambda: self.project_state.insert_roof_plane_point(edge_index, Point2D(x, y), plane.id),
-            f"Dodano punkt po krawędzi {edge_index} połaci {plane.name}",
-        )
-
-    def _open_delete_roof_plane_point_dialog(self):
-        plane = self._active_plane_or_warn()
-        if plane is None:
-            return
-
-        point_index, accepted = self._ask_int(
-            "Usuń punkt",
-            f"Indeks punktu 0-{len(plane.outline.points) - 1}:",
-            len(plane.outline.points) - 1,
-            0,
-            len(plane.outline.points) - 1,
-        )
-        if not accepted:
-            return
-
-        self._apply_project_edit(
-            lambda: self.project_state.delete_roof_plane_point(point_index, plane.id),
-            f"Usunięto punkt {point_index} połaci {plane.name}",
-        )
 
     def _open_add_hole_dialog(self):
         plane = self._active_plane_or_warn()
