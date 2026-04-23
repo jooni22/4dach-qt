@@ -55,6 +55,7 @@
 | Zmiana geometrii, materiału lub danych firmy czyści ostatni wygenerowany raport | Chroni UI przed pokazywaniem nieaktualnego BOM lub ostrzeżeń |
 | Ręczne usunięcie auto-arkusza jest przechowywane jako delta po `id`, a ręczny arkusz jako osobny `SheetPlacement` ze źródłem `manual` | To pozwala raportować i przeliczać aktywny zestaw arkuszy bez mieszania danych wejściowych i korekt użytkownika |
 | Po zmianie geometrii lub materiału system oznacza layout jako nieaktualny zamiast po cichu wyliczać nowy wynik | To zachowuje kontrolę użytkownika nad momentem ponownego przeliczenia i chroni ręczne korekty |
+| Zakładki workspace są generowane dynamicznie z listy połaci, a `Raport` zawsze pozostaje ostatnią zakładką | To utrzymuje klasyczny układ Qt i jednocześnie synchronizuje UI z domeną bez przebudowy `form.ui` |
 
 ## Issues Encountered
 | Issue | Resolution |

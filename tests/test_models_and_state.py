@@ -119,6 +119,21 @@ def test_project_state_add_roof_plane_round_trip():
     assert almost_equal(reloaded_plane.generation_settings.base_line_y_cm or 0.0, 200.0)
 
 
+def test_project_state_can_switch_active_plane_explicitly():
+    state = ProjectState()
+    first_plane = state.add_roof_plane(build_rectangle_outline(300, 200))
+    second_plane = state.add_roof_plane(build_rectangle_outline(240, 160))
+
+    changed = state.set_active_plane(first_plane.id)
+
+    assert changed is True
+    assert state.active_plane_id == first_plane.id
+    assert state.active_roof_plane() is first_plane
+    assert state.set_active_plane("missing-plane") is False
+    assert state.active_plane_id == first_plane.id
+    assert second_plane.id != first_plane.id
+
+
 def test_project_state_hole_workflow_updates_layout_revision_and_serialization():
     state = ProjectState(
         materials=[

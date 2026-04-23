@@ -204,6 +204,8 @@ class MainWindow(QMainWindow):
         self._latest_layout_result = None
         self._latest_report = None
         self._latest_report_html = ""
+        self._latest_report_plane_id = None
+        self._plane_tab_canvases: dict[str, DrawingCanvas] = {}
         self.ui.setupUi(self)
         self.setWindowTitle("4Dach wersja 1.0 Super Dach sp.j. instalacja 3, plik: testmarcin (zmieniony)")
         self.resize(1120, 720)
@@ -421,28 +423,25 @@ class MainWindow(QMainWindow):
         self.workspace_tabs.setObjectName("workspace_tabs")
         self.workspace_tabs.setDocumentMode(True)
         self.workspace_tabs.setTabsClosable(False)
+        self.workspace_tabs.currentChanged.connect(self._on_workspace_tab_changed)
 
-        self.primary_canvas = DrawingCanvas(self.workspace_tabs, show_demo=True)
         self.secondary_canvas = DrawingCanvas(self.workspace_tabs, show_demo=False)
         self.secondary_canvas.hide()
 
-        first_tab = QWidget(self.workspace_tabs)
-        first_layout = QVBoxLayout(first_tab)
-        first_layout.setContentsMargins(0, 0, 0, 0)
-        first_layout.addWidget(self.primary_canvas)
-
-        second_tab = QWidget(self.workspace_tabs)
-        second_layout = QVBoxLayout(second_tab)
+        self.report_tab = QWidget(self.workspace_tabs)
+        second_layout = QVBoxLayout(self.report_tab)
         second_layout.setContentsMargins(0, 0, 0, 0)
-        self.report_view = QTextBrowser(second_tab)
+        self.report_view = QTextBrowser(self.report_tab)
         self.report_view.setObjectName("report_view")
         self.report_view.setOpenExternalLinks(False)
         second_layout.addWidget(self.report_view)
 
-        self.workspace_tabs.addTab(first_tab, "1")
-        self.workspace_tabs.addTab(second_tab, "Raport")
+        self.primary_canvas = DrawingCanvas(self.workspace_tabs, show_demo=True)
+        self._plane_tab_canvases = {}
+        self.workspace_tabs.addTab(self.report_tab, "Raport")
         layout.addWidget(self.workspace_tabs)
         self.setCentralWidget(central)
+        self._sync_workspace_tabs_with_state()
         self._refresh_report_view()
 
     def _toggle_theme(self):
@@ -553,6 +552,8 @@ class MainWindow(QMainWindow):
         self.menuBar().setCornerWidget(self.theme_toggle, Qt.Corner.TopRightCorner)
         self.primary_canvas.update()
         self.secondary_canvas.update()
+        for canvas in self._plane_tab_canvases.values():
+            canvas.update()
 
     def _reload_project_state(self):
         self.project_state = ProjectState.from_config(self._config)
@@ -564,25 +565,99 @@ class MainWindow(QMainWindow):
     def _refresh_material_combo(self):
         material_ids = self.project_state.available_material_ids()
         current_text = self.variant_combo.currentText() if self.variant_combo.count() else ""
+        active_plane = self.project_state.active_roof_plane()
         self.variant_combo.blockSignals(True)
         self.variant_combo.clear()
         if material_ids:
             self.variant_combo.addItems(material_ids)
-            target_material = current_text if current_text in material_ids else material_ids[0]
+            preferred_material = active_plane.selected_material_id if active_plane is not None else None
+            target_material = preferred_material or current_text or material_ids[0]
+            if target_material not in material_ids:
+                target_material = material_ids[0]
             self.variant_combo.setCurrentText(target_material)
         self.variant_combo.blockSignals(False)
 
+    def _report_tab_index(self) -> int:
+        return self.workspace_tabs.count() - 1
+
+    def _active_plane_tab_index(self) -> int:
+        active_plane_id = self.project_state.active_plane_id
+        if active_plane_id is None:
+            return 0
+        plane_ids = [plane.id for plane in self.project_state.roof_planes]
+        try:
+            return plane_ids.index(active_plane_id)
+        except ValueError:
+            return 0
+
+    def _build_plane_tab(self, plane):
+        tab = QWidget(self.workspace_tabs)
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(0, 0, 0, 0)
+        canvas = DrawingCanvas(tab, show_demo=False)
+        canvas.set_roof_plane(plane)
+        layout.addWidget(canvas)
+        tab.setProperty("plane_id", plane.id)
+        self._plane_tab_canvases[plane.id] = canvas
+        return tab, canvas
+
+    def _sync_workspace_tabs_with_state(self):
+        self.workspace_tabs.blockSignals(True)
+        self.workspace_tabs.clear()
+        self._plane_tab_canvases = {}
+
+        if self.project_state.roof_planes:
+            if self.project_state.active_roof_plane() is None:
+                self.project_state.set_active_plane(self.project_state.roof_planes[0].id)
+            for plane in self.project_state.roof_planes:
+                tab, canvas = self._build_plane_tab(plane)
+                self.workspace_tabs.addTab(tab, plane.name)
+                if plane.id == self.project_state.active_plane_id:
+                    self.primary_canvas = canvas
+        else:
+            placeholder_tab = QWidget(self.workspace_tabs)
+            placeholder_layout = QVBoxLayout(placeholder_tab)
+            placeholder_layout.setContentsMargins(0, 0, 0, 0)
+            self.primary_canvas = DrawingCanvas(placeholder_tab, show_demo=True)
+            placeholder_layout.addWidget(self.primary_canvas)
+            self.workspace_tabs.addTab(placeholder_tab, "1")
+
+        self.workspace_tabs.addTab(self.report_tab, "Raport")
+
+        if self.project_state.roof_planes:
+            self.workspace_tabs.setCurrentIndex(self._active_plane_tab_index())
+        else:
+            self.workspace_tabs.setCurrentIndex(0)
+
+        self.workspace_tabs.blockSignals(False)
+
+    def _on_workspace_tab_changed(self, index: int):
+        if index < 0 or index == self._report_tab_index():
+            return
+
+        if index >= len(self.project_state.roof_planes):
+            return
+
+        plane = self.project_state.roof_planes[index]
+        if not self.project_state.set_active_plane(plane.id):
+            return
+
+        self.primary_canvas = self._plane_tab_canvases.get(plane.id, self.primary_canvas)
+        self._persist_project_state()
+        if hasattr(self, "variant_combo"):
+            self._refresh_material_combo()
+        self._refresh_report_view()
+        self.statusBar().showMessage(f"Aktywna połać: {plane.name}", 2500)
+
     def _refresh_canvas_from_state(self):
         active_plane = self.project_state.active_roof_plane()
+        self._sync_workspace_tabs_with_state()
         self.primary_canvas.set_roof_plane(active_plane)
         self.secondary_canvas.set_roof_plane(None)
         if active_plane is not None:
-            self.workspace_tabs.setTabText(0, active_plane.name)
-        else:
-            self.workspace_tabs.setTabText(0, "1")
-        self.workspace_tabs.setTabText(1, "Raport")
-        if not self._latest_report_html:
-            self._refresh_report_view()
+            self.workspace_tabs.setCurrentIndex(self._active_plane_tab_index())
+        self.workspace_tabs.setTabText(self._report_tab_index(), "Raport")
+        self._refresh_report_view()
 
     def _persist_project_state(self):
         self.project_state.apply_to_config(self._config)
@@ -635,12 +710,15 @@ class MainWindow(QMainWindow):
         self._latest_layout_result = None
         self._latest_report = None
         self._latest_report_html = ""
+        self._latest_report_plane_id = None
         if hasattr(self, "report_view"):
             self._refresh_report_view()
 
     def _refresh_report_view(self, html: str | None = None):
         active_plane = self.project_state.active_roof_plane()
-        content = html or ""
+        content = html if html is not None else ""
+        if not content and active_plane is not None and self._latest_report_plane_id == active_plane.id and self._latest_report_html:
+            content = self._latest_report_html
         if not content:
             if active_plane is None:
                 content = (
@@ -848,10 +926,11 @@ class MainWindow(QMainWindow):
         self._latest_layout_result = layout_result
         self._latest_report = report
         self._latest_report_html = html
+        self._latest_report_plane_id = plane.id
         self._persist_project_state()
         self._refresh_canvas_from_state()
         self._refresh_report_view(html)
-        self.workspace_tabs.setCurrentIndex(1)
+        self.workspace_tabs.setCurrentIndex(self._report_tab_index())
         return True
 
     def _open_standard_report_preview(self):

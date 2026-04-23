@@ -4,7 +4,7 @@
 Doprowadzić aplikację do stanu roboczego dla kalkulacji rozkroju blachodachówki 2D w klasycznym UI PySide6, zachowując istniejący shell okna i rozwijając domenę iteracyjnie, testowalnie i bez przebudowy `ui_form.py`.
 
 ## Current Phase
-Phase 4
+Phase 6
 
 ## Phases
 
@@ -32,19 +32,19 @@ Phase 4
 - [x] Dodać raportowanie BOM, kosztów i ostrzeżeń
 - [x] Przygotować HTML report generator
 - [x] Obsłużyć ręczne korekty arkuszy i dirty-state
-- **Status:** in_progress
+- **Status:** complete
 
 ### Phase 5: UI Integration
 - [x] Podłączyć wspierane akcje menu i toolbar do domeny
-- [ ] Ujednolicić zakładki z połaciami i canvasy z modelem projektu
+- [x] Ujednolicić zakładki z połaciami i canvasy z modelem projektu
 - [x] Pokazać stany layoutu, BOM i ostrzeżenia w UI
-- **Status:** in_progress
+- **Status:** complete
 
 ### Phase 6: Testing And Verification
-- [ ] Rozszerzyć testy modeli, geometrii, layoutu i raportów
-- [ ] Uzupełnić testy kontraktowe UI
+- [x] Rozszerzyć testy modeli, geometrii, layoutu i raportów
+- [x] Uzupełnić testy kontraktowe UI
 - [ ] Dodać scenariusze smoke dla load/save i workflow usera
-- **Status:** pending
+- **Status:** in_progress
 
 ### Phase 7: Delivery
 - [ ] Ustabilizować końcowy kontrakt danych
@@ -72,10 +72,10 @@ Phase 4
 | Akcje menu `Przesuń`, `Przesuń punkt`, `Dodaj punkt`, `Usuń punkt`, flip/rotate, align i linie podziału są poza bieżącym zakresem | Użytkownik zlecił usunięcie ich z aktualnego UI i roadmapy, więc agent nie powinien planować nad nimi prac |
 
 ## Next Steps
-1. Rozszerzyć UI o lepszą synchronizację zakładek połaci z `ProjectState` zamiast trzymać statyczny układ dwóch kart.
-2. Dodać bardziej jawny workflow użytkownika dla ponownego przeliczenia po `layout_dirty_reason`, w tym czytelniejsze mapowanie kodów dirty-state na komunikaty.
-3. Domknąć tylko te akcje toolbar/menu, które mają realne odpowiedniki domenowe i nie wracają do usuniętego zakresu.
-4. Rozszerzyć testy UI o kontrakt menu `Arkusze` i stanu raportu po ręcznych korektach.
+1. Dodać bardziej jawny workflow użytkownika dla ponownego przeliczenia po `layout_dirty_reason`, w tym czytelniejsze mapowanie kodów dirty-state na komunikaty.
+2. Rozszerzyć testy UI o kontrakt menu `Arkusze` i stanu raportu po ręcznych korektach.
+3. Dodać scenariusze smoke dla load/save i podstawowego workflow użytkownika.
+4. Domknąć tylko te akcje toolbar/menu, które mają realne odpowiedniki domenowe i nie wracają do usuniętego zakresu.
 
 ## Errors Encountered
 | Error | Attempt | Resolution |

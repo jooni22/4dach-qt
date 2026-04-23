@@ -156,6 +156,23 @@
   - `planning/findings.md`
   - `planning/progress.md`
 
+### Phase 11: Dynamic Plane Tabs + Active Plane Sync
+- **Status:** complete
+- Actions taken:
+  - Dodano do `ProjectState` jawne `set_active_plane()`, aby UI mogło bezpiecznie przełączać aktywną połać niezależnie od dodawania geometrii.
+  - Przebudowano synchronizację `QTabWidget` w `mainwindow.py`: każda połać ma własną zakładkę z canvasem, a zakładka `Raport` jest utrzymywana jako stała zakładka końcowa.
+  - Ujednolicono przełączanie aktywnej połaci z wyborem zakładki i odświeżaniem `variant_combo` oraz widoku raportu.
+  - Ograniczono pokazywanie ostatniego HTML raportu tylko do połaci, dla której został wygenerowany, aby nie mieszać wyników między zakładkami.
+  - Rozszerzono testy domenowe i kontraktowe UI o regresje dla przełączania aktywnej połaci i dynamicznych zakładek.
+- Files created/modified:
+  - `core/project_state.py`
+  - `mainwindow.py`
+  - `tests/test_models_and_state.py`
+  - `tests/test_mainwindow_ui_contract.py`
+  - `planning/task_plan.md`
+  - `planning/findings.md`
+  - `planning/progress.md`
+
 ## Test Results
 | Test | Input | Expected | Actual | Status |
 |------|-------|----------|--------|--------|
@@ -170,6 +187,7 @@
 | Raport UI + regresja domeny | `pytest -q tests/test_reporting.py tests/test_models_and_state.py tests/test_geometry.py tests/test_mainwindow_ui_contract.py` | Integracja podglądu raportu nie psuje domeny ani kontraktu UI | 21 testów przeszło, 1 skip (`pytestqt`) | pass |
 | Ręczne korekty arkuszy + dirty-state | `pytest -q tests/test_models_and_state.py tests/test_reporting.py` | Manualne arkusze, usuwanie auto-arkuszy i `layout_dirty_reason` przechodzą regresję | 20 testów przeszło | pass |
 | Pełny zestaw po wdrożeniu korekt arkuszy | `pytest -q` | Repo pozostaje zielone po rozszerzeniu workflow `Arkusze` | 24 testy przeszły, 1 skip (`pytestqt`) | pass |
+| Dynamiczne zakładki połaci + aktywna połać | `pytest -q tests/test_models_and_state.py tests/test_reporting.py tests/test_geometry.py tests/test_mainwindow_ui_contract.py` | Synchronizacja zakładek z `ProjectState` nie psuje domeny ani kontraktu UI | 25 testów przeszło, 1 skip (`pytestqt`) | pass |
 
 ## Error Log
 | Timestamp | Error | Attempt | Resolution |

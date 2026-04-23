@@ -101,6 +101,18 @@ class ProjectState:
     def next_plane_name(self) -> str:
         return str(len(self.roof_planes) + 1)
 
+    def set_active_plane(self, plane_id: str | None) -> bool:
+        if plane_id is None:
+            self.active_plane_id = None
+            return True
+
+        plane = self.roof_plane_by_id(plane_id)
+        if plane is None:
+            return False
+
+        self.active_plane_id = plane.id
+        return True
+
     def set_active_material_for_plane(self, material_id: str, plane_id: str | None = None) -> bool:
         if not self.material_by_id(material_id):
             return False
