@@ -1,7 +1,7 @@
 # This Python file uses the following encoding: utf-8
 import sys
 
-from PySide6.QtCore import QPointF, QSize, Qt
+from PySide6.QtCore import QPointF, QRectF, QSize, Qt, QUrl
 from PySide6.QtGui import QAction, QColor, QFont, QKeySequence, QMouseEvent, QPainter, QPalette, QPen, QPolygonF
 from PySide6.QtWidgets import (
     QApplication,
@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from PySide6.QtGui import QDesktopServices
 
 from app_icons import build_icon
 
@@ -37,6 +38,7 @@ from dialogs import (
     save_config,
     show_ostrzezenie_dialog,
 )
+from core.canvas_mapper import CanvasMapper
 from core.geometry import build_rectangle_outline, build_trapezoid_outline, build_triangle_outline
 from core.models import Point2D, Polygon2D, SheetPlacement
 from core.project_state import ProjectState
@@ -44,42 +46,99 @@ from core.reporting import build_report, build_report_html
 
 
 class DrawingCanvas(QWidget):
+    MODE_VIEW = "view"
+    MODE_DRAW_OUTLINE = "draw_outline"
+    MODE_SELECT_SHEET = "select_sheet"
+
     def __init__(self, parent=None, show_demo=True):
         super().__init__(parent)
         self.show_demo = show_demo
         self.user_points = []
         self.preview_point = None
         self.roof_plane = None
+        self._mode = self.MODE_VIEW
+        self._selected_sheet_id: str | None = None
+        self._show_grid = False
+        self._show_module_count = False
         self.setMouseTracking(True)
         self.setAutoFillBackground(True)
         self.setMinimumSize(640, 420)
+
+    def toggle_grid(self, enabled: bool | None = None):
+        self._show_grid = not self._show_grid if enabled is None else enabled
+        self.update()
+
+    def toggle_module_count(self, enabled: bool | None = None):
+        self._show_module_count = not self._show_module_count if enabled is None else enabled
+        self.update()
+
+    def set_mode(self, mode: str):
+        self._mode = mode
+        if mode == self.MODE_DRAW_OUTLINE:
+            self.setCursor(Qt.CursorShape.CrossCursor)
+        elif mode == self.MODE_SELECT_SHEET:
+            self.setCursor(Qt.CursorShape.PointingHandCursor)
+        else:
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+        self.update()
 
     def set_roof_plane(self, roof_plane):
         self.roof_plane = roof_plane
         self.update()
 
+    def set_material(self, material):
+        self._material = material
+        self.update()
+
+    def _hit_test_sheet(self, pos) -> str | None:
+        if self.roof_plane is None:
+            return None
+        bounds = self.roof_plane.outline.bounds()
+        mapper = CanvasMapper(bounds, QRectF(self.rect()))
+        px = pos.x()
+        py = pos.y()
+        for sheet in self.roof_plane.manual_sheet_placements + self.roof_plane.auto_sheet_placements:
+            rect = mapper.map_rect(sheet.x_left_cm, sheet.x_right_cm, sheet.y_top_cm, sheet.y_bottom_cm)
+            if rect.contains(px, py):
+                return sheet.id
+        return None
+
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.MouseButton.LeftButton:
-            self.user_points.append(event.position())
-            self.update()
-            return
+            if self._mode == self.MODE_DRAW_OUTLINE:
+                self.user_points.append(event.position())
+                self.update()
+                return
+            if self._mode == self.MODE_SELECT_SHEET:
+                sheet_id = self._hit_test_sheet(event.position())
+                if sheet_id != self._selected_sheet_id:
+                    self._selected_sheet_id = sheet_id
+                    self.update()
+                return
 
         if event.button() == Qt.MouseButton.RightButton:
-            self.user_points.clear()
-            self.preview_point = None
-            self.update()
-            return
+            if self._mode == self.MODE_DRAW_OUTLINE:
+                self.user_points.clear()
+                self.preview_point = None
+                self.update()
+                return
+            if self._mode == self.MODE_SELECT_SHEET:
+                self._selected_sheet_id = None
+                self.update()
+                return
 
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event: QMouseEvent):
-        self.preview_point = event.position()
-        self.update()
+        if self._mode == self.MODE_DRAW_OUTLINE:
+            self.preview_point = event.position()
+            self.update()
         super().mouseMoveEvent(event)
 
     def leaveEvent(self, event):
-        self.preview_point = None
-        self.update()
+        if self._mode == self.MODE_DRAW_OUTLINE:
+            self.preview_point = None
+            self.update()
         super().leaveEvent(event)
 
     def paintEvent(self, event):
@@ -92,13 +151,34 @@ class DrawingCanvas(QWidget):
         painter.drawRect(self.rect().adjusted(0, 0, -1, -1))
 
         if self.roof_plane is not None:
+            if self._show_grid:
+                self._draw_grid(painter)
             self._draw_roof_plane(painter)
         elif self.show_demo:
+            if self._show_grid:
+                self._draw_grid(painter)
             self._draw_demo_shape(painter)
 
-        self._draw_user_path(painter)
+        if self._mode == self.MODE_DRAW_OUTLINE:
+            self._draw_user_path(painter)
+
+        if self._selected_sheet_id and self._mode == self.MODE_SELECT_SHEET:
+            self._draw_selected_sheet_highlight(painter)
+
         painter.end()
         super().paintEvent(event)
+
+    def _draw_grid(self, painter: QPainter):
+        grid_color = self.palette().color(QPalette.ColorRole.Mid)
+        grid_color.setAlpha(60)
+        painter.setPen(QPen(grid_color, 0.5))
+        w = self.width()
+        h = self.height()
+        step = 50
+        for x in range(0, w, step):
+            painter.drawLine(x, 0, x, h)
+        for y in range(0, h, step):
+            painter.drawLine(0, y, w, y)
 
     def _draw_demo_shape(self, painter: QPainter):
         line_color = self.palette().color(QPalette.ColorRole.Text)
@@ -154,22 +234,9 @@ class DrawingCanvas(QWidget):
             return
 
         bounds = plane.outline.bounds()
-        available = self.rect().adjusted(40, 30, -40, -30)
-        width = max(bounds.width, 1.0)
-        height = max(bounds.height, 1.0)
-        scale = min(available.width() / width, available.height() / height)
-        scale = scale if scale > 0 else 1.0
+        mapper = CanvasMapper(bounds, QRectF(self.rect()))
 
-        offset_x = available.left() + (available.width() - width * scale) / 2.0
-        offset_y = available.top() + (available.height() - height * scale) / 2.0
-
-        def map_point(point):
-            return QPointF(
-                offset_x + (point.x - bounds.min_x) * scale,
-                offset_y + (point.y - bounds.min_y) * scale,
-            )
-
-        outline_polygon = QPolygonF([map_point(point) for point in plane.outline.points])
+        outline_polygon = QPolygonF([mapper.map_point(point) for point in plane.outline.points])
         fill_color = self.palette().color(QPalette.ColorRole.AlternateBase)
         outline_color = self.palette().color(QPalette.ColorRole.Highlight)
         text_color = self.palette().color(QPalette.ColorRole.Text)
@@ -180,16 +247,88 @@ class DrawingCanvas(QWidget):
         painter.setBrush(fill_color)
         painter.drawPolygon(outline_polygon)
 
+        # Vertex handles
+        painter.setPen(QPen(outline_color, 1))
+        painter.setBrush(outline_color)
+        for point in plane.outline.points:
+            mp = mapper.map_point(point)
+            painter.drawRect(int(mp.x()) - 3, int(mp.y()) - 3, 6, 6)
+
         painter.setPen(QPen(hole_color, 1.5, Qt.PenStyle.DashLine))
         painter.setBrush(Qt.BrushStyle.NoBrush)
         for hole in plane.holes:
-            painter.drawPolygon(QPolygonF([map_point(point) for point in hole.points]))
+            painter.drawPolygon(QPolygonF([mapper.map_point(point) for point in hole.points]))
+
+        # Draw sheet placements
+        self._draw_sheet_placements(painter, plane, mapper, text_color)
 
         painter.setPen(text_color)
         label = f"Połać {plane.name}"
         if plane.selected_material_id:
             label += f" | Blacha: {plane.selected_material_id}"
-        painter.drawText(available.left(), available.top() - 8, label)
+        painter.drawText(self.rect().adjusted(40, 30, -40, -30).left(), self.rect().adjusted(40, 30, -40, -30).top() - 8, label)
+
+    def _draw_sheet_placements(self, painter: QPainter, plane, mapper: CanvasMapper, text_color: QColor):
+        if not plane.auto_sheet_placements and not plane.manual_sheet_placements:
+            return
+
+        auto_color = QColor("#6aa7ff" if self.palette().color(QPalette.ColorRole.Base).lightness() > 128 else "#8dc7ff")
+        manual_color = QColor("#ff9d7a" if self.palette().color(QPalette.ColorRole.Base).lightness() > 128 else "#ff7a5c")
+        auto_color.setAlpha(120)
+        manual_color.setAlpha(140)
+
+        all_sheets = list(plane.auto_sheet_placements) + list(plane.manual_sheet_placements)
+        for sheet in all_sheets:
+            color = manual_color if sheet.source == "manual" else auto_color
+            rect = mapper.map_rect(sheet.x_left_cm, sheet.x_right_cm, sheet.y_top_cm, sheet.y_bottom_cm)
+            painter.setPen(QPen(color.darker(150), 1))
+            painter.setBrush(color)
+            painter.drawRect(rect)
+
+            # Module lines for modular materials
+            if hasattr(self, '_material') and self._material and self._material.module_length_cm > 0:
+                mod_len_px = mapper.map_length(self._material.module_length_cm)
+                if mod_len_px > 4:
+                    mod_pen = QPen(text_color)
+                    mod_pen.setStyle(Qt.PenStyle.DotLine)
+                    mod_pen.setWidthF(0.5)
+                    painter.setPen(mod_pen)
+                    y_start = rect.y()
+                    y_end = rect.y() + rect.height()
+                    x_left = rect.x()
+                    x_right = rect.x() + rect.width()
+                    mod_y = y_start + mod_len_px
+                    while mod_y < y_end - 1:
+                        painter.drawLine(QPointF(x_left, mod_y), QPointF(x_right, mod_y))
+                        mod_y += mod_len_px
+
+            # Label with length or module count
+            if self._show_module_count and hasattr(self, '_material') and self._material and self._material.module_length_cm > 0:
+                modules = max(1, int(round(sheet.final_length_cm / self._material.module_length_cm)))
+                label_text = f"{modules}"
+            else:
+                label_text = f"{sheet.final_length_cm:.0f}"
+            painter.setPen(text_color)
+            font = painter.font()
+            font.setPointSize(max(7, int(min(rect.width(), rect.height()) / 8)))
+            painter.setFont(font)
+            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, label_text)
+            font.setPointSize(font.pointSize() + 2)
+            painter.setFont(font)
+
+    def _draw_selected_sheet_highlight(self, painter: QPainter):
+        if self.roof_plane is None or self._selected_sheet_id is None:
+            return
+        bounds = self.roof_plane.outline.bounds()
+        mapper = CanvasMapper(bounds, QRectF(self.rect()))
+        all_sheets = list(self.roof_plane.auto_sheet_placements) + list(self.roof_plane.manual_sheet_placements)
+        for sheet in all_sheets:
+            if sheet.id == self._selected_sheet_id:
+                rect = mapper.map_rect(sheet.x_left_cm, sheet.x_right_cm, sheet.y_top_cm, sheet.y_bottom_cm)
+                painter.setPen(QPen(QColor("#ff3333"), 2))
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                painter.drawRect(rect.adjusted(-2, -2, 2, 2))
+                break
 
 
 class MainWindow(QMainWindow):
@@ -308,11 +447,15 @@ class MainWindow(QMainWindow):
                     action.triggered.connect(callback)
                 menu.addAction(action)
 
-    def _add_toolbar_action(self, toolbar: QToolBar, icon_kind: str, text: str):
+    def _add_toolbar_action(self, toolbar: QToolBar, icon_kind: str, text: str, checkable: bool = False, callback=None):
         action = QAction(text, self)
         action.setToolTip(text)
         action.setStatusTip(text)
-        action.triggered.connect(lambda checked=False, value=text: self.statusBar().showMessage(value, 2500))
+        action.setCheckable(checkable)
+        if callback:
+            action.triggered.connect(callback)
+        else:
+            action.triggered.connect(lambda checked=False, value=text: self.statusBar().showMessage(value, 2500))
         toolbar.addAction(action)
         self._actions.append(action)
         self._toolbar_actions.append((action, icon_kind))
@@ -351,22 +494,24 @@ class MainWindow(QMainWindow):
         self._toolbar_actions.clear()
 
         icon_actions = [
-            ("new_document", "Nowy projekt"),
-            ("open_folder", "Otwórz projekt"),
-            ("save_floppy", "Zapisz projekt"),
-            ("roof_outline", "Rysowanie krawędzi połaci"),
-            ("base_point_toggle", "Pokaż/ukryj punkt bazowy"),
-            ("undo", "Cofnij"),
-            ("plus", "Dodaj / Plus"),
-            ("minus", "Odejmij / Minus"),
-            ("module_count", "Włącz/wyłącz pokazywanie ilości modułów"),
-            ("zoom_out", "Oddal / Pomniejsz"),
-            ("fit_view", "Pokaż wszystko / Dopasuj do ekranu"),
-            ("broom", "Wyczyść / Usuń wszystko"),
+            ("new_document", "Nowy projekt", None),
+            ("open_folder", "Otwórz projekt", None),
+            ("save_floppy", "Zapisz projekt", None),
+            ("roof_outline", "Rysowanie krawędzi połaci", None),
+            ("base_point_toggle", "Pokaż/ukryj punkt bazowy", None),
+            ("undo", "Cofnij", None),
+            ("plus", "Dodaj / Plus", None),
+            ("minus", "Odejmij / Minus", None),
+            ("module_count", "Włącz/wyłącz pokazywanie ilości modułów", self._on_module_count_toggled),
+            ("zoom_out", "Oddal / Pomniejsz", None),
+            ("fit_view", "Pokaż wszystko / Dopasuj do ekranu", None),
+            ("broom", "Wyczyść / Usuń wszystko", None),
         ]
 
-        for index, (icon_kind, text) in enumerate(icon_actions):
-            self._add_toolbar_action(toolbar, icon_kind, text)
+        for index, (icon_kind, text, callback) in enumerate(icon_actions):
+            action = self._add_toolbar_action(toolbar, icon_kind, text)
+            if callback:
+                action.triggered.connect(callback)
             if index in {2, 4, 7, 11}:
                 toolbar.addSeparator()
 
@@ -402,15 +547,53 @@ class MainWindow(QMainWindow):
         toolbar.addSeparator()
 
         trailing_actions = [
-            ("overlay_sheet", "Nakładanie blachy na powierzchnie"),
-            ("grid", "Siatka"),
-            ("select_properties", "Właściwości / Wybierz"),
-            ("from_right", "Od prawej"),
-            ("from_base", "Od bazy"),
+            ("overlay_sheet", "Nakładanie blachy na powierzchnie", False, self._open_recalculate_active_plane),
+            ("grid", "Siatka", False, self._on_grid_toggled),
+            ("select_properties", "Właściwości / Wybierz", False, None),
+            ("from_right", "Od prawej", True, self._on_from_right_toggled),
+            ("from_base", "Od bazy", True, self._on_from_base_toggled),
         ]
 
-        for icon_kind, text in trailing_actions:
-            self._add_toolbar_action(toolbar, icon_kind, text)
+        for icon_kind, text, checkable, callback in trailing_actions:
+            action = self._add_toolbar_action(toolbar, icon_kind, text, checkable=checkable, callback=callback)
+
+    def _on_from_right_toggled(self, checked: bool):
+        plane = self.project_state.active_roof_plane()
+        if plane is None:
+            self.statusBar().showMessage("Brak aktywnej połaci", 3000)
+            return
+        origin = "right" if checked else "left"
+        if plane.generation_settings.layout_origin != origin:
+            plane.generation_settings.layout_origin = origin
+            plane.layout_dirty_reason = "geometry_changed"
+            self._persist_project_state()
+            self._refresh_canvas_from_state()
+            self.statusBar().showMessage(f"Kierunek pasów: {'od prawej' if checked else 'od lewej'}", 3000)
+
+    def _on_from_base_toggled(self, checked: bool):
+        plane = self.project_state.active_roof_plane()
+        if plane is None:
+            self.statusBar().showMessage("Brak aktywnej połaci", 3000)
+            return
+        plane.generation_settings.base_line_y_cm = plane.outline.bounds().max_y if checked else None
+        plane.layout_dirty_reason = "geometry_changed"
+        self._persist_project_state()
+        self._refresh_canvas_from_state()
+        self.statusBar().showMessage(f"Linia bazowa: {'auto' if checked else 'wyłączona'}", 3000)
+
+    def _on_grid_toggled(self, checked: bool):
+        self.primary_canvas.toggle_grid(checked)
+        self.secondary_canvas.toggle_grid(checked)
+        for canvas in self._plane_tab_canvases.values():
+            canvas.toggle_grid(checked)
+        self.statusBar().showMessage(f"Siatka: {'włączona' if checked else 'wyłączona'}", 3000)
+
+    def _on_module_count_toggled(self, checked: bool):
+        self.primary_canvas.toggle_module_count(checked)
+        self.secondary_canvas.toggle_module_count(checked)
+        for canvas in self._plane_tab_canvases.values():
+            canvas.toggle_module_count(checked)
+        self.statusBar().showMessage(f"Ilość modułów: {'włączona' if checked else 'wyłączona'}", 3000)
 
     def _setup_central_area(self):
         central = QWidget(self)
@@ -597,6 +780,8 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
         canvas = DrawingCanvas(tab, show_demo=False)
         canvas.set_roof_plane(plane)
+        material = self.project_state.material_by_id(plane.selected_material_id) if plane else None
+        canvas.set_material(material)
         layout.addWidget(canvas)
         tab.setProperty("plane_id", plane.id)
         self._plane_tab_canvases[plane.id] = canvas
@@ -612,7 +797,10 @@ class MainWindow(QMainWindow):
                 self.project_state.set_active_plane(self.project_state.roof_planes[0].id)
             for plane in self.project_state.roof_planes:
                 tab, canvas = self._build_plane_tab(plane)
-                self.workspace_tabs.addTab(tab, plane.name)
+                tab_name = plane.name
+                if plane.layout_dirty_reason:
+                    tab_name += " *"
+                self.workspace_tabs.addTab(tab, tab_name)
                 if plane.id == self.project_state.active_plane_id:
                     self.primary_canvas = canvas
         else:
@@ -654,6 +842,8 @@ class MainWindow(QMainWindow):
         active_plane = self.project_state.active_roof_plane()
         self._sync_workspace_tabs_with_state()
         self.primary_canvas.set_roof_plane(active_plane)
+        material = self.project_state.material_by_id(active_plane.selected_material_id) if active_plane else None
+        self.primary_canvas.set_material(material)
         self.secondary_canvas.set_roof_plane(None)
         if active_plane is not None:
             self.workspace_tabs.setCurrentIndex(self._active_plane_tab_index())
@@ -931,7 +1121,7 @@ class MainWindow(QMainWindow):
             )
         return build_report_html(self.project_state, report, material_id, plane_id)
 
-    def _generate_report_preview(self, variant: str):
+    def _generate_report_preview(self, variant: str, open_external: bool = False):
         plane = self._active_plane_or_warn()
         if plane is None:
             return False
@@ -959,20 +1149,28 @@ class MainWindow(QMainWindow):
         self._latest_report_plane_id = plane.id
         self._persist_project_state()
         self._refresh_canvas_from_state()
-        self._refresh_report_view(html)
-        self.workspace_tabs.setCurrentIndex(self._report_tab_index())
+        if open_external:
+            from pathlib import Path
+            import tempfile
+            suffix = "_ciagly" if variant == "continuous" else "_skrocony" if variant == "short" else ""
+            temp_path = Path(tempfile.gettempdir()) / f"raport-dach{suffix}.html"
+            temp_path.write_text(html, encoding="utf-8")
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(temp_path)))
+        else:
+            self._refresh_report_view(html)
+            self.workspace_tabs.setCurrentIndex(self._report_tab_index())
         return True
 
     def _open_standard_report_preview(self):
-        if self._generate_report_preview("standard"):
+        if self._generate_report_preview("standard", open_external=True):
             self.statusBar().showMessage("Wygenerowano raport dla aktywnej połaci", 4000)
 
     def _open_continuous_report_preview(self):
-        if self._generate_report_preview("continuous"):
+        if self._generate_report_preview("continuous", open_external=True):
             self.statusBar().showMessage("Wygenerowano raport ciągły dla aktywnej połaci", 4000)
 
     def _open_short_report_preview(self):
-        if self._generate_report_preview("short"):
+        if self._generate_report_preview("short", open_external=True):
             self.statusBar().showMessage("Wygenerowano raport skrócony dla aktywnej połaci", 4000)
 
     def _open_prostokat_dialog(self):

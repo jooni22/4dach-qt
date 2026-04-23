@@ -45,7 +45,7 @@
   },
   "project_state": {
     "version": 1,
-    "active_plane_id": "plane-7",
+    "active_plane_id": "plane-9",
     "roof_planes": [
       {
         "id": "plane-1",
@@ -412,6 +412,72 @@
       {
         "id": "plane-7",
         "name": "7",
+        "selected_material_id": "PD510",
+        "generation_settings": {
+          "layout_origin": "left",
+          "base_line_y_cm": 300.0
+        },
+        "auto_sheet_placements": [],
+        "manual_sheet_placements": [],
+        "manually_removed_auto_sheet_ids": [],
+        "layout_revision": 0,
+        "layout_dirty_reason": null,
+        "outline": [
+          {
+            "x": 0.0,
+            "y": 300
+          },
+          {
+            "x": 0.0,
+            "y": 0.0
+          },
+          {
+            "x": 300,
+            "y": 0.0
+          },
+          {
+            "x": 500,
+            "y": 300
+          }
+        ],
+        "holes": []
+      },
+      {
+        "id": "plane-8",
+        "name": "8",
+        "selected_material_id": "PD510",
+        "generation_settings": {
+          "layout_origin": "left",
+          "base_line_y_cm": 300.0
+        },
+        "auto_sheet_placements": [],
+        "manual_sheet_placements": [],
+        "manually_removed_auto_sheet_ids": [],
+        "layout_revision": 0,
+        "layout_dirty_reason": null,
+        "outline": [
+          {
+            "x": 0.0,
+            "y": 0.0
+          },
+          {
+            "x": 300.0,
+            "y": 0.0
+          },
+          {
+            "x": 300.0,
+            "y": 300.0
+          },
+          {
+            "x": 0.0,
+            "y": 300.0
+          }
+        ],
+        "holes": []
+      },
+      {
+        "id": "plane-9",
+        "name": "9",
         "selected_material_id": "PD510",
         "generation_settings": {
           "layout_origin": "left",
