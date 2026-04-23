@@ -2,12 +2,14 @@
 import sys
 
 from PySide6.QtCore import QPointF, QSize, Qt
-from PySide6.QtGui import QAction, QColor, QFont, QKeySequence, QMouseEvent, QPainter, QPalette, QPen
+from PySide6.QtGui import QAction, QColor, QFont, QKeySequence, QMouseEvent, QPainter, QPalette, QPen, QPolygonF
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
     QDialog,
+    QInputDialog,
     QMainWindow,
+    QMessageBox,
     QSizePolicy,
     QTabWidget,
     QToolBar,
@@ -34,6 +36,9 @@ from dialogs import (
     save_config,
     show_ostrzezenie_dialog,
 )
+from core.geometry import build_rectangle_outline, build_trapezoid_outline, build_triangle_outline
+from core.models import Point2D, Polygon2D
+from core.project_state import ProjectState
 
 
 class DrawingCanvas(QWidget):
@@ -42,9 +47,14 @@ class DrawingCanvas(QWidget):
         self.show_demo = show_demo
         self.user_points = []
         self.preview_point = None
+        self.roof_plane = None
         self.setMouseTracking(True)
         self.setAutoFillBackground(True)
         self.setMinimumSize(640, 420)
+
+    def set_roof_plane(self, roof_plane):
+        self.roof_plane = roof_plane
+        self.update()
 
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -79,7 +89,9 @@ class DrawingCanvas(QWidget):
         painter.setPen(QPen(frame_color, 1))
         painter.drawRect(self.rect().adjusted(0, 0, -1, -1))
 
-        if self.show_demo:
+        if self.roof_plane is not None:
+            self._draw_roof_plane(painter)
+        elif self.show_demo:
             self._draw_demo_shape(painter)
 
         self._draw_user_path(painter)
@@ -134,6 +146,45 @@ class DrawingCanvas(QWidget):
         for point in self.user_points:
             painter.drawEllipse(int(point.x()) - 3, int(point.y()) - 3, 6, 6)
 
+    def _draw_roof_plane(self, painter: QPainter):
+        bounds = self.roof_plane.outline.bounds()
+        available = self.rect().adjusted(40, 30, -40, -30)
+        width = max(bounds.width, 1.0)
+        height = max(bounds.height, 1.0)
+        scale = min(available.width() / width, available.height() / height)
+        scale = scale if scale > 0 else 1.0
+
+        offset_x = available.left() + (available.width() - width * scale) / 2.0
+        offset_y = available.top() + (available.height() - height * scale) / 2.0
+
+        def map_point(point):
+            return QPointF(
+                offset_x + (point.x - bounds.min_x) * scale,
+                offset_y + (point.y - bounds.min_y) * scale,
+            )
+
+        outline_polygon = QPolygonF([map_point(point) for point in self.roof_plane.outline.points])
+        fill_color = self.palette().color(QPalette.ColorRole.AlternateBase)
+        outline_color = self.palette().color(QPalette.ColorRole.Highlight)
+        text_color = self.palette().color(QPalette.ColorRole.Text)
+        hole_color = QColor(outline_color)
+        hole_color.setAlpha(180)
+
+        painter.setPen(QPen(outline_color, 2))
+        painter.setBrush(fill_color)
+        painter.drawPolygon(outline_polygon)
+
+        painter.setPen(QPen(hole_color, 1.5, Qt.PenStyle.DashLine))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        for hole in self.roof_plane.holes:
+            painter.drawPolygon(QPolygonF([map_point(point) for point in hole.points]))
+
+        painter.setPen(text_color)
+        label = f"Połać {self.roof_plane.name}"
+        if self.roof_plane.selected_material_id:
+            label += f" | Blacha: {self.roof_plane.selected_material_id}"
+        painter.drawText(available.left(), available.top() - 8, label)
+
 
 class MainWindow(QMainWindow):
     def __init__(self, parent=None):
@@ -143,6 +194,7 @@ class MainWindow(QMainWindow):
         self._toolbar_actions = []
         self._theme = "light"
         self._config = load_config()
+        self.project_state = ProjectState.from_config(self._config)
         self.ui.setupUi(self)
         self.setWindowTitle("4Dach wersja 1.0 Super Dach sp.j. instalacja 3, plik: testmarcin (zmieniony)")
         self.resize(1120, 720)
@@ -151,6 +203,7 @@ class MainWindow(QMainWindow):
         self._build_top_toolbar()
         self._setup_central_area()
         self._apply_theme()
+        self._refresh_canvas_from_state()
         self.statusBar().showMessage("Lewy przycisk myszy: rysowanie, prawy: wyczyść szkic", 5000)
 
     def _setup_window_style(self):
@@ -199,8 +252,10 @@ class MainWindow(QMainWindow):
                     ("Trapez...", None, self._open_trapez_dialog),
                     ("Dowolny", None, None),
                     None,
-                    ("Przesuń", None, None),
-                    ("Przesuń punkt", None, None),
+                    ("Przesuń", None, self._open_move_roof_plane_dialog),
+                    ("Przesuń punkt", None, self._open_move_roof_plane_point_dialog),
+                    ("Dodaj punkt", None, self._open_insert_roof_plane_point_dialog),
+                    ("Usuń punkt", None, self._open_delete_roof_plane_point_dialog),
                     None,
                     ("Odwróć w pionie", None, None),
                     ("Odwróć w poziomie", None, None),
@@ -213,9 +268,9 @@ class MainWindow(QMainWindow):
             (
                 "Wycinki",
                 [
-                    ("Dodaj wycinek", None, None),
-                    ("Usuń wycinek", None, None),
-                    ("Przesuń wycinek", None, None),
+                    ("Dodaj wycinek", None, self._open_add_hole_dialog),
+                    ("Usuń wycinek", None, self._open_delete_hole_dialog),
+                    ("Przesuń wycinek", None, self._open_move_hole_dialog),
                     ("Skopiuj wycinek", None, None),
                     ("Wklej wycinek", None, None),
                 ],
@@ -336,16 +391,15 @@ class MainWindow(QMainWindow):
         variant_combo.setEditable(True)
         variant_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         variant_combo.setFixedWidth(146)
-        variant_combo.addItems(["PD510", "PD610", "PD710"])
-        variant_combo.setCurrentText("PD510")
+        self.variant_combo = variant_combo
+        self._refresh_material_combo()
         try:
             if variant_combo.lineEdit():
                 variant_combo.lineEdit().setReadOnly(True)
         except AttributeError:
             pass
         variant_combo.setToolTip("Wybór aktywnej blachy")
-        variant_combo.currentTextChanged.connect(lambda text: self.statusBar().showMessage(f"Aktywna blacha: {text}", 2500))
-        self.variant_combo = variant_combo
+        variant_combo.currentTextChanged.connect(self._on_material_changed)
         toolbar.addWidget(variant_combo)
         toolbar.addSeparator()
 
@@ -500,36 +554,277 @@ class MainWindow(QMainWindow):
         self.primary_canvas.update()
         self.secondary_canvas.update()
 
+    def _reload_project_state(self):
+        self.project_state = ProjectState.from_config(self._config)
+        if hasattr(self, "variant_combo"):
+            self._refresh_material_combo()
+        self._refresh_canvas_from_state()
+
+    def _refresh_material_combo(self):
+        material_ids = self.project_state.available_material_ids()
+        current_text = self.variant_combo.currentText() if self.variant_combo.count() else ""
+        self.variant_combo.blockSignals(True)
+        self.variant_combo.clear()
+        if material_ids:
+            self.variant_combo.addItems(material_ids)
+            target_material = current_text if current_text in material_ids else material_ids[0]
+            self.variant_combo.setCurrentText(target_material)
+        self.variant_combo.blockSignals(False)
+
+    def _refresh_canvas_from_state(self):
+        active_plane = self.project_state.active_roof_plane()
+        self.primary_canvas.set_roof_plane(active_plane)
+        self.secondary_canvas.set_roof_plane(None)
+        if active_plane is not None:
+            self.workspace_tabs.setTabText(0, active_plane.name)
+        else:
+            self.workspace_tabs.setTabText(0, "1")
+        self.workspace_tabs.setTabText(1, "2")
+
+    def _persist_project_state(self):
+        self.project_state.apply_to_config(self._config)
+        save_config(self._config)
+
+    def _apply_project_edit(self, callback, success_message: str):
+        try:
+            callback()
+        except (ValueError, IndexError) as error:
+            QMessageBox.warning(self, "Błąd edycji", str(error))
+            self.statusBar().showMessage(str(error), 4000)
+            return False
+
+        self._persist_project_state()
+        self._refresh_canvas_from_state()
+        self.statusBar().showMessage(success_message, 4000)
+        return True
+
+    def _active_plane_or_warn(self):
+        plane = self.project_state.active_roof_plane()
+        if plane is None:
+            message = "Brak aktywnej połaci"
+            QMessageBox.information(self, "Brak połaci", message)
+            self.statusBar().showMessage(message, 3000)
+            return None
+        return plane
+
+    def _ask_int(self, title: str, label: str, value: int, minimum: int, maximum: int):
+        return QInputDialog.getInt(self, title, label, value, minimum, maximum)
+
+    def _ask_float(self, title: str, label: str, value: float = 0.0, minimum: float = -9999.0, maximum: float = 9999.0):
+        return QInputDialog.getDouble(self, title, label, value, minimum, maximum, 2)
+
+    def _on_material_changed(self, text: str):
+        if self.project_state.set_active_material_for_plane(text):
+            self._persist_project_state()
+            self._refresh_canvas_from_state()
+        self.statusBar().showMessage(f"Aktywna blacha: {text}", 2500)
+
+    def _add_roof_plane(self, outline, shape_name: str, detail: str):
+        plane = self.project_state.add_roof_plane(outline, selected_material_id=self.variant_combo.currentText() or None)
+        self._persist_project_state()
+        self._refresh_canvas_from_state()
+        self.statusBar().showMessage(f"{shape_name}: dodano połać {plane.name} ({detail})", 4000)
+
     def _open_prostokat_dialog(self):
         dialog = ProstokatDialog(self._config, self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             values = dialog.get_values()
             self._config["ksztalty"]["prostokat"] = values
-            save_config(self._config)
-            self.statusBar().showMessage(f"Prostokąt: {values['szerokosc']} x {values['wysokosc']} cm", 3000)
+            outline = build_rectangle_outline(values["szerokosc"], values["wysokosc"])
+            self._add_roof_plane(outline, "Prostokąt", f"{values['szerokosc']} x {values['wysokosc']} cm")
 
     def _open_trojkat_dialog(self):
         dialog = TrojkatDialog(self._config, self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             values = dialog.get_values()
             self._config["ksztalty"]["trojkat"] = values
-            save_config(self._config)
-            self.statusBar().showMessage(f"Trójkąt: {values['typ']}, podstawa: {values['podstawa']} cm", 3000)
+            side_length = values["ramie"] if values.get("ramie_enabled") else None
+            outline = build_triangle_outline(values["typ"], values["podstawa"], values["wysokosc"], side_length)
+            self._add_roof_plane(outline, "Trójkąt", f"{values['typ']}, podstawa: {values['podstawa']} cm")
 
     def _open_trapez_dialog(self):
         dialog = TrapezDialog(self._config, self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             values = dialog.get_values()
             self._config["ksztalty"]["trapez"] = values
-            save_config(self._config)
-            self.statusBar().showMessage(f"Trapez: {values['typ']}, podstawa dolna: {values['podstawa_dolna']} cm", 3000)
+            outline = build_trapezoid_outline(values["typ"], values["podstawa_dolna"], values["podstawa_gorna"], values["wysokosc"])
+            self._add_roof_plane(outline, "Trapez", f"{values['typ']}, podstawa dolna: {values['podstawa_dolna']} cm")
+
+    def _open_move_roof_plane_dialog(self):
+        plane = self._active_plane_or_warn()
+        if plane is None:
+            return
+
+        dx, accepted = self._ask_float("Przesuń połać", f"Przesunięcie X dla połaci {plane.name} [cm]:")
+        if not accepted:
+            return
+        dy, accepted = self._ask_float("Przesuń połać", f"Przesunięcie Y dla połaci {plane.name} [cm]:")
+        if not accepted:
+            return
+
+        self._apply_project_edit(
+            lambda: self.project_state.move_roof_plane(dx, dy, plane.id),
+            f"Przesunięto połać {plane.name} o ({dx:.2f}, {dy:.2f}) cm",
+        )
+
+    def _open_move_roof_plane_point_dialog(self):
+        plane = self._active_plane_or_warn()
+        if plane is None:
+            return
+
+        point_index, accepted = self._ask_int(
+            "Przesuń punkt",
+            f"Indeks punktu 0-{len(plane.outline.points) - 1}:",
+            0,
+            0,
+            len(plane.outline.points) - 1,
+        )
+        if not accepted:
+            return
+        dx, accepted = self._ask_float("Przesuń punkt", "Przesunięcie X [cm]:")
+        if not accepted:
+            return
+        dy, accepted = self._ask_float("Przesuń punkt", "Przesunięcie Y [cm]:")
+        if not accepted:
+            return
+
+        self._apply_project_edit(
+            lambda: self.project_state.move_roof_plane_point(point_index, dx, dy, plane.id),
+            f"Przesunięto punkt {point_index} połaci {plane.name}",
+        )
+
+    def _open_insert_roof_plane_point_dialog(self):
+        plane = self._active_plane_or_warn()
+        if plane is None:
+            return
+
+        edge_index, accepted = self._ask_int(
+            "Dodaj punkt",
+            f"Wstaw po krawędzi 0-{len(plane.outline.points) - 1}:",
+            0,
+            0,
+            len(plane.outline.points) - 1,
+        )
+        if not accepted:
+            return
+        x, accepted = self._ask_float("Dodaj punkt", "Pozycja X [cm]:")
+        if not accepted:
+            return
+        y, accepted = self._ask_float("Dodaj punkt", "Pozycja Y [cm]:")
+        if not accepted:
+            return
+
+        self._apply_project_edit(
+            lambda: self.project_state.insert_roof_plane_point(edge_index, Point2D(x, y), plane.id),
+            f"Dodano punkt po krawędzi {edge_index} połaci {plane.name}",
+        )
+
+    def _open_delete_roof_plane_point_dialog(self):
+        plane = self._active_plane_or_warn()
+        if plane is None:
+            return
+
+        point_index, accepted = self._ask_int(
+            "Usuń punkt",
+            f"Indeks punktu 0-{len(plane.outline.points) - 1}:",
+            len(plane.outline.points) - 1,
+            0,
+            len(plane.outline.points) - 1,
+        )
+        if not accepted:
+            return
+
+        self._apply_project_edit(
+            lambda: self.project_state.delete_roof_plane_point(point_index, plane.id),
+            f"Usunięto punkt {point_index} połaci {plane.name}",
+        )
+
+    def _open_add_hole_dialog(self):
+        plane = self._active_plane_or_warn()
+        if plane is None:
+            return
+
+        width, accepted = self._ask_float("Dodaj wycinek", "Szerokość wycinka [cm]:", 50.0, 1.0)
+        if not accepted:
+            return
+        height, accepted = self._ask_float("Dodaj wycinek", "Wysokość wycinka [cm]:", 50.0, 1.0)
+        if not accepted:
+            return
+        origin_x, accepted = self._ask_float("Dodaj wycinek", "Lewy górny X [cm]:", 0.0, -9999.0)
+        if not accepted:
+            return
+        origin_y, accepted = self._ask_float("Dodaj wycinek", "Lewy górny Y [cm]:", 0.0, -9999.0)
+        if not accepted:
+            return
+
+        hole = Polygon2D.rectangle(width, height, origin_x=origin_x, origin_y=origin_y)
+        self._apply_project_edit(
+            lambda: self.project_state.add_hole_to_plane(hole, plane.id),
+            f"Dodano wycinek do połaci {plane.name}",
+        )
+
+    def _open_delete_hole_dialog(self):
+        plane = self._active_plane_or_warn()
+        if plane is None:
+            return
+        if not plane.holes:
+            QMessageBox.information(self, "Brak wycinków", "Aktywna połać nie ma wycinków do usunięcia")
+            self.statusBar().showMessage("Aktywna połać nie ma wycinków do usunięcia", 3000)
+            return
+
+        hole_index, accepted = self._ask_int(
+            "Usuń wycinek",
+            f"Indeks wycinka 0-{len(plane.holes) - 1}:",
+            len(plane.holes) - 1,
+            0,
+            len(plane.holes) - 1,
+        )
+        if not accepted:
+            return
+
+        self._apply_project_edit(
+            lambda: self.project_state.delete_hole_from_plane(hole_index, plane.id),
+            f"Usunięto wycinek {hole_index} z połaci {plane.name}",
+        )
+
+    def _open_move_hole_dialog(self):
+        plane = self._active_plane_or_warn()
+        if plane is None:
+            return
+        if not plane.holes:
+            QMessageBox.information(self, "Brak wycinków", "Aktywna połać nie ma wycinków do przesunięcia")
+            self.statusBar().showMessage("Aktywna połać nie ma wycinków do przesunięcia", 3000)
+            return
+
+        hole_index, accepted = self._ask_int(
+            "Przesuń wycinek",
+            f"Indeks wycinka 0-{len(plane.holes) - 1}:",
+            0,
+            0,
+            len(plane.holes) - 1,
+        )
+        if not accepted:
+            return
+        dx, accepted = self._ask_float("Przesuń wycinek", "Przesunięcie X [cm]:")
+        if not accepted:
+            return
+        dy, accepted = self._ask_float("Przesuń wycinek", "Przesunięcie Y [cm]:")
+        if not accepted:
+            return
+
+        self._apply_project_edit(
+            lambda: self.project_state.move_hole_in_plane(hole_index, dx, dy, plane.id),
+            f"Przesunięto wycinek {hole_index} połaci {plane.name}",
+        )
 
     def _open_dane_firmy_dialog(self):
         dialog = DaneFirmyDialog(self._config, self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             values = dialog.get_values()
             self._config["company_data"] = values
-            save_config(self._config)
+            self.project_state.company_data = self.project_state.company_data.from_dict(values)
+            self._persist_project_state()
+            self._reload_project_state()
             self.statusBar().showMessage(f"Dane firmy zapisane: {values['name']}", 3000)
 
     def _open_blachy_dialog(self):
@@ -537,7 +832,9 @@ class MainWindow(QMainWindow):
         if dialog.exec() == QDialog.DialogCode.Accepted:
             values = dialog.get_values()
             self._config["blachy"] = values
+            self._persist_project_state()
             save_config(self._config)
+            self._reload_project_state()
             self.statusBar().showMessage(f"Lista blach zaktualizowana: {len(values)} pozycji", 3000)
 
     def _show_ostrzezenie_dialog(self):

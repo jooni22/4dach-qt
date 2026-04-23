@@ -1,0 +1,38 @@
+from __future__ import annotations
+
+import pytest
+
+from core.geometry import build_rectangle_outline
+
+
+pytest.importorskip("PySide6")
+pytest.importorskip("pytestqt")
+
+from mainwindow import MainWindow
+
+
+def test_mainwindow_exposes_expected_ui_contract(qtbot):
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.show()
+
+    menu_titles = [action.text() for action in window.menuBar().actions()]
+
+    assert menu_titles == ["Plik", "Kształt", "Wycinki", "Katalog", "Arkusze"]
+    assert window.workspace_tabs.count() == 2
+    assert window.variant_combo.count() >= 1
+    assert window.variant_combo.currentText() == "PD510"
+    assert window.project_state.available_material_ids() == ["PD510"]
+
+
+def test_mainwindow_refreshes_active_plane_on_primary_canvas(qtbot):
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    plane = window.project_state.add_roof_plane(build_rectangle_outline(320, 180), selected_material_id="PD510")
+    window._refresh_canvas_from_state()
+
+    assert window.primary_canvas.roof_plane is not None
+    assert window.primary_canvas.roof_plane.id == plane.id
+    assert window.workspace_tabs.tabText(0) == plane.name
+    assert window.secondary_canvas.roof_plane is None

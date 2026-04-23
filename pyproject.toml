@@ -1,5 +1,21 @@
 [project]
 name = "PySide Widgets Project"
+optional-dependencies = { test = ["pytest>=8.0", "pytest-qt>=4.4"] }
 
 [tool.pyside6-project]
-files = ["mainwindow.py", "app_icons.py", "form.ui"]
+files = [
+  "mainwindow.py",
+  "dialogs.py",
+  "app_icons.py",
+  "form.ui",
+  "core/__init__.py",
+  "core/models.py",
+  "core/project_state.py",
+  "core/geometry.py",
+  "core/layout_engine.py",
+  "core/reporting.py",
+]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests"]

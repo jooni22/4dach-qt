@@ -42,5 +42,63 @@
       "podstawa_gorna": 300,
       "wysokosc": 300
     }
+  },
+  "project_state": {
+    "version": 1,
+    "active_plane_id": "plane-2",
+    "roof_planes": [
+      {
+        "id": "plane-1",
+        "name": "1",
+        "selected_material_id": "PD510",
+        "generation_settings": {
+          "layout_origin": "left",
+          "base_line_y_cm": null
+        },
+        "outline": [
+          {
+            "x": 0.0,
+            "y": 0.0
+          },
+          {
+            "x": 300.0,
+            "y": 0.0
+          },
+          {
+            "x": 300.0,
+            "y": 300.0
+          },
+          {
+            "x": 0.0,
+            "y": 300.0
+          }
+        ],
+        "holes": []
+      },
+      {
+        "id": "plane-2",
+        "name": "2",
+        "selected_material_id": "PD510",
+        "generation_settings": {
+          "layout_origin": "left",
+          "base_line_y_cm": null
+        },
+        "outline": [
+          {
+            "x": 0.0,
+            "y": 300
+          },
+          {
+            "x": 150.0,
+            "y": 0.0
+          },
+          {
+            "x": 300,
+            "y": 300
+          }
+        ],
+        "holes": []
+      }
+    ]
   }
 }

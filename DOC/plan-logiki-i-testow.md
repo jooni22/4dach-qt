@@ -55,15 +55,15 @@ Rekomendowany podział:
   - odświeżanie widoków i status bara.
 - `dialogs.py`
   - tylko formularze i pobieranie danych od użytkownika.
-- nowy moduł `models.py`
+- nowy moduł `core/models.py`
   - dataclasses / struktury domenowe.
-- nowy moduł `geometry.py`
+- nowy moduł `core/geometry.py`
   - operacje na poligonach, przecięcia, walidacje.
-- nowy moduł `layout_engine.py`
+- nowy moduł `core/layout_engine.py`
   - generowanie pasów i arkuszy.
-- nowy moduł `project_state.py`
+- nowy moduł `core/project_state.py`
   - stan projektu, aktywna połać, ręczne korekty, dirty state.
-- nowy moduł `reporting.py`
+- nowy moduł `core/reporting.py`
   - BOM, powierzchnie, odpady, koszty.
 - opcjonalnie nowy moduł `canvas_presenter.py`
   - transformacja danych domenowych na warstwę rysowaną przez canvas.
@@ -235,18 +235,18 @@ Tu nie powinno trafić:
 
 ### 5.3. Nowe moduły domenowe
 Najbardziej naturalny, prosty i bezpieczny podział dla tego repo:
-- `models.py`
-- `geometry.py`
-- `layout_engine.py`
-- `project_state.py`
-- `reporting.py`
+- `core/models.py`
+- `core/geometry.py`
+- `core/layout_engine.py`
+- `core/project_state.py`
+- `core/reporting.py`
 
 Nie ma potrzeby robić od razu rozbudowanego wielopoziomowego frameworka katalogów. Ważniejsze jest czytelne oddzielenie logiki od UI.
 
 ## 6. Proponowana kolejność wdrożenia
 
 ### Faza 1. Fundament domeny
-- wprowadzić `models.py`,
+- wprowadzić `core/models.py`,
 - znormalizować nazwy pól materiału i projektu,
 - przygotować adapter odczytu/zapisu `config.json` do nowych modeli.
 
