@@ -45,7 +45,7 @@
   },
   "project_state": {
     "version": 1,
-    "active_plane_id": "plane-9",
+    "active_plane_id": "plane-10",
     "roof_planes": [
       {
         "id": "plane-1",
@@ -481,7 +481,7 @@
         "selected_material_id": "PD510",
         "generation_settings": {
           "layout_origin": "left",
-          "base_line_y_cm": 300
+          "base_line_y_cm": 300.0
         },
         "auto_sheet_placements": [],
         "manual_sheet_placements": [],
@@ -507,6 +507,131 @@
           }
         ],
         "holes": []
+      },
+      {
+        "id": "plane-10",
+        "name": "10",
+        "selected_material_id": "PD510",
+        "generation_settings": {
+          "layout_origin": "left",
+          "base_line_y_cm": 300.0
+        },
+        "auto_sheet_placements": [
+          {
+            "id": "plane-10-b0-s0",
+            "band_index": 0,
+            "x_left_cm": 0.0,
+            "x_right_cm": 51.0,
+            "y_top_cm": 50.0,
+            "y_bottom_cm": 300.0,
+            "raw_length_cm": 250.0,
+            "final_length_cm": 350.0,
+            "source": "auto",
+            "split_reason": null
+          },
+          {
+            "id": "plane-10-b1-s0",
+            "band_index": 1,
+            "x_left_cm": 51.0,
+            "x_right_cm": 102.0,
+            "y_top_cm": 0.0,
+            "y_bottom_cm": 300.0,
+            "raw_length_cm": 300.0,
+            "final_length_cm": 400.0,
+            "source": "auto",
+            "split_reason": null
+          },
+          {
+            "id": "plane-10-b2-s0",
+            "band_index": 2,
+            "x_left_cm": 102.0,
+            "x_right_cm": 153.0,
+            "y_top_cm": 0.0,
+            "y_bottom_cm": 300.0,
+            "raw_length_cm": 300.0,
+            "final_length_cm": 400.0,
+            "source": "auto",
+            "split_reason": null
+          },
+          {
+            "id": "plane-10-b3-s0",
+            "band_index": 3,
+            "x_left_cm": 153.0,
+            "x_right_cm": 204.0,
+            "y_top_cm": 0.0,
+            "y_bottom_cm": 300.0,
+            "raw_length_cm": 300.0,
+            "final_length_cm": 400.0,
+            "source": "auto",
+            "split_reason": null
+          },
+          {
+            "id": "plane-10-b4-s0",
+            "band_index": 4,
+            "x_left_cm": 204.0,
+            "x_right_cm": 255.0,
+            "y_top_cm": 0.0,
+            "y_bottom_cm": 300.0,
+            "raw_length_cm": 300.0,
+            "final_length_cm": 400.0,
+            "source": "auto",
+            "split_reason": null
+          },
+          {
+            "id": "plane-10-b5-s0",
+            "band_index": 5,
+            "x_left_cm": 255.0,
+            "x_right_cm": 300.0,
+            "y_top_cm": 0.0,
+            "y_bottom_cm": 300.0,
+            "raw_length_cm": 300.0,
+            "final_length_cm": 400.0,
+            "source": "auto",
+            "split_reason": null
+          }
+        ],
+        "manual_sheet_placements": [],
+        "manually_removed_auto_sheet_ids": [],
+        "layout_revision": 2,
+        "layout_dirty_reason": null,
+        "outline": [
+          {
+            "x": 0.0,
+            "y": 0.0
+          },
+          {
+            "x": 300.0,
+            "y": 0.0
+          },
+          {
+            "x": 300.0,
+            "y": 300.0
+          },
+          {
+            "x": 0.0,
+            "y": 300.0
+          }
+        ],
+        "holes": [
+          [
+            {
+              "x": 17.0,
+              "y": 0.0
+            },
+            {
+              "x": 67.0,
+              "y": 0.0
+            },
+            {
+              "x": 67.0,
+              "y": 50.0
+            },
+            {
+              "x": 17.0,
+              "y": 50.0
+            }
+          ]
+        ]
       }
     ]
   }

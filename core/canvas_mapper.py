@@ -40,3 +40,12 @@ class CanvasMapper:
 
     def map_length(self, length_cm: float) -> float:
         return length_cm * self.scale
+
+    def unmap_point(self, point: QPointF) -> Point2D:
+        return Point2D(
+            self.bounds.min_x + (point.x() - self.offset_x) / self.scale,
+            self.bounds.min_y + (point.y() - self.offset_y) / self.scale,
+        )
+
+    def unmap_length(self, length_px: float) -> float:
+        return length_px / self.scale
