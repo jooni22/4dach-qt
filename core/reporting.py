@@ -36,7 +36,10 @@ def build_report(
 ) -> LayoutReport:
     plane = project_state.roof_plane_by_id(plane_id) if plane_id else project_state.active_roof_plane()
     net_area_cm2 = plane.net_area_cm2 if plane is not None else sum(item.net_area_cm2 for item in project_state.roof_planes)
-    gross_area_cm2 = sum(placement.area_cm2 for placement in layout_result.placements)
+    placements = project_state.active_sheet_placements_for_plane(plane_id)
+    if not placements:
+        placements = list(layout_result.placements)
+    gross_area_cm2 = sum(placement.area_cm2 for placement in placements)
     waste_area_cm2 = max(0.0, gross_area_cm2 - net_area_cm2)
     waste_percent = 0.0
     if gross_area_cm2 > 0:
@@ -48,11 +51,11 @@ def build_report(
     if material is not None and material.price_unit == "m2":
         total_cost = gross_area_m2 * material.price_value
     elif material is not None and material.price_unit in {"szt", "arkusz"}:
-        total_cost = len(layout_result.placements) * material.price_value
+        total_cost = len(placements) * material.price_value
 
     bom_area_by_length: dict[float, float] = {}
     bom_quantity_by_length: Counter[float] = Counter()
-    for placement in layout_result.placements:
+    for placement in placements:
         length_key = round(placement.final_length_cm, 6)
         bom_quantity_by_length[length_key] += 1
         bom_area_by_length[length_key] = bom_area_by_length.get(length_key, 0.0) + placement.area_cm2

@@ -38,7 +38,7 @@ from dialogs import (
     show_ostrzezenie_dialog,
 )
 from core.geometry import build_rectangle_outline, build_trapezoid_outline, build_triangle_outline
-from core.models import Point2D, Polygon2D
+from core.models import Point2D, Polygon2D, SheetPlacement
 from core.project_state import ProjectState
 from core.reporting import build_report, build_report_html
 
@@ -282,12 +282,12 @@ class MainWindow(QMainWindow):
             (
                 "Arkusze",
                 [
-                    ("Dodaj arkusz", "Insert", None),
-                    ("Usuń arkusz", "Delete", None),
-                    ("Podgląd arkuszy", "Ctrl+A", None),
-                    ("Aktywne arkusze", None, None),
+                    ("Dodaj arkusz", "Insert", self._open_add_sheet_dialog),
+                    ("Usuń arkusz", "Delete", self._open_remove_sheet_dialog),
+                    ("Podgląd arkuszy", "Ctrl+A", self._open_sheet_preview_dialog),
+                    ("Aktywne arkusze", None, self._open_active_sheets_dialog),
                     None,
-                    ("Zmień rodzaj blachy", None, None),
+                    ("Zmień rodzaj blachy", None, self._open_change_material_dialog),
                 ],
             ),
         ]
@@ -650,14 +650,158 @@ class MainWindow(QMainWindow):
                     "</body></html>"
                 )
             else:
+                dirty_message = ""
+                if active_plane.layout_dirty_reason:
+                    dirty_message = (
+                        f"<p><strong>Stan layoutu:</strong> wynik jest nieaktualny "
+                        f"({active_plane.layout_dirty_reason}).</p>"
+                    )
                 content = (
                     "<html><body>"
                     f"<h1>Raport 4Dach - {active_plane.name}</h1>"
                     "<p>Raport nie został jeszcze wygenerowany dla aktywnej połaci.</p>"
+                    f"{dirty_message}"
                     "<p>Użyj akcji <strong>Plik -> Drukuj raport</strong>, aby przeliczyć layout, BOM i ostrzeżenia.</p>"
                     "</body></html>"
                 )
         self.report_view.setHtml(content)
+
+    def _sheet_lines(self, plane) -> list[str]:
+        active_sheets = self.project_state.active_sheet_placements_for_plane(plane.id)
+        if not active_sheets:
+            return ["Brak aktywnych arkuszy"]
+
+        return [
+            (
+                f"{index}. {sheet.id} | źródło: {sheet.source} | pas: {sheet.band_index} | "
+                f"X: {sheet.x_left_cm:.2f}-{sheet.x_right_cm:.2f} cm | "
+                f"Y: {sheet.y_top_cm:.2f}-{sheet.y_bottom_cm:.2f} cm | "
+                f"długość: {sheet.final_length_cm:.2f} cm"
+            )
+            for index, sheet in enumerate(active_sheets)
+        ]
+
+    def _open_add_sheet_dialog(self):
+        plane = self._active_plane_or_warn()
+        if plane is None:
+            return
+
+        band_index, accepted = self._ask_int("Dodaj arkusz", "Numer pasa:", 0, 0, 999)
+        if not accepted:
+            return
+        x_left, accepted = self._ask_float("Dodaj arkusz", "Lewy X [cm]:", 0.0)
+        if not accepted:
+            return
+        width, accepted = self._ask_float("Dodaj arkusz", "Szerokość [cm]:", 50.0, 0.01)
+        if not accepted:
+            return
+        y_top, accepted = self._ask_float("Dodaj arkusz", "Górny Y [cm]:", 0.0)
+        if not accepted:
+            return
+        length, accepted = self._ask_float("Dodaj arkusz", "Długość końcowa [cm]:", 100.0, 0.01)
+        if not accepted:
+            return
+
+        placement = SheetPlacement(
+            id=f"{plane.id}-manual-{plane.layout_revision + len(plane.manual_sheet_placements) + 1}",
+            band_index=band_index,
+            x_left_cm=x_left,
+            x_right_cm=x_left + width,
+            y_top_cm=y_top,
+            y_bottom_cm=y_top + length,
+            raw_length_cm=length,
+            final_length_cm=length,
+            source="manual",
+        )
+        self._apply_project_edit(
+            lambda: self.project_state.add_manual_sheet_placement(placement, plane.id),
+            f"Dodano ręczny arkusz do połaci {plane.name}",
+        )
+
+    def _open_remove_sheet_dialog(self):
+        plane = self._active_plane_or_warn()
+        if plane is None:
+            return
+
+        active_sheets = self.project_state.active_sheet_placements_for_plane(plane.id)
+        if not active_sheets:
+            QMessageBox.information(self, "Brak arkuszy", "Aktywna połać nie ma arkuszy do usunięcia")
+            self.statusBar().showMessage("Aktywna połać nie ma arkuszy do usunięcia", 3000)
+            return
+
+        sheet_index, accepted = self._ask_int(
+            "Usuń arkusz",
+            f"Indeks arkusza 0-{len(active_sheets) - 1}:",
+            0,
+            0,
+            len(active_sheets) - 1,
+        )
+        if not accepted:
+            return
+
+        sheet = active_sheets[sheet_index]
+        self._apply_project_edit(
+            lambda: self.project_state.remove_sheet_placement(sheet.id, plane.id),
+            f"Usunięto arkusz {sheet.id} z połaci {plane.name}",
+        )
+
+    def _open_sheet_preview_dialog(self):
+        plane = self._active_plane_or_warn()
+        if plane is None:
+            return
+
+        details = "\n".join(self._sheet_lines(plane))
+        QMessageBox.information(self, f"Podgląd arkuszy - {plane.name}", details)
+        self.statusBar().showMessage(f"Pokazano podgląd arkuszy połaci {plane.name}", 3000)
+
+    def _open_active_sheets_dialog(self):
+        plane = self._active_plane_or_warn()
+        if plane is None:
+            return
+
+        active_sheets = self.project_state.active_sheet_placements_for_plane(plane.id)
+        manual_count = len(plane.manual_sheet_placements)
+        removed_count = len(plane.manually_removed_auto_sheet_ids)
+        message = (
+            f"Aktywne arkusze: {len(active_sheets)}\n"
+            f"Ręczne arkusze: {manual_count}\n"
+            f"Ukryte auto-arkusze: {removed_count}\n"
+            f"Stan layoutu: {plane.layout_dirty_reason or 'aktualny'}"
+        )
+        QMessageBox.information(self, f"Aktywne arkusze - {plane.name}", message)
+        self.statusBar().showMessage(f"Pokazano podsumowanie arkuszy połaci {plane.name}", 3000)
+
+    def _open_change_material_dialog(self):
+        plane = self._active_plane_or_warn()
+        if plane is None:
+            return
+
+        material_ids = self.project_state.available_material_ids()
+        if not material_ids:
+            QMessageBox.warning(self, "Brak materiałów", "Brak dostępnych materiałów w katalogu")
+            self.statusBar().showMessage("Brak dostępnych materiałów w katalogu", 3000)
+            return
+
+        current_material = plane.selected_material_id or self.project_state.active_material_id() or material_ids[0]
+        selected_material, accepted = QInputDialog.getItem(
+            self,
+            "Zmień rodzaj blachy",
+            "Materiał:",
+            material_ids,
+            material_ids.index(current_material) if current_material in material_ids else 0,
+            False,
+        )
+        if not accepted:
+            return
+
+        if self.project_state.set_active_material_for_plane(selected_material, plane.id):
+            self.variant_combo.blockSignals(True)
+            self.variant_combo.setCurrentText(selected_material)
+            self.variant_combo.blockSignals(False)
+            self._clear_generated_report()
+            self._persist_project_state()
+            self._refresh_canvas_from_state()
+            self.statusBar().showMessage(f"Zmieniono materiał połaci {plane.name} na {selected_material}", 4000)
 
     def _build_report_html_for_variant(self, variant: str, material_id: str, plane_id: str, report):
         if variant == "continuous":

@@ -7,7 +7,7 @@ import pytest
 
 from core.geometry import build_rectangle_outline, build_trapezoid_outline, build_triangle_outline
 from core.layout_engine import generate_layout
-from core.models import CompanyData, Material, Point2D, Polygon2D, RoofPlane, almost_equal
+from core.models import CompanyData, Material, Point2D, Polygon2D, RoofPlane, SheetPlacement, almost_equal
 from core.project_state import ProjectState
 
 
@@ -222,6 +222,123 @@ def test_project_state_generates_layout_for_active_plane_and_persists_auto_place
     assert plane.layout_revision == 2
     assert len(plane_payload["auto_sheet_placements"]) == 4
     assert plane_payload["auto_sheet_placements"][0]["id"].startswith("plane-1-b0-s0")
+
+
+def test_project_state_manual_sheet_overrides_are_merged_and_serialized():
+    state = ProjectState(
+        materials=[
+            Material(
+                id="PD510",
+                nazwa="PD510",
+                type="dachówkowa",
+                effective_width_cm=51,
+                module_length_cm=25,
+                bottom_margin_cm=10,
+                top_margin_cm=15,
+                min_sheet_length_cm=20,
+                max_sheet_length_cm=400,
+            )
+        ]
+    )
+    plane = state.add_roof_plane(build_rectangle_outline(153, 200), selected_material_id="PD510")
+    state.generate_layout_for_plane(plane.id)
+
+    removed_auto_id = plane.auto_sheet_placements[0].id
+    state.remove_sheet_placement(removed_auto_id, plane.id)
+    state.add_manual_sheet_placement(
+        SheetPlacement(
+            id="plane-1-manual-1",
+            band_index=99,
+            x_left_cm=10.0,
+            x_right_cm=40.0,
+            y_top_cm=20.0,
+            y_bottom_cm=140.0,
+            raw_length_cm=120.0,
+            final_length_cm=120.0,
+        ),
+        plane.id,
+    )
+    fragment = state.to_config_fragment()
+    plane_payload = fragment["project_state"]["roof_planes"][0]
+    active_ids = [placement.id for placement in state.active_sheet_placements_for_plane(plane.id)]
+
+    assert removed_auto_id not in active_ids
+    assert "plane-1-manual-1" in active_ids
+    assert plane.layout_dirty_reason == "manual_override"
+    assert plane_payload["manual_sheet_placements"][0]["id"] == "plane-1-manual-1"
+    assert plane_payload["manually_removed_auto_sheet_ids"] == [removed_auto_id]
+    assert plane_payload["layout_dirty_reason"] == "manual_override"
+
+
+def test_project_state_geometry_change_keeps_manual_sheets_but_marks_layout_dirty():
+    state = ProjectState()
+    plane = state.add_roof_plane(build_rectangle_outline(300, 200))
+    state.add_manual_sheet_placement(
+        SheetPlacement(
+            id="plane-1-manual-1",
+            band_index=0,
+            x_left_cm=0.0,
+            x_right_cm=50.0,
+            y_top_cm=0.0,
+            y_bottom_cm=120.0,
+            raw_length_cm=120.0,
+            final_length_cm=120.0,
+        ),
+        plane.id,
+    )
+
+    updated_plane = state.move_roof_plane(10, 5, plane.id)
+
+    assert len(updated_plane.manual_sheet_placements) == 1
+    assert updated_plane.layout_dirty_reason == "geometry_changed"
+
+
+def test_project_state_material_change_marks_layout_dirty_without_dropping_manual_sheets():
+    state = ProjectState(
+        materials=[
+            Material(
+                id="PD510",
+                nazwa="PD510",
+                type="dachówkowa",
+                effective_width_cm=51,
+                module_length_cm=25,
+                bottom_margin_cm=10,
+                top_margin_cm=15,
+                min_sheet_length_cm=20,
+            ),
+            Material(
+                id="T20",
+                nazwa="T20",
+                type="trapezowa",
+                effective_width_cm=110,
+                module_length_cm=0,
+                bottom_margin_cm=0,
+                top_margin_cm=0,
+                min_sheet_length_cm=20,
+            ),
+        ]
+    )
+    plane = state.add_roof_plane(build_rectangle_outline(300, 200), selected_material_id="PD510")
+    state.add_manual_sheet_placement(
+        SheetPlacement(
+            id="plane-1-manual-1",
+            band_index=0,
+            x_left_cm=0.0,
+            x_right_cm=50.0,
+            y_top_cm=0.0,
+            y_bottom_cm=120.0,
+            raw_length_cm=120.0,
+            final_length_cm=120.0,
+        ),
+        plane.id,
+    )
+
+    changed = state.set_active_material_for_plane("T20", plane.id)
+
+    assert changed is True
+    assert plane.selected_material_id == "T20"
+    assert len(plane.manual_sheet_placements) == 1
+    assert plane.layout_dirty_reason == "material_changed"
 
 
 def test_layout_engine_uses_shared_baseline_for_module_lengths():

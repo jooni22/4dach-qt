@@ -2,6 +2,25 @@
 
 ## Session: 2026-04-23
 
+### Phase 10: Manual Sheet Overrides + Dirty State
+- **Status:** complete
+- Actions taken:
+  - Rozszerzono `core/models.py` i `core/project_state.py` o `manually_removed_auto_sheet_ids` oraz `layout_dirty_reason` persystowane w `config.json`.
+  - Dodano domenowy workflow ręcznych korekt arkuszy: `active_sheet_placements_for_plane()`, `add_manual_sheet_placement()` i `remove_sheet_placement()`.
+  - Ujednolicono invalidation layoutu po zmianie geometrii i materiału, tak aby auto-layout był czyszczony, ręczne arkusze zostawały, a połać otrzymywała jawny `dirty-state`.
+  - Podłączono menu `Arkusze` w `mainwindow.py` do rzeczywistych akcji: dodanie/usunięcie arkusza, podgląd aktywnych arkuszy i zmiana materiału aktywnej połaci.
+  - Zmieniono `core/reporting.py`, aby BOM, koszt i powierzchnie bazowały na aktywnych arkuszach po korektach manualnych.
+  - Rozszerzono testy domenowe i raportowe o regresje dla manualnych korekt oraz `dirty-state`.
+- Files created/modified:
+  - `core/models.py`
+  - `core/project_state.py`
+  - `core/reporting.py`
+  - `mainwindow.py`
+  - `tests/test_models_and_state.py`
+  - `planning/task_plan.md`
+  - `planning/findings.md`
+  - `planning/progress.md`
+
 ### Phase 9: Report UI Integration
 - **Status:** complete
 - Actions taken:
@@ -149,6 +168,8 @@
 | Pełny zestaw po spięciu menu z domeną | `pytest -q` | Integracja `mainwindow.py` nie psuje istniejących testów | 18 testów przeszło, 1 skip (`pytestqt`) | pass |
 | Raportowanie domenowe + HTML report | `pytest -q tests/test_reporting.py tests/test_models_and_state.py` | BOM, koszt, odpady, ostrzeżenia i HTML raportu przechodzą | 17 testów przeszło | pass |
 | Raport UI + regresja domeny | `pytest -q tests/test_reporting.py tests/test_models_and_state.py tests/test_geometry.py tests/test_mainwindow_ui_contract.py` | Integracja podglądu raportu nie psuje domeny ani kontraktu UI | 21 testów przeszło, 1 skip (`pytestqt`) | pass |
+| Ręczne korekty arkuszy + dirty-state | `pytest -q tests/test_models_and_state.py tests/test_reporting.py` | Manualne arkusze, usuwanie auto-arkuszy i `layout_dirty_reason` przechodzą regresję | 20 testów przeszło | pass |
+| Pełny zestaw po wdrożeniu korekt arkuszy | `pytest -q` | Repo pozostaje zielone po rozszerzeniu workflow `Arkusze` | 24 testy przeszły, 1 skip (`pytestqt`) | pass |
 
 ## Error Log
 | Timestamp | Error | Attempt | Resolution |

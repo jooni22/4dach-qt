@@ -240,7 +240,9 @@ class RoofPlane:
     generation_settings: GenerationSettings = field(default_factory=GenerationSettings)
     auto_sheet_placements: list[SheetPlacement] = field(default_factory=list)
     manual_sheet_placements: list[SheetPlacement] = field(default_factory=list)
+    manually_removed_auto_sheet_ids: list[str] = field(default_factory=list)
     layout_revision: int = 0
+    layout_dirty_reason: str | None = None
 
     @property
     def net_area_cm2(self) -> float:
@@ -257,7 +259,9 @@ class RoofPlane:
             generation_settings=self.generation_settings,
             auto_sheet_placements=list(self.auto_sheet_placements),
             manual_sheet_placements=list(self.manual_sheet_placements),
+            manually_removed_auto_sheet_ids=list(self.manually_removed_auto_sheet_ids),
             layout_revision=self.layout_revision + 1,
+            layout_dirty_reason=self.layout_dirty_reason,
         )
 
 

@@ -31,11 +31,11 @@ Phase 4
 - [x] Dokończyć layout engine dla aktywnej połaci i aktywnego materiału
 - [x] Dodać raportowanie BOM, kosztów i ostrzeżeń
 - [x] Przygotować HTML report generator
-- [ ] Obsłużyć ręczne korekty arkuszy i dirty-state
+- [x] Obsłużyć ręczne korekty arkuszy i dirty-state
 - **Status:** in_progress
 
 ### Phase 5: UI Integration
-- [ ] Podłączyć wspierane akcje menu i toolbar do domeny
+- [x] Podłączyć wspierane akcje menu i toolbar do domeny
 - [ ] Ujednolicić zakładki z połaciami i canvasy z modelem projektu
 - [x] Pokazać stany layoutu, BOM i ostrzeżenia w UI
 - **Status:** in_progress
@@ -72,10 +72,10 @@ Phase 4
 | Akcje menu `Przesuń`, `Przesuń punkt`, `Dodaj punkt`, `Usuń punkt`, flip/rotate, align i linie podziału są poza bieżącym zakresem | Użytkownik zlecił usunięcie ich z aktualnego UI i roadmapy, więc agent nie powinien planować nad nimi prac |
 
 ## Next Steps
-1. Wdrożyć ręczne korekty arkuszy i rozróżnienie `auto_sheet_placements` / `manual_sheet_placements` w workflow użytkownika.
-2. Dodać dirty-state dla sytuacji, gdy geometria lub materiał unieważnia wcześniejsze ręczne korekty.
-3. Rozszerzyć UI o lepszą synchronizację zakładek połaci z `ProjectState` zamiast trzymać statyczny układ dwóch kart.
-4. Domknąć tylko te akcje toolbar/menu, które mają realne odpowiedniki domenowe i nie wracają do usuniętego zakresu.
+1. Rozszerzyć UI o lepszą synchronizację zakładek połaci z `ProjectState` zamiast trzymać statyczny układ dwóch kart.
+2. Dodać bardziej jawny workflow użytkownika dla ponownego przeliczenia po `layout_dirty_reason`, w tym czytelniejsze mapowanie kodów dirty-state na komunikaty.
+3. Domknąć tylko te akcje toolbar/menu, które mają realne odpowiedniki domenowe i nie wracają do usuniętego zakresu.
+4. Rozszerzyć testy UI o kontrakt menu `Arkusze` i stanu raportu po ręcznych korektach.
 
 ## Errors Encountered
 | Error | Attempt | Resolution |

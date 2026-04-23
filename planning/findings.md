@@ -25,6 +25,10 @@
 - `core/reporting.py` agreguje już BOM według długości arkusza, liczy koszt, odpady i scala ostrzeżenia z layoutu oraz odrzuconych segmentów.
 - `mainwindow.py` podłącza już akcje `Drukuj raport`, `Drukuj raport ciągły` i `Drukuj raport skrócony` do rzeczywistego przeliczenia layoutu oraz renderu HTML raportu.
 - Druga zakładka przestała pełnić funkcję pustego drugiego canvasa i służy teraz jako wbudowany podgląd raportu HTML dla aktywnej połaci.
+- `ProjectState` obsługuje już ręczne korekty arkuszy przez `manual_sheet_placements`, `manually_removed_auto_sheet_ids` i scalony widok `active_sheet_placements_for_plane()`.
+- Zmiana geometrii lub materiału oznacza połać przez `layout_dirty_reason`, czyści wynik auto-layoutu i zostawia ręczne arkusze do jawnego ponownego przeliczenia.
+- Menu `Arkusze` ma już działający prosty workflow przez `QInputDialog`: dodanie ręcznego arkusza, usunięcie aktywnego arkusza, podgląd arkuszy, podsumowanie aktywnych arkuszy i zmianę materiału dla aktywnej połaci.
+- `core/reporting.py` liczy raport na podstawie aktywnych arkuszy (`auto` po odjęciu ręcznie ukrytych + `manual`), dzięki czemu BOM i koszt odzwierciedlają korekty użytkownika.
 
 ## Technical Decisions
 | Decision | Rationale |
@@ -49,6 +53,8 @@
 | Usunięte akcje edycji outline i linii podziału nie wracają do planu bez nowej decyzji użytkownika | To chroni repo przed przypadkowym wznowieniem odłożonego zakresu |
 | Podgląd raportu jest osadzony w drugiej zakładce jako `QTextBrowser` zamiast budować osobne okno drukowania | To najprostszy bezpieczny sposób pokazania BOM, kosztów i ostrzeżeń w istniejącym shellu Qt |
 | Zmiana geometrii, materiału lub danych firmy czyści ostatni wygenerowany raport | Chroni UI przed pokazywaniem nieaktualnego BOM lub ostrzeżeń |
+| Ręczne usunięcie auto-arkusza jest przechowywane jako delta po `id`, a ręczny arkusz jako osobny `SheetPlacement` ze źródłem `manual` | To pozwala raportować i przeliczać aktywny zestaw arkuszy bez mieszania danych wejściowych i korekt użytkownika |
+| Po zmianie geometrii lub materiału system oznacza layout jako nieaktualny zamiast po cichu wyliczać nowy wynik | To zachowuje kontrolę użytkownika nad momentem ponownego przeliczenia i chroni ręczne korekty |
 
 ## Issues Encountered
 | Issue | Resolution |

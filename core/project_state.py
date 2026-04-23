@@ -53,7 +53,9 @@ class ProjectState:
                     manual_sheet_placements=[
                         SheetPlacement.from_dict(item) for item in plane_payload.get("manual_sheet_placements", [])
                     ],
+                    manually_removed_auto_sheet_ids=list(plane_payload.get("manually_removed_auto_sheet_ids", [])),
                     layout_revision=int(plane_payload.get("layout_revision", 0)),
+                    layout_dirty_reason=plane_payload.get("layout_dirty_reason"),
                 )
             )
 
@@ -111,7 +113,11 @@ class ProjectState:
         if plane is None:
             return False
 
+        if plane.selected_material_id == material_id:
+            return True
+
         plane.selected_material_id = material_id
+        self._mark_layout_inputs_changed(plane, "material_changed")
         return True
 
     def add_roof_plane(
@@ -195,9 +201,7 @@ class ProjectState:
             raise ValueError("; ".join(issues))
 
         plane.holes.append(hole)
-        plane.layout_revision += 1
-        plane.auto_sheet_placements.clear()
-        plane.generation_settings.base_line_y_cm = self.resolve_base_line_y_cm(plane)
+        self._mark_layout_inputs_changed(plane, "geometry_changed")
         return plane
 
     def delete_hole_from_plane(self, hole_index: int, plane_id: str | None = None) -> RoofPlane:
@@ -225,10 +229,71 @@ class ProjectState:
             raise ValueError("; ".join(issues))
 
         plane.holes[hole_index] = moved_hole
-        plane.layout_revision += 1
-        plane.auto_sheet_placements.clear()
-        plane.generation_settings.base_line_y_cm = self.resolve_base_line_y_cm(plane)
+        self._mark_layout_inputs_changed(plane, "geometry_changed")
         return plane
+
+    def active_sheet_placements_for_plane(self, plane_id: str | None = None) -> list[SheetPlacement]:
+        plane = self.roof_plane_by_id(plane_id or self.active_plane_id)
+        if plane is None:
+            return []
+
+        removed_ids = set(plane.manually_removed_auto_sheet_ids)
+        placements = [placement for placement in plane.auto_sheet_placements if placement.id not in removed_ids]
+        placements.extend(plane.manual_sheet_placements)
+        return sorted(placements, key=lambda placement: (placement.band_index, placement.x_left_cm, placement.y_top_cm, placement.id))
+
+    def add_manual_sheet_placement(self, placement: SheetPlacement, plane_id: str | None = None) -> SheetPlacement:
+        plane = self.roof_plane_by_id(plane_id or self.active_plane_id)
+        if plane is None:
+            raise ValueError("Nie znaleziono aktywnej połaci")
+
+        if placement.width_cm <= 0:
+            raise ValueError("Szerokość arkusza musi być dodatnia")
+        if placement.raw_length_cm <= 0 or placement.final_length_cm <= 0:
+            raise ValueError("Długość arkusza musi być dodatnia")
+
+        manual_placement = SheetPlacement(
+            id=placement.id,
+            band_index=placement.band_index,
+            x_left_cm=placement.x_left_cm,
+            x_right_cm=placement.x_right_cm,
+            y_top_cm=placement.y_top_cm,
+            y_bottom_cm=placement.y_bottom_cm,
+            raw_length_cm=placement.raw_length_cm,
+            final_length_cm=placement.final_length_cm,
+            source="manual",
+            split_reason=placement.split_reason,
+        )
+        duplicate_ids = {item.id for item in plane.auto_sheet_placements}
+        duplicate_ids.update(item.id for item in plane.manual_sheet_placements)
+        if manual_placement.id in duplicate_ids:
+            raise ValueError("Arkusz o podanym identyfikatorze już istnieje")
+
+        plane.manual_sheet_placements.append(manual_placement)
+        plane.layout_revision += 1
+        plane.layout_dirty_reason = "manual_override"
+        return manual_placement
+
+    def remove_sheet_placement(self, sheet_id: str, plane_id: str | None = None) -> None:
+        plane = self.roof_plane_by_id(plane_id or self.active_plane_id)
+        if plane is None:
+            raise ValueError("Nie znaleziono aktywnej połaci")
+
+        manual_index = next((index for index, placement in enumerate(plane.manual_sheet_placements) if placement.id == sheet_id), None)
+        if manual_index is not None:
+            del plane.manual_sheet_placements[manual_index]
+            plane.layout_revision += 1
+            plane.layout_dirty_reason = "manual_override"
+            return
+
+        if any(placement.id == sheet_id for placement in plane.auto_sheet_placements):
+            if sheet_id not in plane.manually_removed_auto_sheet_ids:
+                plane.manually_removed_auto_sheet_ids.append(sheet_id)
+                plane.layout_revision += 1
+                plane.layout_dirty_reason = "manual_override"
+            return
+
+        raise ValueError("Nie znaleziono arkusza o podanym identyfikatorze")
 
     def resolve_base_line_y_cm(self, plane: RoofPlane) -> float:
         return plane.outline.bounds().max_y
@@ -246,6 +311,7 @@ class ProjectState:
         result = generate_layout(plane, material)
         plane.auto_sheet_placements = list(result.placements)
         plane.layout_revision += 1
+        plane.layout_dirty_reason = None
         return result
 
     def generate_layout_for_active_plane(self) -> LayoutResult:
@@ -262,7 +328,7 @@ class ProjectState:
     def _set_plane_outline(self, plane: RoofPlane, outline: Polygon2D) -> None:
         self._validate_plane_geometry(outline, plane.holes)
         plane.outline = outline
-        self._mark_plane_geometry_changed(plane)
+        self._mark_layout_inputs_changed(plane, "geometry_changed")
 
     def _validate_plane_geometry(self, outline: Polygon2D, holes: list[Polygon2D]) -> None:
         issues = validate_polygon(outline)
@@ -276,9 +342,14 @@ class ProjectState:
                 raise ValueError("; ".join(hole_issues))
 
     def _mark_plane_geometry_changed(self, plane: RoofPlane) -> None:
+        self._mark_layout_inputs_changed(plane, "geometry_changed")
+
+    def _mark_layout_inputs_changed(self, plane: RoofPlane, reason: str) -> None:
         plane.layout_revision += 1
         plane.auto_sheet_placements.clear()
+        plane.manually_removed_auto_sheet_ids.clear()
         plane.generation_settings.base_line_y_cm = self.resolve_base_line_y_cm(plane)
+        plane.layout_dirty_reason = reason
 
     def apply_to_config(self, config_data: dict) -> dict:
         config_data.update(self.to_config_fragment())
@@ -297,7 +368,9 @@ class ProjectState:
                         "generation_settings": plane.generation_settings.to_dict(),
                         "auto_sheet_placements": [placement.to_dict() for placement in plane.auto_sheet_placements],
                         "manual_sheet_placements": [placement.to_dict() for placement in plane.manual_sheet_placements],
+                        "manually_removed_auto_sheet_ids": list(plane.manually_removed_auto_sheet_ids),
                         "layout_revision": plane.layout_revision,
+                        "layout_dirty_reason": plane.layout_dirty_reason,
                         "outline": [{"x": point.x, "y": point.y} for point in plane.outline.points],
                         "holes": [
                             [{"x": point.x, "y": point.y} for point in hole.points]
