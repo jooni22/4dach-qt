@@ -29,16 +29,16 @@ Phase 4
 
 ### Phase 4: Layout And Reports
 - [x] Dokończyć layout engine dla aktywnej połaci i aktywnego materiału
-- [ ] Dodać raportowanie BOM, kosztów i ostrzeżeń
-- [ ] Przygotować HTML report generator
+- [x] Dodać raportowanie BOM, kosztów i ostrzeżeń
+- [x] Przygotować HTML report generator
 - [ ] Obsłużyć ręczne korekty arkuszy i dirty-state
 - **Status:** in_progress
 
 ### Phase 5: UI Integration
 - [ ] Podłączyć wspierane akcje menu i toolbar do domeny
 - [ ] Ujednolicić zakładki z połaciami i canvasy z modelem projektu
-- [ ] Pokazać stany layoutu, BOM i ostrzeżenia w UI
-- **Status:** pending
+- [x] Pokazać stany layoutu, BOM i ostrzeżenia w UI
+- **Status:** in_progress
 
 ### Phase 6: Testing And Verification
 - [ ] Rozszerzyć testy modeli, geometrii, layoutu i raportów
@@ -72,10 +72,10 @@ Phase 4
 | Akcje menu `Przesuń`, `Przesuń punkt`, `Dodaj punkt`, `Usuń punkt`, flip/rotate, align i linie podziału są poza bieżącym zakresem | Użytkownik zlecił usunięcie ich z aktualnego UI i roadmapy, więc agent nie powinien planować nad nimi prac |
 
 ## Next Steps
-1. Domknąć `core/reporting.py`: BOM według długości arkusza, koszt całkowity, odpady i ostrzeżenia.
-2. Dodać testy domenowe raportowania w osobnym pliku testowym.
-3. Przygotować prosty generator HTML raportu na bazie wyniku raportowania.
-4. Dopiero po raporcie wrócić do ręcznych korekt arkuszy i dirty-state.
+1. Wdrożyć ręczne korekty arkuszy i rozróżnienie `auto_sheet_placements` / `manual_sheet_placements` w workflow użytkownika.
+2. Dodać dirty-state dla sytuacji, gdy geometria lub materiał unieważnia wcześniejsze ręczne korekty.
+3. Rozszerzyć UI o lepszą synchronizację zakładek połaci z `ProjectState` zamiast trzymać statyczny układ dwóch kart.
+4. Domknąć tylko te akcje toolbar/menu, które mają realne odpowiedniki domenowe i nie wracają do usuniętego zakresu.
 
 ## Errors Encountered
 | Error | Attempt | Resolution |

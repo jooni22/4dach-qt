@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QSizePolicy,
     QTabWidget,
+    QTextBrowser,
     QToolBar,
     QToolButton,
     QVBoxLayout,
@@ -39,6 +40,7 @@ from dialogs import (
 from core.geometry import build_rectangle_outline, build_trapezoid_outline, build_triangle_outline
 from core.models import Point2D, Polygon2D
 from core.project_state import ProjectState
+from core.reporting import build_report, build_report_html
 
 
 class DrawingCanvas(QWidget):
@@ -147,7 +149,11 @@ class DrawingCanvas(QWidget):
             painter.drawEllipse(int(point.x()) - 3, int(point.y()) - 3, 6, 6)
 
     def _draw_roof_plane(self, painter: QPainter):
-        bounds = self.roof_plane.outline.bounds()
+        plane = self.roof_plane
+        if plane is None:
+            return
+
+        bounds = plane.outline.bounds()
         available = self.rect().adjusted(40, 30, -40, -30)
         width = max(bounds.width, 1.0)
         height = max(bounds.height, 1.0)
@@ -163,7 +169,7 @@ class DrawingCanvas(QWidget):
                 offset_y + (point.y - bounds.min_y) * scale,
             )
 
-        outline_polygon = QPolygonF([map_point(point) for point in self.roof_plane.outline.points])
+        outline_polygon = QPolygonF([map_point(point) for point in plane.outline.points])
         fill_color = self.palette().color(QPalette.ColorRole.AlternateBase)
         outline_color = self.palette().color(QPalette.ColorRole.Highlight)
         text_color = self.palette().color(QPalette.ColorRole.Text)
@@ -176,13 +182,13 @@ class DrawingCanvas(QWidget):
 
         painter.setPen(QPen(hole_color, 1.5, Qt.PenStyle.DashLine))
         painter.setBrush(Qt.BrushStyle.NoBrush)
-        for hole in self.roof_plane.holes:
+        for hole in plane.holes:
             painter.drawPolygon(QPolygonF([map_point(point) for point in hole.points]))
 
         painter.setPen(text_color)
-        label = f"Połać {self.roof_plane.name}"
-        if self.roof_plane.selected_material_id:
-            label += f" | Blacha: {self.roof_plane.selected_material_id}"
+        label = f"Połać {plane.name}"
+        if plane.selected_material_id:
+            label += f" | Blacha: {plane.selected_material_id}"
         painter.drawText(available.left(), available.top() - 8, label)
 
 
@@ -195,6 +201,9 @@ class MainWindow(QMainWindow):
         self._theme = "light"
         self._config = load_config()
         self.project_state = ProjectState.from_config(self._config)
+        self._latest_layout_result = None
+        self._latest_report = None
+        self._latest_report_html = ""
         self.ui.setupUi(self)
         self.setWindowTitle("4Dach wersja 1.0 Super Dach sp.j. instalacja 3, plik: testmarcin (zmieniony)")
         self.resize(1120, 720)
@@ -237,9 +246,9 @@ class MainWindow(QMainWindow):
                     ("Zapisz", "Ctrl+S", None),
                     ("Zapisz jako...", "Shift+Ctrl+S", None),
                     None,
-                    ("Drukuj raport", "Ctrl+P", None),
-                    ("Drukuj raport ciągły", "Shift+Ctrl+P", None),
-                    ("Drukuj raport skrócony", None, None),
+                    ("Drukuj raport", "Ctrl+P", self._open_standard_report_preview),
+                    ("Drukuj raport ciągły", "Shift+Ctrl+P", self._open_continuous_report_preview),
+                    ("Drukuj raport skrócony", None, self._open_short_report_preview),
                     None,
                     ("Zakończ", "Ctrl+Q", None),
                 ],
@@ -379,8 +388,9 @@ class MainWindow(QMainWindow):
         self.variant_combo = variant_combo
         self._refresh_material_combo()
         try:
-            if variant_combo.lineEdit():
-                variant_combo.lineEdit().setReadOnly(True)
+            line_edit = variant_combo.lineEdit()
+            if line_edit is not None:
+                line_edit.setReadOnly(True)
         except AttributeError:
             pass
         variant_combo.setToolTip("Wybór aktywnej blachy")
@@ -414,6 +424,7 @@ class MainWindow(QMainWindow):
 
         self.primary_canvas = DrawingCanvas(self.workspace_tabs, show_demo=True)
         self.secondary_canvas = DrawingCanvas(self.workspace_tabs, show_demo=False)
+        self.secondary_canvas.hide()
 
         first_tab = QWidget(self.workspace_tabs)
         first_layout = QVBoxLayout(first_tab)
@@ -423,12 +434,16 @@ class MainWindow(QMainWindow):
         second_tab = QWidget(self.workspace_tabs)
         second_layout = QVBoxLayout(second_tab)
         second_layout.setContentsMargins(0, 0, 0, 0)
-        second_layout.addWidget(self.secondary_canvas)
+        self.report_view = QTextBrowser(second_tab)
+        self.report_view.setObjectName("report_view")
+        self.report_view.setOpenExternalLinks(False)
+        second_layout.addWidget(self.report_view)
 
         self.workspace_tabs.addTab(first_tab, "1")
-        self.workspace_tabs.addTab(second_tab, "2")
+        self.workspace_tabs.addTab(second_tab, "Raport")
         layout.addWidget(self.workspace_tabs)
         self.setCentralWidget(central)
+        self._refresh_report_view()
 
     def _toggle_theme(self):
         self._theme = "dark" if self._theme == "light" else "light"
@@ -541,6 +556,7 @@ class MainWindow(QMainWindow):
 
     def _reload_project_state(self):
         self.project_state = ProjectState.from_config(self._config)
+        self._clear_generated_report()
         if hasattr(self, "variant_combo"):
             self._refresh_material_combo()
         self._refresh_canvas_from_state()
@@ -564,7 +580,9 @@ class MainWindow(QMainWindow):
             self.workspace_tabs.setTabText(0, active_plane.name)
         else:
             self.workspace_tabs.setTabText(0, "1")
-        self.workspace_tabs.setTabText(1, "2")
+        self.workspace_tabs.setTabText(1, "Raport")
+        if not self._latest_report_html:
+            self._refresh_report_view()
 
     def _persist_project_state(self):
         self.project_state.apply_to_config(self._config)
@@ -578,6 +596,7 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(str(error), 4000)
             return False
 
+        self._clear_generated_report()
         self._persist_project_state()
         self._refresh_canvas_from_state()
         self.statusBar().showMessage(success_message, 4000)
@@ -600,15 +619,108 @@ class MainWindow(QMainWindow):
 
     def _on_material_changed(self, text: str):
         if self.project_state.set_active_material_for_plane(text):
+            self._clear_generated_report()
             self._persist_project_state()
             self._refresh_canvas_from_state()
         self.statusBar().showMessage(f"Aktywna blacha: {text}", 2500)
 
     def _add_roof_plane(self, outline, shape_name: str, detail: str):
         plane = self.project_state.add_roof_plane(outline, selected_material_id=self.variant_combo.currentText() or None)
+        self._clear_generated_report()
         self._persist_project_state()
         self._refresh_canvas_from_state()
         self.statusBar().showMessage(f"{shape_name}: dodano połać {plane.name} ({detail})", 4000)
+
+    def _clear_generated_report(self):
+        self._latest_layout_result = None
+        self._latest_report = None
+        self._latest_report_html = ""
+        if hasattr(self, "report_view"):
+            self._refresh_report_view()
+
+    def _refresh_report_view(self, html: str | None = None):
+        active_plane = self.project_state.active_roof_plane()
+        content = html or ""
+        if not content:
+            if active_plane is None:
+                content = (
+                    "<html><body>"
+                    "<h1>Raport 4Dach</h1>"
+                    "<p>Dodaj połać, aby wygenerować pierwszy raport.</p>"
+                    "</body></html>"
+                )
+            else:
+                content = (
+                    "<html><body>"
+                    f"<h1>Raport 4Dach - {active_plane.name}</h1>"
+                    "<p>Raport nie został jeszcze wygenerowany dla aktywnej połaci.</p>"
+                    "<p>Użyj akcji <strong>Plik -> Drukuj raport</strong>, aby przeliczyć layout, BOM i ostrzeżenia.</p>"
+                    "</body></html>"
+                )
+        self.report_view.setHtml(content)
+
+    def _build_report_html_for_variant(self, variant: str, material_id: str, plane_id: str, report):
+        if variant == "continuous":
+            return build_report_html(
+                self.project_state,
+                report,
+                material_id,
+                plane_id,
+                title_suffix="ciągły",
+            )
+        if variant == "short":
+            return build_report_html(
+                self.project_state,
+                report,
+                material_id,
+                plane_id,
+                include_bom=False,
+                title_suffix="skrócony",
+            )
+        return build_report_html(self.project_state, report, material_id, plane_id)
+
+    def _generate_report_preview(self, variant: str):
+        plane = self._active_plane_or_warn()
+        if plane is None:
+            return False
+
+        material_id = plane.selected_material_id or self.project_state.active_material_id()
+        material = self.project_state.material_by_id(material_id)
+        if material is None or material_id is None:
+            message = "Brak aktywnego materiału dla połaci"
+            QMessageBox.warning(self, "Brak materiału", message)
+            self.statusBar().showMessage(message, 4000)
+            return False
+
+        try:
+            layout_result = self.project_state.generate_layout_for_plane(plane.id)
+            report = build_report(self.project_state, layout_result, material_id, plane.id)
+            html = self._build_report_html_for_variant(variant, material_id, plane.id, report)
+        except ValueError as error:
+            QMessageBox.warning(self, "Błąd raportu", str(error))
+            self.statusBar().showMessage(str(error), 4000)
+            return False
+
+        self._latest_layout_result = layout_result
+        self._latest_report = report
+        self._latest_report_html = html
+        self._persist_project_state()
+        self._refresh_canvas_from_state()
+        self._refresh_report_view(html)
+        self.workspace_tabs.setCurrentIndex(1)
+        return True
+
+    def _open_standard_report_preview(self):
+        if self._generate_report_preview("standard"):
+            self.statusBar().showMessage("Wygenerowano raport dla aktywnej połaci", 4000)
+
+    def _open_continuous_report_preview(self):
+        if self._generate_report_preview("continuous"):
+            self.statusBar().showMessage("Wygenerowano raport ciągły dla aktywnej połaci", 4000)
+
+    def _open_short_report_preview(self):
+        if self._generate_report_preview("short"):
+            self.statusBar().showMessage("Wygenerowano raport skrócony dla aktywnej połaci", 4000)
 
     def _open_prostokat_dialog(self):
         dialog = ProstokatDialog(self._config, self)
@@ -719,6 +831,7 @@ class MainWindow(QMainWindow):
             values = dialog.get_values()
             self._config["company_data"] = values
             self.project_state.company_data = self.project_state.company_data.from_dict(values)
+            self._clear_generated_report()
             self._persist_project_state()
             self._reload_project_state()
             self.statusBar().showMessage(f"Dane firmy zapisane: {values['name']}", 3000)
@@ -728,6 +841,7 @@ class MainWindow(QMainWindow):
         if dialog.exec() == QDialog.DialogCode.Accepted:
             values = dialog.get_values()
             self._config["blachy"] = values
+            self._clear_generated_report()
             self._persist_project_state()
             save_config(self._config)
             self._reload_project_state()

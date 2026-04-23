@@ -23,6 +23,8 @@
 - Reguła `base_line_y_cm` została dopięta do aktualnej geometrii obrysu, więc po zmianach outline bazuje na bieżącym `max_y` połaci.
 - Na żądanie użytkownika usunięto z bieżącego zakresu UI i roadmapy akcje edycji outline połaci, flip/rotate, align oraz linie podziału, więc kolejny agent nie powinien planować prac nad nimi.
 - `core/reporting.py` agreguje już BOM według długości arkusza, liczy koszt, odpady i scala ostrzeżenia z layoutu oraz odrzuconych segmentów.
+- `mainwindow.py` podłącza już akcje `Drukuj raport`, `Drukuj raport ciągły` i `Drukuj raport skrócony` do rzeczywistego przeliczenia layoutu oraz renderu HTML raportu.
+- Druga zakładka przestała pełnić funkcję pustego drugiego canvasa i służy teraz jako wbudowany podgląd raportu HTML dla aktywnej połaci.
 
 ## Technical Decisions
 | Decision | Rationale |
@@ -45,6 +47,8 @@
 | Raport HTML może być na początku prosty, ale musi zawierać dane firmy, materiał, BOM i ostrzeżenia | To wystarczy jako pierwsza użyteczna wersja bez nadmiarowej złożoności |
 | Rdzeń i planowanie trzymamy w osobnych katalogach | To porządkuje repo bez naruszania klasycznej architektury UI |
 | Usunięte akcje edycji outline i linii podziału nie wracają do planu bez nowej decyzji użytkownika | To chroni repo przed przypadkowym wznowieniem odłożonego zakresu |
+| Podgląd raportu jest osadzony w drugiej zakładce jako `QTextBrowser` zamiast budować osobne okno drukowania | To najprostszy bezpieczny sposób pokazania BOM, kosztów i ostrzeżeń w istniejącym shellu Qt |
+| Zmiana geometrii, materiału lub danych firmy czyści ostatni wygenerowany raport | Chroni UI przed pokazywaniem nieaktualnego BOM lub ostrzeżeń |
 
 ## Issues Encountered
 | Issue | Resolution |
@@ -72,6 +76,6 @@
 
 ## Visual/Browser Findings
 - Menu i toolbar są budowane w `mainwindow.py`, a nie w `form.ui`.
-- Główne okno posiada `QTabWidget` z dwoma zakładkami i dwoma instancjami `DrawingCanvas`.
+- Główne okno posiada `QTabWidget` z zakładką canvasa i zakładką raportu; pomocnicza instancja `DrawingCanvas` nadal istnieje, ale nie jest eksponowana jako aktywny panel UI.
 - Status bar już pełni funkcję lekkiego feedbacku dla akcji użytkownika.
 - Obecny stan repo nadaje się do przejęcia przez kolejnego agenta implementacyjnego bez dodatkowego researchu.

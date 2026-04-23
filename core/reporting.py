@@ -95,10 +95,15 @@ def build_report_html(
     report: LayoutReport,
     material_id: str,
     plane_id: str | None = None,
+    *,
+    include_bom: bool = True,
+    title_suffix: str | None = None,
 ) -> str:
     plane = project_state.roof_plane_by_id(plane_id) if plane_id else project_state.active_roof_plane()
     material = project_state.material_by_id(material_id)
     title = f"Raport 4Dach - {plane.name}" if plane is not None else "Raport 4Dach"
+    if title_suffix:
+        title = f"{title} ({title_suffix})"
     company_lines = [line.strip() for line in project_state.company_data.address.splitlines() if line.strip()]
     company_html = "<br>".join(escape(line) for line in company_lines) or "-"
     warnings_html = "".join(f"<li>{escape(warning)}</li>" for warning in report.warnings) or "<li>Brak ostrzeżeń</li>"
@@ -113,6 +118,19 @@ def build_report_html(
         )
         for row in report.bom_rows
     ) or '<tr><td colspan="4">Brak arkuszy</td></tr>'
+    bom_section_html = ""
+    if include_bom:
+        bom_section_html = "".join(
+            [
+                "<section>",
+                "<h2>BOM</h2>",
+                "<table>",
+                "<thead><tr><th>Materiał</th><th>Długość arkusza [cm]</th><th>Ilość</th><th>Powierzchnia [m2]</th></tr></thead>",
+                f"<tbody>{bom_rows_html}</tbody>",
+                "</table>",
+                "</section>",
+            ]
+        )
 
     return "".join(
         [
@@ -142,13 +160,7 @@ def build_report_html(
             f"<tr><th>Koszt całkowity [zł]</th><td>{report.total_cost:.2f}</td></tr>",
             "</table>",
             "</section>",
-            "<section>",
-            "<h2>BOM</h2>",
-            "<table>",
-            "<thead><tr><th>Materiał</th><th>Długość arkusza [cm]</th><th>Ilość</th><th>Powierzchnia [m2]</th></tr></thead>",
-            f"<tbody>{bom_rows_html}</tbody>",
-            "</table>",
-            "</section>",
+            bom_section_html,
             "<section>",
             "<h2>Ostrzeżenia</h2>",
             f"<ul>{warnings_html}</ul>",

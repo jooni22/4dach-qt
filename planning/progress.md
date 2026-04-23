@@ -2,6 +2,21 @@
 
 ## Session: 2026-04-23
 
+### Phase 9: Report UI Integration
+- **Status:** complete
+- Actions taken:
+  - Podłączono akcje menu `Drukuj raport`, `Drukuj raport ciągły` i `Drukuj raport skrócony` do rzeczywistego workflow domenowego: generacja layoutu, budowa raportu i render HTML.
+  - Zmieniono drugą zakładkę `QTabWidget` na wbudowany podgląd raportu oparty o `QTextBrowser`, dzięki czemu UI pokazuje BOM, koszt, odpady i ostrzeżenia bez otwierania osobnego okna.
+  - Dodano czyszczenie ostatniego raportu po zmianie geometrii, materiału lub danych firmy, aby nie pokazywać nieaktualnych wyników.
+  - Rozszerzono `core/reporting.py` o warianty HTML (`include_bom`, `title_suffix`) używane przez UI.
+  - Zsynchronizowano `planning/task_plan.md` i `planning/findings.md` z nowym stanem implementacji.
+- Files created/modified:
+  - `mainwindow.py`
+  - `core/reporting.py`
+  - `planning/task_plan.md`
+  - `planning/findings.md`
+  - `planning/progress.md`
+
 ### Phase 1: Requirements & Discovery
 - **Status:** complete
 - **Started:** 2026-04-23 16:00
@@ -133,6 +148,7 @@
 | Geometria edycji outline + ProjectState | `pytest -q tests/test_geometry.py tests/test_models_and_state.py` | Operacje przesuwania/wstawiania/usuwania punktów są walidowane i przechodzą | 18 testów przeszło | pass |
 | Pełny zestaw po spięciu menu z domeną | `pytest -q` | Integracja `mainwindow.py` nie psuje istniejących testów | 18 testów przeszło, 1 skip (`pytestqt`) | pass |
 | Raportowanie domenowe + HTML report | `pytest -q tests/test_reporting.py tests/test_models_and_state.py` | BOM, koszt, odpady, ostrzeżenia i HTML raportu przechodzą | 17 testów przeszło | pass |
+| Raport UI + regresja domeny | `pytest -q tests/test_reporting.py tests/test_models_and_state.py tests/test_geometry.py tests/test_mainwindow_ui_contract.py` | Integracja podglądu raportu nie psuje domeny ani kontraktu UI | 21 testów przeszło, 1 skip (`pytestqt`) | pass |
 
 ## Error Log
 | Timestamp | Error | Attempt | Resolution |
@@ -145,12 +161,13 @@
 | 2026-04-23 18:20 | Pierwszy test edycji outline wstawiał punkt powodujący samoprzecięcie | 1 | Poprawiono dane testowe, aby scenariusz sprawdzał poprawną geometrię |
 | 2026-04-23 18:23 | `base_line_y_cm` nie odświeżało się po zmianie outline zgodnie z nową regułą domenową | 1 | Uproszczono `resolve_base_line_y_cm()` do bieżącego `outline.max_y` |
 | 2026-04-23 18:47 | Pierwsza wersja testów raportowania miała błędne expectedy względem rzeczywistej geometrii pasów | 1 | Zweryfikowano wyniki `generate_layout()` i skorygowano oczekiwania testowe |
+| 2026-04-23 19:30 | UI miało akcje `Drukuj raport*`, ale bez realnego podłączenia do domeny i bez miejsca na pokazanie wyników | 1 | Podłączono akcje do generacji raportu i zamieniono drugą zakładkę na podgląd HTML raportu |
 
 ## 5-Question Reboot Check
 | Question | Answer |
 |----------|--------|
 | Where am I? | Po iteracji edycji outline i pierwszym spięciu menu `Kształt` / `Wycinki` z domeną |
-| Where am I going? | Do kolejnej iteracji: ręczne korekty arkuszy, dirty-state i integracja raportów z UI |
+| Where am I going? | Do kolejnej iteracji: ręczne korekty arkuszy, dirty-state i pełniejsza synchronizacja zakładek połaci z modelem projektu |
 | What's the goal? | Rozwijać realne workflow domenowe małymi krokami bez przebudowy UI |
-| What have I learned? | Najbezpieczniej rozwijać repo przez stabilne kontrakty domenowe i dopiero potem doszywać UI oraz HTML raporty |
-| What have I done? | Usunięto odłożony zakres z menu i planu, wdrożono raportowanie domenowe oraz prosty generator HTML raportu |
+| What have I learned? | Najbezpieczniej rozwijać repo przez stabilne kontrakty domenowe i dopiero potem doszywać UI; osadzony preview raportu dobrze mieści się w istniejącym shellu Qt |
+| What have I done? | Usunięto odłożony zakres z menu i planu, wdrożono raportowanie domenowe, generator HTML raportu i podgląd raportu bezpośrednio w UI |
