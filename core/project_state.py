@@ -53,6 +53,7 @@ class ProjectState:
                     auto_sheet_placements=[
                         SheetPlacement.from_dict(item) for item in plane_payload.get("auto_sheet_placements", [])
                     ],
+                    layout_bands=list(plane_payload.get("layout_bands", [])),
                     manual_sheet_placements=[
                         SheetPlacement.from_dict(item) for item in plane_payload.get("manual_sheet_placements", [])
                     ],
@@ -441,6 +442,7 @@ class ProjectState:
         plane.generation_settings.base_line_y_cm = self.resolve_base_line_y_cm(plane)
         result = generate_layout(plane, material)
         plane.auto_sheet_placements = list(result.placements)
+        plane.layout_bands = [band.to_dict() for band in result.bands]
         plane.layout_revision += 1
         plane.layout_dirty_reason = None
         return result
@@ -489,6 +491,7 @@ class ProjectState:
     def _mark_layout_inputs_changed(self, plane: RoofPlane, reason: str) -> None:
         plane.layout_revision += 1
         plane.auto_sheet_placements.clear()
+        plane.layout_bands.clear()
         plane.manually_removed_auto_sheet_ids.clear()
         plane.generation_settings.base_line_y_cm = self.resolve_base_line_y_cm(plane)
         plane.layout_dirty_reason = reason
@@ -516,6 +519,7 @@ class ProjectState:
                         "selected_material_id": plane.selected_material_id,
                         "generation_settings": plane.generation_settings.to_dict(),
                         "auto_sheet_placements": [placement.to_dict() for placement in plane.auto_sheet_placements],
+                        "layout_bands": list(plane.layout_bands),
                         "manual_sheet_placements": [placement.to_dict() for placement in plane.manual_sheet_placements],
                         "manually_removed_auto_sheet_ids": list(plane.manually_removed_auto_sheet_ids),
                         "layout_revision": plane.layout_revision,

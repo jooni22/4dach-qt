@@ -167,7 +167,7 @@ class MaterialDefinition:
             display_name=data.get("display_name") or data.get("nazwa") or data.get("id") or "material",
             type=data.get("type", "dachówkowa"),
             effective_width_cm=float(data.get("effective_width_cm", data.get("szerokosc_efektywna", 0))),
-            min_sheet_length_cm=float(data.get("min_dlugosc_arkusza", 0)),
+            min_sheet_length_cm=float(data.get("min_sheet_length_cm", data.get("min_dlugosc_arkusza", 0))),
             max_sheet_length_cm=float(data.get("max_sheet_length_cm", data.get("max_dlugosc_arkusza", 900))),
             top_margin_cm=float(data.get("top_allowance_cm", data.get("zapas_gorny", 0))),
             bottom_margin_cm=float(data.get("bottom_allowance_cm", data.get("zapas_dolny", 0))),
@@ -203,6 +203,7 @@ class MaterialDefinition:
             "bottom_allowance_cm": self.bottom_margin_cm,
             "zapas_dolny": self.bottom_margin_cm,
             "zapas_gorny": self.top_margin_cm,
+            "min_sheet_length_cm": self.min_sheet_length_cm,
             "min_dlugosc_arkusza": self.min_sheet_length_cm,
             "max_sheet_length_cm": self.max_sheet_length_cm,
             "max_dlugosc_arkusza": self.max_sheet_length_cm,
@@ -300,6 +301,7 @@ class RoofPlane:
     selected_material_id: str | None = None
     generation_settings: GenerationSettings = field(default_factory=GenerationSettings)
     auto_sheet_placements: list[SheetPlacement] = field(default_factory=list)
+    layout_bands: list[dict] = field(default_factory=list)
     manual_sheet_placements: list[SheetPlacement] = field(default_factory=list)
     manually_removed_auto_sheet_ids: list[str] = field(default_factory=list)
     layout_revision: int = 0
@@ -321,6 +323,7 @@ class RoofPlane:
             selected_material_id=self.selected_material_id,
             generation_settings=self.generation_settings,
             auto_sheet_placements=list(self.auto_sheet_placements),
+            layout_bands=[dict(band) for band in self.layout_bands],
             manual_sheet_placements=list(self.manual_sheet_placements),
             manually_removed_auto_sheet_ids=list(self.manually_removed_auto_sheet_ids),
             layout_revision=self.layout_revision + 1,

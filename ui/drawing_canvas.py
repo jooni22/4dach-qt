@@ -21,20 +21,36 @@ Polygon drawing (MODE_DRAW_OUTLINE / MODE_DRAW_CUTOUT)
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from math import hypot
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QKeyEvent, QMouseEvent, QPainter, QPalette, QPen, QPolygonF
+from PySide6.QtGui import QColor, QFontMetricsF, QKeyEvent, QMouseEvent, QPainter, QPainterPath, QPalette, QPen, QPolygonF
 from PySide6.QtWidgets import QWidget
 
 from core.canvas_mapper import CanvasMapper
 from core.geometry import point_in_polygon, polygon_edges, replace_polygon_point, segment_length, validate_hole_polygon, validate_polygon
-from core.models import Polygon2D
+from core.models import Point2D, Polygon2D
 
 SNAP_RADIUS = 10
 VERTEX_HANDLE_RADIUS = 6
 MIDPOINT_HANDLE_RADIUS = 4
 EDGE_LABEL_OFFSET_PX = 14.0
+LAYOUT_LABEL_PADDING_X = 6.0
+LAYOUT_LABEL_PADDING_Y = 3.0
+LAYOUT_LABEL_MIN_WIDTH = 36.0
+LAYOUT_LABEL_MIN_HEIGHT = 18.0
+
+
+@dataclass(slots=True)
+class _SheetRenderItem:
+    placement_id: str
+    source: str
+    band_index: int
+    polygons: list[Polygon2D]
+    raw_length_cm: float
+    final_length_cm: float
+    split_reason: str | None = None
 
 
 class DrawingCanvas(QWidget):
@@ -167,11 +183,83 @@ class DrawingCanvas(QWidget):
             return self._drag_mapper
         return CanvasMapper(outline.bounds(), QRectF(self.rect()))
 
+    def _visible_sheet_placements(self) -> list:
+        if self.roof_plane is None:
+            return []
+        removed_ids = set(self.roof_plane.manually_removed_auto_sheet_ids)
+        placements = [sheet for sheet in self.roof_plane.auto_sheet_placements if sheet.id not in removed_ids]
+        placements.extend(self.roof_plane.manual_sheet_placements)
+        return sorted(placements, key=lambda sheet: (sheet.source != "auto", sheet.band_index, sheet.y_top_cm, sheet.id))
+
+    def _sheet_render_items(self) -> list[_SheetRenderItem]:
+        if self.roof_plane is None:
+            return []
+
+        visible_placements = self._visible_sheet_placements()
+        placements_by_id = {placement.id: placement for placement in visible_placements}
+        render_items: list[_SheetRenderItem] = []
+        seen_ids: set[str] = set()
+
+        for band in self.roof_plane.layout_bands:
+            for segment in band.get("segments", []):
+                placement_id = segment.get("placement_id")
+                if not placement_id:
+                    continue
+                placement = placements_by_id.get(placement_id)
+                if placement is None:
+                    continue
+                coverage_polygons = [
+                    Polygon2D([Point2D(point["x"], point["y"]) for point in polygon])
+                    for polygon in segment.get("coverage_polygons", [])
+                    if len(polygon) >= 3
+                ]
+                if not coverage_polygons:
+                    coverage_polygons = [self._placement_polygon(placement)]
+                render_items.append(
+                    _SheetRenderItem(
+                        placement_id=placement.id,
+                        source=placement.source,
+                        band_index=placement.band_index,
+                        polygons=coverage_polygons,
+                        raw_length_cm=placement.raw_length_cm,
+                        final_length_cm=placement.final_length_cm,
+                        split_reason=placement.split_reason,
+                    )
+                )
+                seen_ids.add(placement.id)
+
+        for placement in visible_placements:
+            if placement.id in seen_ids:
+                continue
+            render_items.append(
+                _SheetRenderItem(
+                    placement_id=placement.id,
+                    source=placement.source,
+                    band_index=placement.band_index,
+                    polygons=[self._placement_polygon(placement)],
+                    raw_length_cm=placement.raw_length_cm,
+                    final_length_cm=placement.final_length_cm,
+                    split_reason=placement.split_reason,
+                )
+            )
+
+        return sorted(render_items, key=lambda item: (item.source != "auto", item.band_index, item.placement_id))
+
+    def _placement_polygon(self, placement) -> Polygon2D:
+        return Polygon2D(
+            [
+                Point2D(placement.x_left_cm, placement.y_top_cm),
+                Point2D(placement.x_right_cm, placement.y_top_cm),
+                Point2D(placement.x_right_cm, placement.y_bottom_cm),
+                Point2D(placement.x_left_cm, placement.y_bottom_cm),
+            ]
+        )
+
     def _hit_test_sheet(self, pos: QPointF) -> str | None:
         mapper = self._canvas_mapper()
         if mapper is None or self.roof_plane is None:
             return None
-        for sheet in self.roof_plane.manual_sheet_placements + self.roof_plane.auto_sheet_placements:
+        for sheet in self._visible_sheet_placements():
             rect = mapper.map_rect(sheet.x_left_cm, sheet.x_right_cm, sheet.y_top_cm, sheet.y_bottom_cm)
             if rect.contains(pos.x(), pos.y()):
                 return sheet.id
@@ -670,7 +758,8 @@ class DrawingCanvas(QWidget):
             painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, self._format_length(segment_length(start, end)))
 
     def _draw_sheet_placements(self, painter: QPainter, plane, mapper: CanvasMapper, text_color: QColor) -> None:
-        if not plane.auto_sheet_placements and not plane.manual_sheet_placements:
+        render_items = self._sheet_render_items()
+        if not render_items:
             return
 
         is_light = self.palette().color(QPalette.ColorRole.Base).lightness() > 128
@@ -678,45 +767,158 @@ class DrawingCanvas(QWidget):
         manual_color = QColor("#ff9d7a" if is_light else "#ff7a5c")
         auto_color.setAlpha(120)
         manual_color.setAlpha(140)
+        split_color = QColor("#d44848")
+        split_color.setAlpha(180)
+        module_length_cm = self._material.module_length_cm if self._material is not None else None
 
-        all_sheets = list(plane.auto_sheet_placements) + list(plane.manual_sheet_placements)
-        for sheet in all_sheets:
-            color = manual_color if sheet.source == "manual" else auto_color
-            rect = mapper.map_rect(sheet.x_left_cm, sheet.x_right_cm, sheet.y_top_cm, sheet.y_bottom_cm)
-            painter.setPen(QPen(color.darker(150), 1))
-            painter.setBrush(color)
-            painter.drawRect(rect)
+        for item in render_items:
+            fill_color = manual_color if item.source == "manual" else auto_color
+            outline_color = split_color if item.split_reason else fill_color.darker(150)
+            mapped_polygons = [QPolygonF([mapper.map_point(point) for point in polygon.points]) for polygon in item.polygons]
 
-            module_length_cm = self._material.module_length_cm if self._material is not None else None
+            painter.setPen(QPen(outline_color, 1.2))
+            painter.setBrush(fill_color)
+            for mapped_polygon in mapped_polygons:
+                painter.drawPolygon(mapped_polygon)
+
             if module_length_cm and module_length_cm > 0:
-                mod_len_px = mapper.map_length(module_length_cm)
-                if mod_len_px > 4:
-                    mod_pen = QPen(text_color)
-                    mod_pen.setStyle(Qt.PenStyle.DotLine)
-                    mod_pen.setWidthF(0.5)
-                    painter.setPen(mod_pen)
-                    y_start = rect.y()
-                    y_end = rect.y() + rect.height()
-                    x_left = rect.x()
-                    x_right = rect.x() + rect.width()
-                    mod_y = y_start + mod_len_px
-                    while mod_y < y_end - 1:
-                        painter.drawLine(QPointF(x_left, mod_y), QPointF(x_right, mod_y))
-                        mod_y += mod_len_px
+                self._draw_module_guides(painter, mapped_polygons, mapper, module_length_cm, text_color)
 
-            module_length_cm = self._material.module_length_cm if self._material is not None else None
-            if self._show_module_count and module_length_cm and module_length_cm > 0:
-                modules = max(1, int(round(sheet.final_length_cm / module_length_cm)))
-                label_text = f"{modules}"
-            else:
-                label_text = f"{sheet.final_length_cm:.0f}"
-            painter.setPen(text_color)
-            font = painter.font()
-            font.setPointSize(max(7, int(min(rect.width(), rect.height()) / 8)))
-            painter.setFont(font)
-            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, label_text)
-            font.setPointSize(font.pointSize() + 2)
-            painter.setFont(font)
+            self._draw_sheet_label(painter, mapped_polygons, item, text_color)
+
+        self._draw_layout_direction_hint(painter, plane, mapper, text_color)
+
+    def _draw_module_guides(
+        self,
+        painter: QPainter,
+        mapped_polygons: list[QPolygonF],
+        mapper: CanvasMapper,
+        module_length_cm: float,
+        text_color: QColor,
+    ) -> None:
+        mod_len_px = mapper.map_length(module_length_cm)
+        if mod_len_px <= 4:
+            return
+
+        guide_path = QPainterPath()
+        bounds = QRectF()
+        for polygon in mapped_polygons:
+            polygon_path = QPainterPath()
+            polygon_path.addPolygon(polygon)
+            guide_path = guide_path.united(polygon_path)
+            bounds = bounds.united(polygon.boundingRect()) if not bounds.isNull() else polygon.boundingRect()
+
+        mod_pen = QPen(text_color)
+        mod_pen.setStyle(Qt.PenStyle.DotLine)
+        mod_pen.setWidthF(0.5)
+        painter.save()
+        painter.setClipPath(guide_path)
+        painter.setPen(mod_pen)
+        mod_y = bounds.top() + mod_len_px
+        while mod_y < bounds.bottom() - 1:
+            painter.drawLine(QPointF(bounds.left(), mod_y), QPointF(bounds.right(), mod_y))
+            mod_y += mod_len_px
+        painter.restore()
+
+    def _draw_sheet_label(
+        self,
+        painter: QPainter,
+        mapped_polygons: list[QPolygonF],
+        item: _SheetRenderItem,
+        text_color: QColor,
+    ) -> None:
+        label_text = self._sheet_label_text(item)
+        anchor_rect = self._label_anchor_rect(mapped_polygons)
+        if anchor_rect.width() <= 1 or anchor_rect.height() <= 1:
+            return
+
+        font = painter.font()
+        font.setPointSize(self._layout_label_font_size(anchor_rect))
+        painter.setFont(font)
+        metrics = QFontMetricsF(font)
+        text_width = metrics.horizontalAdvance(label_text)
+        text_height = metrics.height()
+        label_width = max(LAYOUT_LABEL_MIN_WIDTH, text_width + LAYOUT_LABEL_PADDING_X * 2.0)
+        label_height = max(LAYOUT_LABEL_MIN_HEIGHT, text_height + LAYOUT_LABEL_PADDING_Y * 2.0)
+        label_rect = QRectF(
+            anchor_rect.center().x() - label_width / 2.0,
+            anchor_rect.center().y() - label_height / 2.0,
+            label_width,
+            label_height,
+        )
+
+        if label_rect.width() > anchor_rect.width() and anchor_rect.width() > label_rect.height() + 8.0:
+            label_rect.moveLeft(anchor_rect.left() + (anchor_rect.width() - label_rect.width()) / 2.0)
+        label_rect = label_rect.intersected(self.rect().adjusted(6, 6, -6, -6))
+        if label_rect.width() <= 1 or label_rect.height() <= 1:
+            return
+
+        background = self.palette().color(QPalette.ColorRole.Base)
+        background.setAlpha(220)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(background)
+        painter.drawRoundedRect(label_rect, 4.0, 4.0)
+        painter.setPen(text_color)
+        painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, label_text)
+
+    def _sheet_label_text(self, item: _SheetRenderItem) -> str:
+        module_length_cm = self._material.module_length_cm if self._material is not None else None
+        if self._show_module_count and module_length_cm and module_length_cm > 0:
+            modules = max(1, int(round(item.final_length_cm / module_length_cm)))
+            return f"{modules}"
+        return f"{item.final_length_cm:.0f} cm"
+
+    def _label_anchor_rect(self, mapped_polygons: list[QPolygonF]) -> QRectF:
+        polygon_bounds = [polygon.boundingRect() for polygon in mapped_polygons]
+        largest = max(polygon_bounds, key=lambda rect: rect.width() * rect.height())
+        if largest.width() >= LAYOUT_LABEL_MIN_WIDTH and largest.height() >= LAYOUT_LABEL_MIN_HEIGHT:
+            return largest.adjusted(4.0, 4.0, -4.0, -4.0)
+
+        union_rect = polygon_bounds[0]
+        for rect in polygon_bounds[1:]:
+            union_rect = union_rect.united(rect)
+        return union_rect.adjusted(2.0, 2.0, -2.0, -2.0)
+
+    def _layout_label_font_size(self, anchor_rect: QRectF) -> int:
+        min_dimension = min(anchor_rect.width(), anchor_rect.height())
+        if min_dimension < 24:
+            return 7
+        if min_dimension < 34:
+            return 8
+        if min_dimension < 48:
+            return 9
+        return 10
+
+    def _draw_layout_direction_hint(self, painter: QPainter, plane, mapper: CanvasMapper, text_color: QColor) -> None:
+        outline = self.display_outline()
+        if outline is None:
+            return
+
+        bounds = outline.bounds()
+        y_cm = bounds.min_y + max(bounds.height * 0.08, 6.0)
+        left_point = mapper.map_point(Point2D(bounds.min_x, y_cm))
+        right_point = mapper.map_point(Point2D(bounds.max_x, y_cm))
+        if plane.generation_settings.layout_origin == "right":
+            start, end = right_point, left_point
+            caption = "układ od prawej"
+        else:
+            start, end = left_point, right_point
+            caption = "układ od lewej"
+
+        hint_color = QColor(text_color)
+        hint_color.setAlpha(180)
+        painter.setPen(QPen(hint_color, 1.4))
+        painter.drawLine(start, end)
+        arrow_size = 7.0
+        direction = 1.0 if end.x() >= start.x() else -1.0
+        painter.drawLine(end, QPointF(end.x() - direction * arrow_size, end.y() - arrow_size / 2.0))
+        painter.drawLine(end, QPointF(end.x() - direction * arrow_size, end.y() + arrow_size / 2.0))
+
+        font = painter.font()
+        font.setPointSize(8)
+        painter.setFont(font)
+        caption_rect = QRectF(min(start.x(), end.x()), min(start.y(), end.y()) - 18.0, abs(end.x() - start.x()), 14.0)
+        painter.drawText(caption_rect, Qt.AlignmentFlag.AlignCenter, caption)
 
     def _draw_selected_sheet_highlight(self, painter: QPainter) -> None:
         if self.roof_plane is None or self._selected_sheet_id is None:
@@ -724,7 +926,7 @@ class DrawingCanvas(QWidget):
         mapper = self._canvas_mapper()
         if mapper is None:
             return
-        all_sheets = list(self.roof_plane.auto_sheet_placements) + list(self.roof_plane.manual_sheet_placements)
+        all_sheets = self._visible_sheet_placements()
         for sheet in all_sheets:
             if sheet.id == self._selected_sheet_id:
                 rect = mapper.map_rect(sheet.x_left_cm, sheet.x_right_cm, sheet.y_top_cm, sheet.y_bottom_cm)
