@@ -190,39 +190,29 @@ class ProjectState:
         return removed_plane
 
     def set_roof_plane_outline(self, outline: Polygon2D, plane_id: str | None = None) -> RoofPlane:
-        plane = self.roof_plane_by_id(plane_id or self.active_plane_id)
-        if plane is None:
-            raise ValueError("Nie znaleziono aktywnej połaci")
-
+        plane = self._require_plane(plane_id)
         self._validate_plane_geometry(outline, plane.holes)
         plane.outline = outline
         self._mark_layout_inputs_changed(plane, "geometry_changed")
         return plane
 
     def move_roof_plane(self, dx: float, dy: float, plane_id: str | None = None) -> RoofPlane:
-        plane = self.roof_plane_by_id(plane_id or self.active_plane_id)
-        if plane is None:
-            raise ValueError("Nie znaleziono aktywnej połaci")
-        if plane.outline is None:
-            raise ValueError("Aktywna połać nie ma jeszcze obrysu")
-
-        plane.outline = translate_polygon(plane.outline, dx, dy)
+        plane = self._require_plane(plane_id)
+        outline = self._require_plane_outline(plane)
+        plane.outline = translate_polygon(outline, dx, dy)
         plane.holes = [translate_polygon(hole, dx, dy) for hole in plane.holes]
         self._mark_plane_geometry_changed(plane)
         return plane
 
     def move_roof_plane_point(self, point_index: int, dx: float, dy: float, plane_id: str | None = None) -> RoofPlane:
-        plane = self.roof_plane_by_id(plane_id or self.active_plane_id)
-        if plane is None:
-            raise ValueError("Nie znaleziono aktywnej połaci")
-        if plane.outline is None:
-            raise ValueError("Aktywna połać nie ma jeszcze obrysu")
-        if point_index < 0 or point_index >= len(plane.outline.points):
+        plane = self._require_plane(plane_id)
+        outline = self._require_plane_outline(plane)
+        if point_index < 0 or point_index >= len(outline.points):
             raise IndexError("Nie znaleziono punktu o podanym indeksie")
 
-        current_point = plane.outline.points[point_index]
+        current_point = outline.points[point_index]
         updated_outline = replace_polygon_point(
-            plane.outline,
+            outline,
             point_index,
             Point2D(current_point.x + dx, current_point.y + dy),
         )
@@ -230,39 +220,30 @@ class ProjectState:
         return plane
 
     def insert_roof_plane_point(self, edge_index: int, point: Point2D, plane_id: str | None = None) -> RoofPlane:
-        plane = self.roof_plane_by_id(plane_id or self.active_plane_id)
-        if plane is None:
-            raise ValueError("Nie znaleziono aktywnej połaci")
-        if plane.outline is None:
-            raise ValueError("Aktywna połać nie ma jeszcze obrysu")
-        if edge_index < 0 or edge_index >= len(plane.outline.points):
+        plane = self._require_plane(plane_id)
+        outline = self._require_plane_outline(plane)
+        if edge_index < 0 or edge_index >= len(outline.points):
             raise IndexError("Nie znaleziono krawędzi o podanym indeksie")
 
-        updated_outline = insert_polygon_point(plane.outline, edge_index, point)
+        updated_outline = insert_polygon_point(outline, edge_index, point)
         self._set_plane_outline(plane, updated_outline)
         return plane
 
     def delete_roof_plane_point(self, point_index: int, plane_id: str | None = None) -> RoofPlane:
-        plane = self.roof_plane_by_id(plane_id or self.active_plane_id)
-        if plane is None:
-            raise ValueError("Nie znaleziono aktywnej połaci")
-        if plane.outline is None:
-            raise ValueError("Aktywna połać nie ma jeszcze obrysu")
-        if point_index < 0 or point_index >= len(plane.outline.points):
+        plane = self._require_plane(plane_id)
+        outline = self._require_plane_outline(plane)
+        if point_index < 0 or point_index >= len(outline.points):
             raise IndexError("Nie znaleziono punktu o podanym indeksie")
 
-        updated_outline = delete_polygon_point(plane.outline, point_index)
+        updated_outline = delete_polygon_point(outline, point_index)
         self._set_plane_outline(plane, updated_outline)
         return plane
 
     def add_hole_to_plane(self, hole: Polygon2D, plane_id: str | None = None) -> RoofPlane:
-        plane = self.roof_plane_by_id(plane_id or self.active_plane_id)
-        if plane is None:
-            raise ValueError("Nie znaleziono aktywnej połaci")
-        if plane.outline is None:
-            raise ValueError("Aktywna połać nie ma jeszcze obrysu")
+        plane = self._require_plane(plane_id)
+        outline = self._require_plane_outline(plane)
 
-        issues = validate_hole_polygon(plane.outline, hole, plane.holes)
+        issues = validate_hole_polygon(outline, hole, plane.holes)
         if issues:
             raise ValueError("; ".join(issues))
 
@@ -271,11 +252,8 @@ class ProjectState:
         return plane
 
     def delete_hole_from_plane(self, hole_index: int, plane_id: str | None = None) -> RoofPlane:
-        plane = self.roof_plane_by_id(plane_id or self.active_plane_id)
-        if plane is None:
-            raise ValueError("Nie znaleziono aktywnej połaci")
-        if plane.outline is None:
-            raise ValueError("Aktywna połać nie ma jeszcze obrysu")
+        plane = self._require_plane(plane_id)
+        self._require_plane_outline(plane)
         if hole_index < 0 or hole_index >= len(plane.holes):
             raise IndexError("Nie znaleziono wycinku o podanym indeksie")
 
@@ -284,15 +262,14 @@ class ProjectState:
         return plane
 
     def move_hole_in_plane(self, hole_index: int, dx: float, dy: float, plane_id: str | None = None) -> RoofPlane:
-        plane = self.roof_plane_by_id(plane_id or self.active_plane_id)
-        if plane is None:
-            raise ValueError("Nie znaleziono aktywnej połaci")
+        plane = self._require_plane(plane_id)
+        outline = self._require_plane_outline(plane)
         if hole_index < 0 or hole_index >= len(plane.holes):
             raise IndexError("Nie znaleziono wycinku o podanym indeksie")
 
         moved_hole = translate_polygon(plane.holes[hole_index], dx, dy)
         sibling_holes = [hole for index, hole in enumerate(plane.holes) if index != hole_index]
-        issues = validate_hole_polygon(plane.outline, moved_hole, sibling_holes)
+        issues = validate_hole_polygon(outline, moved_hole, sibling_holes)
         if issues:
             raise ValueError("; ".join(issues))
 
@@ -396,6 +373,17 @@ class ProjectState:
         if self.materials:
             return self.materials[0].id
         return None
+
+    def _require_plane(self, plane_id: str | None = None) -> RoofPlane:
+        plane = self.roof_plane_by_id(plane_id or self.active_plane_id)
+        if plane is None:
+            raise ValueError("Nie znaleziono aktywnej połaci")
+        return plane
+
+    def _require_plane_outline(self, plane: RoofPlane) -> Polygon2D:
+        if plane.outline is None:
+            raise ValueError("Aktywna połać nie ma jeszcze obrysu")
+        return plane.outline
 
     def _set_plane_outline(self, plane: RoofPlane, outline: Polygon2D) -> None:
         self._validate_plane_geometry(outline, plane.holes)

@@ -18,7 +18,7 @@ from persistence import load_config, save_config
 from core.models import Point2D, Polygon2D, SheetPlacement
 from core.project_state import ProjectState
 from core.reporting import build_report, build_report_html
-from core.geometry import build_rectangle_outline, build_trapezoid_outline, build_triangle_outline
+from core.geometry import make_rectangle, make_trapezoid, make_triangle
 
 from ui.theme_manager import ThemeManager
 from ui.workspace import WorkspaceController
@@ -54,7 +54,6 @@ class MainWindow(QMainWindow):
         self._build_menu()
         self._build_toolbar()
         self.workspace_tabs = self._workspace.tabs
-        self.primary_canvas = self._workspace.primary_canvas
         self.variant_combo = self._tb_ctrl.variant_combo
         self._apply_theme()
         self._workspace.sync()
@@ -239,21 +238,14 @@ class MainWindow(QMainWindow):
     def _tab_title_for_plane(self, plane) -> str:
         return plane.name + (" *" if plane.layout_dirty_reason else "")
 
-    def _ensure_plane_ready_for_geometry(self):
-        plane = self.project_state.active_roof_plane()
-        if plane is not None and plane.outline is None:
-            return plane
-        selected_material_id = self._tb_ctrl.variant_combo.currentText() or None
-        self.project_state.add_empty_roof_plane(selected_material_id=selected_material_id)
-        self._latest_report_html = ""
-        self._persist()
-        self._refresh_canvas()
-        return self.project_state.active_roof_plane()
-
     def _set_active_plane_geometry(self, outline: Polygon2D, message: str) -> bool:
-        plane = self._ensure_plane_ready_for_geometry()
+        plane = self.project_state.active_roof_plane()
+        selected_material_id = self._tb_ctrl.variant_combo.currentText() or None
         if plane is None:
-            return False
+            return self._edit(
+                lambda: self.project_state.add_roof_plane(outline, selected_material_id=selected_material_id),
+                message,
+            )
         return self._edit(lambda: self.project_state.set_roof_plane_outline(outline, plane.id), message)
 
     def _add_new_roof_plane(self) -> None:
@@ -390,8 +382,13 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
     # Polygon drawing
     def _start_draw_outline(self) -> None:
-        self._ensure_plane_ready_for_geometry()
         canvas = self._workspace.primary_canvas
+        if canvas is None:
+            return
+        try:
+            canvas.polygon_closed.disconnect(self._on_polygon_closed)
+        except (RuntimeError, TypeError):
+            pass
         canvas.set_mode(canvas.MODE_DRAW_OUTLINE)
         canvas.polygon_closed.connect(self._on_polygon_closed)
         self.statusBar().showMessage("Kliknij, aby dodać wierzchołki. Enter lub klik na pkt 1 = zamknij. Esc = anuluj.", 0)
@@ -410,10 +407,14 @@ class MainWindow(QMainWindow):
 
         from PySide6.QtCore import QRectF
 
-        # Simple normalised mapping: use canvas size as domain
         rect = QRectF(canvas.rect())
-        w, h = rect.width(), rect.height()
-        domain_pts = [Point2D(p.x() / w * 1000, p.y() / h * 1000) for p in pixel_points]
+        if rect.isEmpty():
+            self.statusBar().showMessage("Nie udało się odczytać obszaru rysowania.", 4000)
+            return
+
+        min_x = min(point.x() for point in pixel_points)
+        min_y = min(point.y() for point in pixel_points)
+        domain_pts = [Point2D(point.x() - min_x, point.y() - min_y) for point in pixel_points]
 
         outline = Polygon2D(domain_pts)
         self._set_active_plane_geometry(outline, "Ustawiono obrys z odręcznego rysowania")
@@ -463,7 +464,7 @@ class MainWindow(QMainWindow):
         if dlg.exec() == QDialog.DialogCode.Accepted:
             v = dlg.get_values()
             self._config.setdefault("ksztalty", {})["prostokat"] = v
-            outline = build_rectangle_outline(v["szerokosc"], v["wysokosc"])
+            outline = make_rectangle(v["szerokosc"], v["wysokosc"])
             self._set_active_plane_geometry(outline, f"Ustawiono obrys prostokąta {v['szerokosc']}×{v['wysokosc']} cm")
 
     def _dlg_trojkat(self) -> None:
@@ -472,7 +473,7 @@ class MainWindow(QMainWindow):
             v = dlg.get_values()
             self._config.setdefault("ksztalty", {})["trojkat"] = v
             side = v["ramie"] if v.get("ramie_enabled") else None
-            outline = build_triangle_outline(v["typ"], v["podstawa"], v["wysokosc"], side)
+            outline = make_triangle(v["typ"], v["podstawa"], v["wysokosc"], side)
             self._set_active_plane_geometry(outline, f"Ustawiono obrys trójkąta {v['typ']}")
 
     def _dlg_trapez(self) -> None:
@@ -480,7 +481,7 @@ class MainWindow(QMainWindow):
         if dlg.exec() == QDialog.DialogCode.Accepted:
             v = dlg.get_values()
             self._config.setdefault("ksztalty", {})["trapez"] = v
-            outline = build_trapezoid_outline(v["typ"], v["podstawa_dolna"], v["podstawa_gorna"], v["wysokosc"])
+            outline = make_trapezoid(v["typ"], v["podstawa_dolna"], v["podstawa_gorna"], v["wysokosc"])
             self._set_active_plane_geometry(outline, f"Ustawiono obrys trapezu {v['typ']}")
 
     # ------------------------------------------------------------------

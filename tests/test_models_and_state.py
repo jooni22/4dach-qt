@@ -5,7 +5,14 @@ from pathlib import Path
 
 import pytest
 
-from core.geometry import build_rectangle_outline, build_trapezoid_outline, build_triangle_outline
+from core.geometry import (
+    build_rectangle_outline,
+    build_trapezoid_outline,
+    build_triangle_outline,
+    make_rectangle,
+    make_trapezoid,
+    make_triangle,
+)
 from core.layout_engine import generate_layout
 from core.models import CompanyData, Material, Point2D, Polygon2D, RoofPlane, SheetPlacement, almost_equal
 from core.project_state import ProjectState
@@ -470,6 +477,41 @@ def test_shape_builders_create_valid_polygons():
     assert rectangle.area() > 0
     assert triangle.area() > 0
     assert trapezoid.area() > 0
+
+
+def test_shape_factories_create_expected_polygons():
+    rectangle = make_rectangle(320, 180)
+    triangle = make_triangle("dowolny", 300, 180, 250)
+    trapezoid = make_trapezoid("równoramienny", 500, 300, 200)
+
+    assert rectangle.points == [
+        Point2D(0.0, 0.0),
+        Point2D(320.0, 0.0),
+        Point2D(320.0, 180.0),
+        Point2D(0.0, 180.0),
+    ]
+    assert triangle.points[0] == Point2D(0.0, 180.0)
+    assert triangle.points[2] == Point2D(300.0, 180.0)
+    assert 0.0 < triangle.points[1].x < 300.0
+    assert trapezoid.points == [
+        Point2D(0.0, 200.0),
+        Point2D(100.0, 0.0),
+        Point2D(400.0, 0.0),
+        Point2D(500.0, 200.0),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("factory", "args", "message"),
+    [
+        (make_rectangle, (0, 200), "Szerokość musi być dodatnia"),
+        (make_triangle, ("dowolny", 300, 180, 170), "Ramię musi być większe od wysokości"),
+        (make_trapezoid, ("prostokątny", 500, 0, 200), "Podstawa górna musi być dodatnia"),
+    ],
+)
+def test_shape_factories_validate_invalid_dimensions(factory, args, message):
+    with pytest.raises(ValueError, match=message):
+        factory(*args)
 
 
 def test_polygon_area_is_counted_in_cm2():

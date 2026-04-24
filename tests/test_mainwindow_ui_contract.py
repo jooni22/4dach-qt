@@ -9,8 +9,14 @@ pytest.importorskip("PySide6")
 pytest.importorskip("pytestqt")
 
 from PySide6.QtWidgets import QInputDialog, QMenu, QMessageBox
+from PySide6.QtWidgets import QDialog
 
 from mainwindow import MainWindow
+
+
+@pytest.fixture(autouse=True)
+def _disable_mainwindow_disk_writes(monkeypatch):
+    monkeypatch.setattr("ui.main_window.save_config", lambda *args, **kwargs: True)
 
 
 def test_mainwindow_exposes_expected_ui_contract(qtbot):
@@ -18,8 +24,9 @@ def test_mainwindow_exposes_expected_ui_contract(qtbot):
     qtbot.addWidget(window)
     window.show()
 
-    menu_titles = [action.text() for action in window.menuBar().actions()]
-    sheets_menu = window.menuBar().actions()[-1].menu()
+    actions = window.menuBar().actions()
+    menu_titles = [action.text() for action in actions]
+    sheets_menu = actions[-1].menu()
     assert isinstance(sheets_menu, QMenu)
     sheets_actions = [action.text() for action in sheets_menu.actions() if not action.isSeparator()]
 
@@ -103,3 +110,98 @@ def test_mainwindow_adds_renames_and_deletes_roof_plane_tabs(qtbot, monkeypatch)
     window._delete_active_roof_plane()
 
     assert len(window.project_state.roof_planes) == base_count
+
+
+def test_mainwindow_creates_rectangle_geometry_in_active_tab(qtbot, monkeypatch):
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.project_state = ProjectState(materials=window.project_state.materials)
+    window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
+    window._refresh_canvas_from_state()
+
+    class FakeRectangleDialog:
+        def __init__(self, config_data, parent=None) -> None:
+            self._values = {"szerokosc": 420, "wysokosc": 260}
+
+        def exec(self) -> int:
+            return QDialog.DialogCode.Accepted
+
+        def get_values(self) -> dict:
+            return dict(self._values)
+
+    monkeypatch.setattr("ui.main_window.ProstokatDialog", FakeRectangleDialog)
+
+    window._dlg_prostokat()
+
+    plane = window.project_state.active_roof_plane()
+    assert plane is not None
+    assert len(window.project_state.roof_planes) == 1
+    assert plane.outline is not None
+    assert plane.outline.points == build_rectangle_outline(420, 260).points
+    assert window.primary_canvas.roof_plane is plane
+    assert window.primary_canvas.roof_plane.outline is not None
+    assert window.workspace_tabs.tabText(window.workspace_tabs.currentIndex()) == plane.name
+
+
+def test_mainwindow_keeps_generated_shapes_separate_per_tab_and_persists_geometry(qtbot, monkeypatch):
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.project_state = ProjectState(materials=window.project_state.materials)
+    window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
+    window._refresh_canvas_from_state()
+
+    rectangle_values = {"szerokosc": 300, "wysokosc": 200}
+    trapezoid_values = {"typ": "prostokątny", "podstawa_dolna": 500, "podstawa_gorna": 300, "wysokosc": 240}
+
+    class FakeRectangleDialog:
+        def __init__(self, config_data, parent=None) -> None:
+            pass
+
+        def exec(self) -> int:
+            return QDialog.DialogCode.Accepted
+
+        def get_values(self) -> dict:
+            return dict(rectangle_values)
+
+    class FakeTrapezoidDialog:
+        def __init__(self, config_data, parent=None) -> None:
+            pass
+
+        def exec(self) -> int:
+            return QDialog.DialogCode.Accepted
+
+        def get_values(self) -> dict:
+            return dict(trapezoid_values)
+
+    monkeypatch.setattr("ui.main_window.ProstokatDialog", FakeRectangleDialog)
+    monkeypatch.setattr("ui.main_window.TrapezDialog", FakeTrapezoidDialog)
+
+    window._dlg_prostokat()
+    first_plane = window.project_state.active_roof_plane()
+    assert first_plane is not None
+
+    window._add_new_roof_plane()
+    second_plane = window.project_state.active_roof_plane()
+    assert second_plane is not None
+    assert second_plane.id != first_plane.id
+
+    window._dlg_trapez()
+
+    assert first_plane.outline is not None
+    assert first_plane.outline.points == build_rectangle_outline(300, 200).points
+    assert second_plane.outline is not None
+    assert second_plane.outline.points != first_plane.outline.points
+    assert window._workspace.canvas_for_plane(first_plane.id).roof_plane.outline.points == first_plane.outline.points
+    assert window._workspace.canvas_for_plane(second_plane.id).roof_plane.outline.points == second_plane.outline.points
+
+    payload = {"blachy": [material.to_dict() for material in window.project_state.materials]}
+    window.project_state.apply_to_config(payload)
+    reloaded = ProjectState.from_config(payload)
+
+    assert len(reloaded.roof_planes) == 2
+    assert reloaded.roof_planes[0].outline is not None
+    assert reloaded.roof_planes[0].outline.points == first_plane.outline.points
+    assert reloaded.roof_planes[1].outline is not None
+    assert reloaded.roof_planes[1].outline.points == second_plane.outline.points

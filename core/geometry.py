@@ -9,11 +9,21 @@ from core.models import Point2D, Polygon2D
 EPSILON = 1e-9
 
 
-def build_rectangle_outline(width_cm: float, height_cm: float) -> Polygon2D:
+def _require_positive(value: float, label: str) -> None:
+    if value <= 0:
+        raise ValueError(f"{label} musi być dodatnia")
+
+
+def make_rectangle(width_cm: float, height_cm: float) -> Polygon2D:
+    _require_positive(width_cm, "Szerokość")
+    _require_positive(height_cm, "Wysokość")
     return Polygon2D.rectangle(width_cm, height_cm)
 
 
-def build_triangle_outline(triangle_type: str, base_cm: float, height_cm: float, side_length_cm: float | None = None) -> Polygon2D:
+def make_triangle(triangle_type: str, base_cm: float, height_cm: float, side_length_cm: float | None = None) -> Polygon2D:
+    _require_positive(base_cm, "Podstawa")
+    _require_positive(height_cm, "Wysokość")
+
     if triangle_type == "prostokątny":
         return Polygon2D(
             [
@@ -25,9 +35,14 @@ def build_triangle_outline(triangle_type: str, base_cm: float, height_cm: float,
 
     if triangle_type == "dowolny":
         apex_x = base_cm * 0.66
-        if side_length_cm and side_length_cm > height_cm:
+        if side_length_cm is not None:
+            _require_positive(side_length_cm, "Ramię")
+            if side_length_cm <= height_cm:
+                raise ValueError("Ramię musi być większe od wysokości dla trójkąta dowolnego")
             horizontal = sqrt(max(side_length_cm**2 - height_cm**2, 0.0))
-            apex_x = min(base_cm, max(0.0, horizontal))
+            if horizontal >= base_cm:
+                raise ValueError("Ramię jest zbyt długie dla podanej podstawy i wysokości")
+            apex_x = horizontal
         return Polygon2D(
             [
                 Point2D(0.0, height_cm),
@@ -45,7 +60,11 @@ def build_triangle_outline(triangle_type: str, base_cm: float, height_cm: float,
     )
 
 
-def build_trapezoid_outline(trapezoid_type: str, bottom_base_cm: float, top_base_cm: float, height_cm: float) -> Polygon2D:
+def make_trapezoid(trapezoid_type: str, bottom_base_cm: float, top_base_cm: float, height_cm: float) -> Polygon2D:
+    _require_positive(bottom_base_cm, "Podstawa dolna")
+    _require_positive(top_base_cm, "Podstawa górna")
+    _require_positive(height_cm, "Wysokość")
+
     if trapezoid_type == "prostokątny":
         return Polygon2D(
             [
@@ -65,6 +84,18 @@ def build_trapezoid_outline(trapezoid_type: str, bottom_base_cm: float, top_base
             Point2D(bottom_base_cm, height_cm),
         ]
     )
+
+
+def build_rectangle_outline(width_cm: float, height_cm: float) -> Polygon2D:
+    return make_rectangle(width_cm, height_cm)
+
+
+def build_triangle_outline(triangle_type: str, base_cm: float, height_cm: float, side_length_cm: float | None = None) -> Polygon2D:
+    return make_triangle(triangle_type, base_cm, height_cm, side_length_cm)
+
+
+def build_trapezoid_outline(trapezoid_type: str, bottom_base_cm: float, top_base_cm: float, height_cm: float) -> Polygon2D:
+    return make_trapezoid(trapezoid_type, bottom_base_cm, top_base_cm, height_cm)
 
 
 def segment_length(start: Point2D, end: Point2D) -> float:
