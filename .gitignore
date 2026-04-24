@@ -82,3 +82,11 @@ CMakeLists.txt.user*
 .uic/
 /build*/
 /.qtcreator/
+
+# Python / Environment / UV
+.venv/
+.envrc
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/

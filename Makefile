@@ -4,9 +4,9 @@
 .DEFAULT_GOAL := help
 
 # Zmienne
-PYTHON := python3.11
-PIP := pip3
-PYTEST := pytest
+PYTHON := uv run python3
+UV := uv
+PYTEST := uv run pytest
 
 # Target: help - wyświetla dostępne targety
 help:
@@ -38,7 +38,7 @@ test-unit:
 # Target: run - uruchamia aplikację
 run:
 	@echo "Uruchamianie aplikacji..."
-	$(PYTHON) mainwindow.py
+	$(PYTHON) __main__.py
 
 # Target: lint - uruchamia lintowanie
 lint:
@@ -66,5 +66,5 @@ clean:
 # Target: install - instaluje zależności
 install:
 	@echo "Instalowanie zależności..."
-	$(PIP) install -r requirements.txt
+	$(UV) sync
 	@echo "Instalacja zakończona."
