@@ -15,15 +15,16 @@ def test_mapper_scales_and_offsets_correctly():
     rect = QRectF(0, 0, 400, 300)
     mapper = CanvasMapper(bounds, rect, margin=0)
 
-    # Should fit to height (scale = 300/50 = 6), centered horizontally
-    # domain width * scale = 600, canvas width = 400, offset_x = (400-600)/2 = -100
+    # scale = min(400/100, 300/50) = min(4.0, 6.0) = 4.0  (fit-by-width wins)
+    # offset_x = (400 - 100*4) / 2 = 0.0
+    # offset_y = (300 - 50*4)  / 2 = 50.0
     p = mapper.map_point(Point2D(0.0, 0.0))
-    assert p.x() == pytest.approx(-100.0, abs=0.01)
-    assert p.y() == pytest.approx(0.0, abs=0.01)
+    assert p.x() == pytest.approx(0.0, abs=0.01)
+    assert p.y() == pytest.approx(50.0, abs=0.01)
 
     p = mapper.map_point(Point2D(100.0, 50.0))
-    assert p.x() == pytest.approx(500.0, abs=0.01)
-    assert p.y() == pytest.approx(300.0, abs=0.01)
+    assert p.x() == pytest.approx(400.0, abs=0.01)
+    assert p.y() == pytest.approx(250.0, abs=0.01)
 
 
 def test_mapper_maps_rect():
