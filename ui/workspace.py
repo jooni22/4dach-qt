@@ -123,6 +123,9 @@ class WorkspaceController:
     def canvas_for_plane(self, plane_id: str) -> DrawingCanvas | None:
         return self._plane_tab_canvases.get(plane_id)
 
+    def plane_canvases(self) -> list[DrawingCanvas]:
+        return list(self._plane_tab_canvases.values())
+
     def update_all_canvases(self) -> None:
         if self.primary_canvas is not None:
             self.primary_canvas.update()

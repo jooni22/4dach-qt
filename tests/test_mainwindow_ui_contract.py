@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from core.geometry import build_rectangle_outline
+from core.models import Point2D, Polygon2D
 from core.project_state import ProjectState
 
 pytest.importorskip("PySide6")
@@ -205,3 +206,59 @@ def test_mainwindow_keeps_generated_shapes_separate_per_tab_and_persists_geometr
     assert reloaded.roof_planes[0].outline.points == first_plane.outline.points
     assert reloaded.roof_planes[1].outline is not None
     assert reloaded.roof_planes[1].outline.points == second_plane.outline.points
+
+
+def test_mainwindow_commits_canvas_outline_edits_to_project_state(qtbot):
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.project_state = ProjectState(materials=window.project_state.materials)
+    window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
+    plane = window.project_state.add_roof_plane(build_rectangle_outline(320, 180), selected_material_id="PD510")
+    window._refresh_canvas_from_state()
+
+    updated_outline = Polygon2D(
+        [
+            Point2D(0, 0),
+            Point2D(320, 0),
+            Point2D(280, 210),
+            Point2D(0, 180),
+        ]
+    )
+    canvas = window._workspace.canvas_for_plane(plane.id)
+
+    canvas.outline_edit_committed.emit(updated_outline)
+
+    assert plane.outline == updated_outline
+    assert plane.layout_dirty_reason == "geometry_changed"
+
+
+def test_mainwindow_rolls_back_invalid_canvas_outline_edit(qtbot, monkeypatch):
+    messages: list[str] = []
+    monkeypatch.setattr(QMessageBox, "warning", staticmethod(lambda *args: messages.append(args[2])))
+
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.project_state = ProjectState(materials=window.project_state.materials)
+    window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
+    plane = window.project_state.add_roof_plane(build_rectangle_outline(320, 180), selected_material_id="PD510")
+    window.project_state.add_hole_to_plane(Polygon2D.rectangle(60, 60, origin_x=30, origin_y=40), plane.id)
+    original_outline = plane.outline
+    window._refresh_canvas_from_state()
+
+    invalid_outline = Polygon2D(
+        [
+            Point2D(80, 0),
+            Point2D(320, 0),
+            Point2D(320, 180),
+            Point2D(0, 180),
+        ]
+    )
+    canvas = window._workspace.canvas_for_plane(plane.id)
+
+    canvas.outline_edit_committed.emit(invalid_outline)
+
+    assert plane.outline == original_outline
+    assert messages
+    assert "Wycinek musi leżeć w całości wewnątrz obrysu" in messages[-1]

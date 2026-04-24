@@ -25,6 +25,12 @@ class CanvasMapper:
             self.offset_y + (point.y - self.bounds.min_y) * self.scale,
         )
 
+    def unmap_point(self, point: QPointF) -> Point2D:
+        return Point2D(
+            self.bounds.min_x + (point.x() - self.offset_x) / self.scale,
+            self.bounds.min_y + (point.y() - self.offset_y) / self.scale,
+        )
+
     def map_x(self, x_cm: float) -> float:
         return self.offset_x + (x_cm - self.bounds.min_x) * self.scale
 

@@ -180,6 +180,21 @@ class MainWindow(QMainWindow):
         self._workspace.sync()
         self.primary_canvas = self._workspace.primary_canvas
         self.workspace_tabs = self._workspace.tabs
+        for candidate in self._workspace.plane_canvases():
+            try:
+                candidate.outline_edit_committed.connect(
+                    self._on_outline_edit_committed,
+                    Qt.ConnectionType.UniqueConnection,
+                )
+            except TypeError:
+                pass
+            try:
+                candidate.outline_edit_rejected.connect(
+                    self._on_outline_edit_rejected,
+                    Qt.ConnectionType.UniqueConnection,
+                )
+            except TypeError:
+                pass
         if plane:
             canvas = self._workspace.canvas_for_plane(plane.id) or self._workspace.primary_canvas
             canvas.set_roof_plane(plane)
@@ -247,6 +262,12 @@ class MainWindow(QMainWindow):
                 message,
             )
         return self._edit(lambda: self.project_state.set_roof_plane_outline(outline, plane.id), message)
+
+    def _commit_active_plane_geometry_edit(self, outline: Polygon2D, message: str) -> bool:
+        success = self._set_active_plane_geometry(outline, message)
+        if not success:
+            self._refresh_canvas()
+        return success
 
     def _add_new_roof_plane(self) -> None:
         selected_material_id = self._tb_ctrl.variant_combo.currentText() or None
@@ -346,6 +367,13 @@ class MainWindow(QMainWindow):
             self._persist()
             self._refresh_canvas()
         self.statusBar().showMessage(f"Aktywna blacha: {text}", 2500)
+
+    def _on_outline_edit_committed(self, outline: Polygon2D) -> None:
+        self._commit_active_plane_geometry_edit(outline, "Zaktualizowano geometrię połaci")
+
+    def _on_outline_edit_rejected(self, message: str) -> None:
+        QMessageBox.warning(self, "Nieprawidłowa geometria", message)
+        self.statusBar().showMessage("Odrzucono zmianę geometrii połaci", 4000)
 
     def _on_grid_toggled(self, checked: bool) -> None:
         self._workspace.toggle_grid(checked)
