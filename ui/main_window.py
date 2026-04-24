@@ -1,7 +1,10 @@
 # This Python file uses the following encoding: utf-8
 """ui/main_window.py — slim MainWindow (~150 lines) that mounts controllers."""
 from __future__ import annotations
+import copy
+import json
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 import tempfile
 
@@ -33,6 +36,13 @@ def _show_warning(parent, title: str, msg: str) -> None:
     QMessageBox.warning(parent, title, msg)
 
 
+@dataclass(slots=True)
+class _HistoryEntry:
+    label: str
+    before_snapshot: dict
+    after_snapshot: dict
+
+
 class MainWindow(QMainWindow):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -41,6 +51,13 @@ class MainWindow(QMainWindow):
         self._theme_mgr = ThemeManager()
         self._latest_report_html = ""
         self._latest_report_plane_id: str | None = None
+        self._undo_stack: list[_HistoryEntry] = []
+        self._redo_stack: list[_HistoryEntry] = []
+        self._saved_snapshot_signature = ""
+        self._saved_plane_snapshot_signatures: dict[str, str] = {}
+        self._unsaved_plane_ids: set[str] = set()
+        self._has_unsaved_changes = False
+        self._base_window_title = ""
 
         self._build_chrome()
         self._workspace = WorkspaceController(
@@ -58,9 +75,8 @@ class MainWindow(QMainWindow):
         self.workspace_tabs = self._workspace.tabs
         self.variant_combo = self._tb_ctrl.variant_combo
         self._apply_theme()
-        self._workspace.sync()
-        self.primary_canvas = self._workspace.primary_canvas
-        self._refresh_report()
+        self._refresh_canvas()
+        self._mark_saved_state()
 
         settings = QSettings()
         geo = settings.value("geometry")
@@ -79,7 +95,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central)
 
         company = self._config.get("company_data", {}).get("name", "") or "4Dach"
-        self.setWindowTitle(f"4Dach — {company}")
+        self._set_company_title(company)
 
         self._theme_toggle = QToolButton(self)
         self._theme_toggle.setObjectName("theme_toggle")
@@ -107,8 +123,10 @@ class MainWindow(QMainWindow):
         plik.addAction(act("Zmień nazwę połaci...", "F2", self._rename_active_roof_plane))
         plik.addAction(act("Usuń połać...", "Ctrl+W", self._delete_active_roof_plane))
         plik.addSeparator()
-        plik.addAction(act("Otwórz...", "Ctrl+O"))
-        plik.addAction(act("Zapisz", "Ctrl+S"))
+        plik.addAction(act("Otwórz...", "Ctrl+O", self._open_project))
+        plik.addAction(act("Zapisz", "Ctrl+S", self._save_project))
+        plik.addAction(act("Cofnij", "Ctrl+Z", self._undo))
+        plik.addAction(act("Ponów", "Ctrl+Shift+Z", self._redo))
         plik.addSeparator()
         plik.addAction(act("Drukuj raport", "Ctrl+P", lambda: self._gen_report("standard", True)))
         plik.addAction(act("Drukuj raport ciągły", "Shift+Ctrl+P", lambda: self._gen_report("continuous", True)))
@@ -125,6 +143,7 @@ class MainWindow(QMainWindow):
         wyc = mb.addMenu("Wycinki")
         wyc.addAction(act("Dodaj prostokątny wycinek...", None, self._dlg_add_hole))
         wyc.addAction(act("Rysuj wycinek", None, self._start_draw_cutout))
+        wyc.addAction(act("Przesuń wycinek...", None, self._dlg_move_hole))
         wyc.addAction(act("Usuń wycinek", None, self._dlg_del_hole))
 
         kat = mb.addMenu("Katalog")
@@ -144,6 +163,8 @@ class MainWindow(QMainWindow):
         from ui.toolbar import ToolbarController
         self._tb_ctrl = ToolbarController(self)
         self._tb_ctrl.variant_combo.currentTextChanged.connect(self._on_material_changed)
+        self._tb_ctrl.action_save_project.triggered.connect(self._save_project)
+        self._tb_ctrl.action_undo.triggered.connect(self._undo)
         self._tb_ctrl.action_grid.triggered.connect(self._on_grid_toggled)
         self._tb_ctrl.action_module_count.triggered.connect(self._on_module_count_toggled)
         self._tb_ctrl.action_from_right.triggered.connect(self._on_from_right_toggled)
@@ -173,9 +194,161 @@ class MainWindow(QMainWindow):
         self._apply_theme()
 
     # ------------------------------------------------------------------
-    def _persist(self) -> None:
-        self.project_state.apply_to_config(self._config)
-        save_config(self._config, self)
+    def _set_company_title(self, company: str) -> None:
+        self._base_window_title = f"4Dach — {company}"
+        self._refresh_window_title()
+
+    def _refresh_window_title(self) -> None:
+        suffix = " *" if self._has_unsaved_changes else ""
+        self.setWindowTitle(f"{self._base_window_title}{suffix}")
+
+    def _serialize_current_config(self) -> dict:
+        payload = copy.deepcopy(self._config)
+        self.project_state.apply_to_config(payload)
+        return payload
+
+    def _normalized_dirty_payload(self, payload: dict) -> dict:
+        normalized = copy.deepcopy(payload)
+        normalized.setdefault("project_state", {})["active_plane_id"] = None
+        return normalized
+
+    def _snapshot_signature(self, payload: dict) -> str:
+        normalized = self._normalized_dirty_payload(payload)
+        return json.dumps(normalized, ensure_ascii=False, sort_keys=True)
+
+    def _plane_snapshot_signatures(self, payload: dict) -> dict[str, str]:
+        planes = payload.get("project_state", {}).get("roof_planes", [])
+        return {
+            plane_payload["id"]: json.dumps(plane_payload, ensure_ascii=False, sort_keys=True)
+            for plane_payload in planes
+        }
+
+    def _mark_saved_state(self) -> None:
+        payload = self._serialize_current_config()
+        self._saved_snapshot_signature = self._snapshot_signature(payload)
+        self._saved_plane_snapshot_signatures = self._plane_snapshot_signatures(payload)
+        self._has_unsaved_changes = False
+        self._unsaved_plane_ids.clear()
+        self._refresh_dirty_indicators()
+
+    def _refresh_dirty_state(self) -> None:
+        payload = self._serialize_current_config()
+        self._has_unsaved_changes = self._snapshot_signature(payload) != self._saved_snapshot_signature
+        current_plane_signatures = self._plane_snapshot_signatures(payload)
+        self._unsaved_plane_ids = {
+            plane_id
+            for plane_id, signature in current_plane_signatures.items()
+            if signature != self._saved_plane_snapshot_signatures.get(plane_id)
+        }
+        self._unsaved_plane_ids.update(
+            plane_id for plane_id in self._saved_plane_snapshot_signatures if plane_id not in current_plane_signatures
+        )
+        self._refresh_dirty_indicators()
+
+    def _refresh_dirty_indicators(self) -> None:
+        self._refresh_window_title()
+        self._refresh_tab_titles()
+
+    def _plane_has_unsaved_changes(self, plane_id: str | None) -> bool:
+        return bool(plane_id and plane_id in self._unsaved_plane_ids)
+
+    def _push_history(self, label: str, before_snapshot: dict, after_snapshot: dict) -> None:
+        if before_snapshot == after_snapshot:
+            return
+        self._undo_stack.append(_HistoryEntry(label, before_snapshot, after_snapshot))
+        self._redo_stack.clear()
+
+    def _apply_snapshot(self, snapshot: dict) -> None:
+        self._config = copy.deepcopy(snapshot)
+        self.project_state = ProjectState.from_config(self._config)
+        self._workspace.bind_project_state(self.project_state, self.project_state.material_by_id)
+        self._latest_report_html = ""
+        self._latest_report_plane_id = None
+        company = self._config.get("company_data", {}).get("name", "") or "4Dach"
+        self._set_company_title(company)
+        self._refresh_material_combo()
+        self._refresh_canvas()
+        self._refresh_dirty_state()
+
+    def _save_project(self) -> bool:
+        payload = self._serialize_current_config()
+        if not save_config(payload, self):
+            return False
+        self._config = payload
+        self._mark_saved_state()
+        self.statusBar().showMessage("Zapisano projekt", 3000)
+        return True
+
+    def _confirm_discard_unsaved_changes(self, *, context: str) -> bool:
+        if not self._has_unsaved_changes:
+            return True
+        answer = QMessageBox.question(
+            self,
+            "Niezapisane zmiany",
+            f"Projekt ma niezapisane zmiany. Czy chcesz zapisać przed {context}?",
+            QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Save,
+        )
+        if answer == QMessageBox.StandardButton.Save:
+            return self._save_project()
+        if answer == QMessageBox.StandardButton.Discard:
+            return True
+        return False
+
+    def _open_project(self) -> None:
+        if not self._confirm_discard_unsaved_changes(context="otwarciem projektu"):
+            return
+        self._undo_stack.clear()
+        self._redo_stack.clear()
+        self._config = load_config()
+        self.project_state = ProjectState.from_config(self._config)
+        self._workspace.bind_project_state(self.project_state, self.project_state.material_by_id)
+        self._refresh_material_combo()
+        self._refresh_canvas()
+        self._mark_saved_state()
+        self.statusBar().showMessage("Wczytano projekt", 3000)
+
+    def _undo(self) -> None:
+        if not self._undo_stack:
+            self.statusBar().showMessage("Brak operacji do cofnięcia", 2500)
+            return
+        entry = self._undo_stack.pop()
+        self._redo_stack.append(entry)
+        self._apply_snapshot(entry.before_snapshot)
+        self.statusBar().showMessage(f"Cofnięto: {entry.label}", 3000)
+
+    def _redo(self) -> None:
+        if not self._redo_stack:
+            self.statusBar().showMessage("Brak operacji do ponowienia", 2500)
+            return
+        entry = self._redo_stack.pop()
+        self._undo_stack.append(entry)
+        self._apply_snapshot(entry.after_snapshot)
+        self.statusBar().showMessage(f"Ponowiono: {entry.label}", 3000)
+
+    def _perform_command(
+        self,
+        label: str,
+        fn,
+        success_message: str,
+        *,
+        failure_title: str = "Błąd edycji",
+    ) -> bool:
+        before_snapshot = self._serialize_current_config()
+        try:
+            fn()
+        except (ValueError, IndexError) as e:
+            QMessageBox.warning(self, failure_title, str(e))
+            return False
+        after_snapshot = self._serialize_current_config()
+        self._push_history(label, before_snapshot, after_snapshot)
+        self._latest_report_html = ""
+        self._latest_report_plane_id = None
+        self._refresh_material_combo()
+        self._refresh_canvas()
+        self._refresh_dirty_state()
+        self.statusBar().showMessage(success_message, 4000)
+        return True
 
     def _refresh_canvas(self) -> None:
         plane = self.project_state.active_roof_plane()
@@ -208,6 +381,7 @@ class MainWindow(QMainWindow):
             canvas = self._workspace.canvas_for_plane(plane.id) or self._workspace.primary_canvas
             canvas.set_roof_plane(plane)
             canvas.set_material(self.project_state.material_by_id(plane.selected_material_id))
+        self._refresh_tab_titles()
         self._refresh_report()
 
     def _refresh_canvas_from_state(self) -> None:
@@ -238,17 +412,8 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Brak połaci", "Brak aktywnej połaci")
         return plane
 
-    def _edit(self, fn, msg: str) -> bool:
-        try:
-            fn()
-        except (ValueError, IndexError) as e:
-            QMessageBox.warning(self, "Błąd edycji", str(e))
-            return False
-        self._latest_report_html = ""
-        self._persist()
-        self._refresh_canvas()
-        self.statusBar().showMessage(msg, 4000)
-        return True
+    def _edit(self, fn, msg: str, *, label: str | None = None, failure_title: str = "Błąd edycji") -> bool:
+        return self._perform_command(label or msg, fn, msg, failure_title=failure_title)
 
     # ------------------------------------------------------------------
     def _dirty_label(self, reason) -> str:
@@ -260,7 +425,32 @@ class MainWindow(QMainWindow):
         return "Użyj Arkusze → Przelicz aktywną połać, aby odświeżyć."
 
     def _tab_title_for_plane(self, plane) -> str:
-        return plane.name + (" *" if plane.layout_dirty_reason else "")
+        suffixes: list[str] = []
+        if self._plane_has_unsaved_changes(plane.id):
+            suffixes.append("*")
+        if plane.layout_dirty_reason:
+            suffixes.append("!")
+        return f"{plane.name} {' '.join(suffixes)}".rstrip()
+
+    def _refresh_tab_titles(self) -> None:
+        for plane in self.project_state.roof_planes:
+            self._workspace.update_tab_title(plane.id, self._tab_title_for_plane(plane))
+
+    def _set_plane_layout_origin(self, plane_id: str, origin: str) -> None:
+        plane = self.project_state.roof_plane_by_id(plane_id)
+        if plane is None:
+            raise ValueError("Nie znaleziono aktywnej połaci")
+        plane.generation_settings.layout_origin = origin
+        plane.layout_dirty_reason = "geometry_changed"
+
+    def _set_plane_base_line_mode(self, plane_id: str, enabled: bool) -> None:
+        plane = self.project_state.roof_plane_by_id(plane_id)
+        if plane is None:
+            raise ValueError("Nie znaleziono aktywnej połaci")
+        if plane.outline is None:
+            raise ValueError("Aktywna połać nie ma jeszcze obrysu")
+        plane.generation_settings.base_line_y_cm = plane.outline.bounds().max_y if enabled else None
+        plane.layout_dirty_reason = "geometry_changed"
 
     def _set_active_plane_geometry(self, outline: Polygon2D, message: str) -> bool:
         plane = self.project_state.active_roof_plane()
@@ -334,7 +524,6 @@ class MainWindow(QMainWindow):
         if plane and self.project_state.set_active_plane(plane.id):
             self._workspace.primary_canvas = self._workspace.canvas_for_plane(plane.id) or self._workspace.primary_canvas
             self.primary_canvas = self._workspace.primary_canvas
-            self._persist()
             self._refresh_material_combo()
             self._refresh_report()
             self.statusBar().showMessage(f"Aktywna połać: {plane.name}", 2500)
@@ -371,11 +560,17 @@ class MainWindow(QMainWindow):
             self._delete_roof_plane_by_id(plane_id)
 
     def _on_material_changed(self, text: str) -> None:
-        if self.project_state.set_active_material_for_plane(text):
-            self._latest_report_html = ""
-            self._persist()
-            self._refresh_canvas()
-        self.statusBar().showMessage(f"Aktywna blacha: {text}", 2500)
+        plane = self.project_state.active_roof_plane()
+        if plane is None:
+            return
+        if plane.selected_material_id == text:
+            self.statusBar().showMessage(f"Aktywna blacha: {text}", 2500)
+            return
+        self._edit(
+            lambda: self.project_state.set_active_material_for_plane(text, plane.id),
+            f"Ustawiono materiał {text}",
+            label=f"Zmiana materiału połaci {plane.name}",
+        )
 
     def _on_outline_edit_committed(self, outline: Polygon2D) -> None:
         self._commit_active_plane_geometry_edit(outline, "Zaktualizowano geometrię połaci")
@@ -404,11 +599,13 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Brak obrysu", "Aktywna połać nie ma jeszcze obrysu")
             return
         origin = "right" if checked else "left"
-        if plane.generation_settings.layout_origin != origin:
-            plane.generation_settings.layout_origin = origin
-            plane.layout_dirty_reason = "geometry_changed"
-            self._persist()
-            self._refresh_canvas()
+        if plane.generation_settings.layout_origin == origin:
+            return
+        self._edit(
+            lambda: self._set_plane_layout_origin(plane.id, origin),
+            f"Ustawiono kierunek układania dla {plane.name}",
+            label=f"Zmiana kierunku układania {plane.name}",
+        )
 
     def _on_from_base_toggled(self, checked: bool) -> None:
         plane = self._active_or_warn()
@@ -417,10 +614,11 @@ class MainWindow(QMainWindow):
         if plane.outline is None:
             QMessageBox.information(self, "Brak obrysu", "Aktywna połać nie ma jeszcze obrysu")
             return
-        plane.generation_settings.base_line_y_cm = plane.outline.bounds().max_y if checked else None
-        plane.layout_dirty_reason = "geometry_changed"
-        self._persist()
-        self._refresh_canvas()
+        self._edit(
+            lambda: self._set_plane_base_line_mode(plane.id, checked),
+            f"Zmieniono bazę układania dla {plane.name}",
+            label=f"Zmiana bazy układania {plane.name}",
+        )
 
     # ------------------------------------------------------------------
     # Polygon drawing
@@ -510,6 +708,24 @@ class MainWindow(QMainWindow):
         if not self.project_state.roof_planes:
             QMessageBox.information(self, "Brak połaci", "Brak połaci do raportu")
             return False
+        dirty_plane_ids = [plane.id for plane in self.project_state.roof_planes if plane.layout_dirty_reason]
+        if dirty_plane_ids:
+            answer = QMessageBox.question(
+                self,
+                "Nieaktualny layout",
+                "Niektóre połacie wymagają przeliczenia. Przeliczyć teraz tylko nieaktualne połacie?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Yes,
+            )
+            if answer == QMessageBox.StandardButton.Cancel:
+                return False
+            if answer == QMessageBox.StandardButton.Yes:
+                for plane_id in dirty_plane_ids:
+                    try:
+                        self.project_state.generate_layout_for_plane(plane_id)
+                    except ValueError as e:
+                        QMessageBox.warning(self, "Błąd przeliczania", str(e))
+                        return False
         try:
             report = build_project_report(self.project_state)
             html = build_project_report_html(
@@ -524,7 +740,7 @@ class MainWindow(QMainWindow):
             return False
         self._latest_report_html = html
         self._latest_report_plane_id = None
-        self._persist()
+        self._refresh_dirty_state()
         self._refresh_canvas()
         if open_external:
             suffix = {"continuous": "_ciagly", "short": "_skrocony"}.get(variant, "")
@@ -547,7 +763,7 @@ class MainWindow(QMainWindow):
             return
         self._latest_report_html = ""
         self._latest_report_plane_id = None
-        self._persist()
+        self._refresh_dirty_state()
         self._refresh_canvas()
         self.statusBar().showMessage(f"Przeliczono połać {plane.name}", 4000)
 
@@ -565,9 +781,13 @@ class MainWindow(QMainWindow):
         dlg = TrojkatDialog(self._config, self)
         if dlg.exec() == QDialog.DialogCode.Accepted:
             v = dlg.get_values()
-            self._config.setdefault("ksztalty", {})["trojkat"] = v
             side = v["ramie"] if v.get("ramie_enabled") else None
-            outline = make_triangle(v["typ"], v["podstawa"], v["wysokosc"], side)
+            try:
+                outline = make_triangle(v["typ"], v["podstawa"], v["wysokosc"], side)
+            except ValueError as e:
+                QMessageBox.warning(self, "Błąd edycji", str(e))
+                return
+            self._config.setdefault("ksztalty", {})["trojkat"] = v
             self._set_active_plane_geometry(outline, f"Ustawiono obrys trójkąta {v['typ']}")
 
     def _dlg_trapez(self) -> None:
@@ -694,35 +914,41 @@ class MainWindow(QMainWindow):
         current = plane.selected_material_id or ids[0]
         sel, ok = QInputDialog.getItem(self, "Zmień materiał", "Materiał:", ids,
                                        ids.index(current) if current in ids else 0, False)
-        if ok and self.project_state.set_active_material_for_plane(sel, plane.id):
-            self._latest_report_html = ""
-            self._persist()
-            self._refresh_canvas()
+        if ok and sel != current:
+            self._edit(
+                lambda: self.project_state.set_active_material_for_plane(sel, plane.id),
+                f"Ustawiono materiał {sel}",
+                label=f"Zmiana materiału połaci {plane.name}",
+            )
 
     # ------------------------------------------------------------------
     # Catalogue dialogs
     def _dlg_blachy(self) -> None:
         dlg = BlachyDialog(self.project_state.materials, self)
         if dlg.exec() == QDialog.DialogCode.Accepted:
-            self.project_state.replace_materials(dlg.get_values())
-            self._latest_report_html = ""
-            self._persist()
-            self._refresh_material_combo()
-            self._refresh_canvas()
+            self._edit(
+                lambda: self.project_state.replace_materials(dlg.get_values()),
+                "Zaktualizowano katalog materiałów",
+                label="Edycja katalogu materiałów",
+            )
 
     def _dlg_firma(self) -> None:
         dlg = DaneFirmyDialog(self._config, self)
         if dlg.exec() == QDialog.DialogCode.Accepted:
             v = dlg.get_values()
-            self._config["company_data"] = v
-            self.project_state.company_data = self.project_state.company_data.from_dict(v)
-            self._latest_report_html = ""
-            self._persist()
-            company = v.get("name", "") or "4Dach"
-            self.setWindowTitle(f"4Dach — {company}")
+            def _apply_company_data() -> None:
+                self._config["company_data"] = v
+                self.project_state.company_data = self.project_state.company_data.from_dict(v)
+                company = v.get("name", "") or "4Dach"
+                self._set_company_title(company)
+
+            self._edit(_apply_company_data, "Zaktualizowano dane firmy", label="Edycja danych firmy")
 
     # ------------------------------------------------------------------
     def closeEvent(self, event: QCloseEvent) -> None:
         settings = QSettings()
         settings.setValue("geometry", self.saveGeometry())
-        event.accept()
+        if self._confirm_discard_unsaved_changes(context="zamknięciem programu"):
+            event.accept()
+        else:
+            event.ignore()

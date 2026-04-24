@@ -105,6 +105,11 @@ class ToolbarController:
                 tb.addSeparator()
 
         # Named action references that controllers need
+        self.action_new_project = self._toolbar_actions[0][0]
+        self.action_open_project = self._toolbar_actions[1][0]
+        self.action_save_project = self._toolbar_actions[2][0]
+        self.action_draw_outline = self._toolbar_actions[3][0]
+        self.action_undo = self._toolbar_actions[5][0]
         self.action_module_count = self._toolbar_actions[8][0]
 
         # Material selector button + combo
