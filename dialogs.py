@@ -11,10 +11,13 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFormLayout,
     QGroupBox,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QMessageBox,
+    QPushButton,
     QRadioButton,
     QSpinBox,
     QTextEdit,
@@ -351,18 +354,13 @@ class BlachyDialog(QDialog):
 
         # Action buttons
         action_layout = QVBoxLayout()
-        
-        from PySide6.QtWidgets import QPushButton, QHBoxLayout
-        
         button_layout = QHBoxLayout()
         self.dodaj_btn = QPushButton("+ Dodaj")
         self.edycja_btn = QPushButton("Edycja")
         self.usun_btn = QPushButton("- Usuń")
-        
         button_layout.addWidget(self.dodaj_btn)
         button_layout.addWidget(self.edycja_btn)
         button_layout.addWidget(self.usun_btn)
-        
         action_layout.addLayout(button_layout)
         main_layout.addLayout(action_layout)
 
@@ -512,15 +510,11 @@ class DaneBlachyDialog(QDialog):
         moduly_top_layout.addWidget(QLabel("Długość modułu:"))
         moduly_top_layout.addWidget(self.moduly_spin)
 
-        moduly_buttons_layout = QVBoxLayout()
-        from PySide6.QtWidgets import QPushButton, QHBoxLayout
-        
         moduly_btn_layout = QHBoxLayout()
         self.moduly_plus_btn = QPushButton("+")
         self.moduly_minus_btn = QPushButton("-")
         moduly_btn_layout.addWidget(self.moduly_plus_btn)
         moduly_btn_layout.addWidget(self.moduly_minus_btn)
-        
         moduly_top_layout.addLayout(moduly_btn_layout)
         moduly_layout.addLayout(moduly_top_layout)
 
@@ -634,34 +628,45 @@ class DaneBlachyDialog(QDialog):
 
 
 def show_ostrzezenie_dialog(parent=None):
-    """Show warning dialog for clearing active roof surface"""
-    from PySide6.QtWidgets import QMessageBox
-    
+    """Show warning dialog for clearing active roof surface."""
     msg_box = QMessageBox(parent)
     msg_box.setWindowTitle("Ostrzeżenie")
     msg_box.setIcon(QMessageBox.Icon.Warning)
     msg_box.setText("Czy na pewno wyczyścić aktywną połać?")
-    
     cancel_button = msg_box.addButton("X Anuluj", QMessageBox.ButtonRole.RejectRole)
     ok_button = msg_box.addButton("OK", QMessageBox.ButtonRole.AcceptRole)
-    
     msg_box.exec()
-    
     return msg_box.clickedButton() == ok_button
 
 
-def load_config():
-    """Load configuration from config.json"""
+def load_config() -> dict:
+    """Load configuration from config.json. Returns empty dict on any read error."""
     config_path = Path(__file__).parent / "config.json"
     try:
         with open(config_path, "r", encoding="utf-8") as f:
             return json.load(f)
     except FileNotFoundError:
         return {}
+    except (OSError, json.JSONDecodeError):
+        return {}
 
 
-def save_config(config_data):
-    """Save configuration to config.json"""
+def save_config(config_data: dict, parent_widget=None) -> bool:
+    """Save configuration to config.json.
+
+    Returns True on success. On IO failure shows QMessageBox.critical() if
+    parent_widget is provided, and returns False.
+    """
     config_path = Path(__file__).parent / "config.json"
-    with open(config_path, "w", encoding="utf-8") as f:
-        json.dump(config_data, f, ensure_ascii=False, indent=2)
+    try:
+        with open(config_path, "w", encoding="utf-8") as f:
+            json.dump(config_data, f, ensure_ascii=False, indent=2)
+        return True
+    except OSError as error:
+        if parent_widget is not None:
+            QMessageBox.critical(
+                parent_widget,
+                "Błąd zapisu",
+                f"Nie można zapisać pliku konfiguracji:\n{error}",
+            )
+        return False

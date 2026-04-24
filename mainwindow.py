@@ -3,6 +3,7 @@ import sys
 
 from PySide6.QtCore import QPointF, QRectF, QSize, Qt, QUrl
 from PySide6.QtGui import QAction, QColor, QFont, QKeySequence, QMouseEvent, QPainter, QPalette, QPen, QPolygonF
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -18,16 +19,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from PySide6.QtGui import QDesktopServices
 
 from app_icons import build_icon
-
-# Important:
-# You need to run the following command to generate the ui_form.py file
-#     pyside6-uic form.ui -o ui_form.py, or
-#     pyside2-uic form.ui -o ui_form.py
-from ui_form import Ui_MainWindow
-
 from dialogs import (
     BlachyDialog,
     DaneFirmyDialog,
@@ -60,6 +53,7 @@ class DrawingCanvas(QWidget):
         self._selected_sheet_id: str | None = None
         self._show_grid = False
         self._show_module_count = False
+        self._material = None  # declared here to avoid AttributeError before set_material() is called
         self.setMouseTracking(True)
         self.setAutoFillBackground(True)
         self.setMinimumSize(640, 420)
@@ -334,7 +328,6 @@ class DrawingCanvas(QWidget):
 class MainWindow(QMainWindow):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.ui = Ui_MainWindow()
         self._actions = []
         self._toolbar_actions = []
         self._theme = "light"
@@ -345,8 +338,11 @@ class MainWindow(QMainWindow):
         self._latest_report_html = ""
         self._latest_report_plane_id = None
         self._plane_tab_canvases: dict[str, DrawingCanvas] = {}
-        self.ui.setupUi(self)
-        self.setWindowTitle("4Dach wersja 1.0 Super Dach sp.j. instalacja 3, plik: testmarcin (zmieniony)")
+        # Setup the basic Qt chrome (menuBar, statusBar, centralWidget) without form.ui
+        self.setMenuBar(self.menuBar())
+        self.setStatusBar(self.statusBar())
+        company_name = self._config.get("company_data", {}).get("name", "") or "4Dach"
+        self.setWindowTitle(f"4Dach — {company_name}")
         self.resize(1120, 720)
         self._setup_window_style()
         self._build_main_menu()
@@ -494,24 +490,22 @@ class MainWindow(QMainWindow):
         self._toolbar_actions.clear()
 
         icon_actions = [
-            ("new_document", "Nowy projekt", None),
-            ("open_folder", "Otwórz projekt", None),
-            ("save_floppy", "Zapisz projekt", None),
-            ("roof_outline", "Rysowanie krawędzi połaci", None),
-            ("base_point_toggle", "Pokaż/ukryj punkt bazowy", None),
-            ("undo", "Cofnij", None),
-            ("plus", "Dodaj / Plus", None),
-            ("minus", "Odejmij / Minus", None),
-            ("module_count", "Włącz/wyłącz pokazywanie ilości modułów", self._on_module_count_toggled),
-            ("zoom_out", "Oddal / Pomniejsz", None),
-            ("fit_view", "Pokaż wszystko / Dopasuj do ekranu", None),
-            ("broom", "Wyczyść / Usuń wszystko", None),
+            ("new_document", "Nowy projekt", False, None),
+            ("open_folder", "Otwórz projekt", False, None),
+            ("save_floppy", "Zapisz projekt", False, None),
+            ("roof_outline", "Rysowanie krawędzi połaci", False, None),
+            ("base_point_toggle", "Pokaż/ukryj punkt bazowy", False, None),
+            ("undo", "Cofnij", False, None),
+            ("plus", "Dodaj / Plus", False, None),
+            ("minus", "Odejmij / Minus", False, None),
+            ("module_count", "Włącz/wyłącz pokazywanie ilości modułów", False, self._on_module_count_toggled),
+            ("zoom_out", "Oddal / Pomniejsz", False, None),
+            ("fit_view", "Pokaż wszystko / Dopasuj do ekranu", False, None),
+            ("broom", "Wyczyść / Usuń wszystko", False, None),
         ]
 
-        for index, (icon_kind, text, callback) in enumerate(icon_actions):
-            action = self._add_toolbar_action(toolbar, icon_kind, text)
-            if callback:
-                action.triggered.connect(callback)
+        for index, (icon_kind, text, checkable, callback) in enumerate(icon_actions):
+            self._add_toolbar_action(toolbar, icon_kind, text, checkable=checkable, callback=callback)
             if index in {2, 4, 7, 11}:
                 toolbar.addSeparator()
 
@@ -852,7 +846,7 @@ class MainWindow(QMainWindow):
 
     def _persist_project_state(self):
         self.project_state.apply_to_config(self._config)
-        save_config(self._config)
+        save_config(self._config, self)
 
     def _apply_project_edit(self, callback, success_message: str):
         try:
@@ -1294,7 +1288,7 @@ class MainWindow(QMainWindow):
             self._config["blachy"] = values
             self._clear_generated_report()
             self._persist_project_state()
-            save_config(self._config)
+            save_config(self._config, self)
             self._reload_project_state()
             self.statusBar().showMessage(f"Lista blach zaktualizowana: {len(values)} pozycji", 3000)
 
