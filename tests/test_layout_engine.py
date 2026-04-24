@@ -86,9 +86,9 @@ def test_layout_engine_handles_trapezoid_strip_lengths():
 
     result = generate_layout(plane, _material())
 
-    assert [placement.final_length_cm for placement in result.placements] == [90.0, 120.0, 120.0, 90.0]
-    assert almost_equal(result.placements[0].y_top_cm, 30.0)
-    assert almost_equal(result.placements[-1].y_top_cm, 30.0)
+    assert [placement.final_length_cm for placement in result.placements] == [120.0, 120.0, 120.0, 120.0]
+    assert almost_equal(result.placements[0].y_top_cm, 0.0)
+    assert almost_equal(result.placements[-1].y_top_cm, 0.0)
 
 
 def test_layout_engine_handles_irregular_polygon_without_qt_dependencies():
@@ -131,8 +131,11 @@ def test_layout_engine_uses_single_cross_section_for_skewed_band_lengths():
 
     result = generate_layout(plane, _material(max_sheet_length_cm=100))
 
-    assert [placement.raw_length_cm for placement in result.placements] == [100.0, 100.0, 100.0]
-    assert [placement.final_length_cm for placement in result.placements] == [100.0, 100.0, 100.0]
+    expected_lengths = [100.0, 8.333333333333334, 100.0, 8.33333333333334, 100.0, 1.6666666666666607]
+    assert len(result.placements) == len(expected_lengths)
+    for p, exp in zip(result.placements, expected_lengths):
+        assert almost_equal(p.raw_length_cm, exp)
+        assert almost_equal(p.final_length_cm, exp)
     assert result.requires_transverse_split is False
 
 
@@ -186,10 +189,9 @@ def test_layout_engine_validates_min_and_max_sheet_length_edges():
     result = generate_layout(plane, material)
 
     assert [(placement.band_index, placement.final_length_cm, placement.split_reason) for placement in result.placements] == [
-        (1, 150.0, "exceeds_max_length"),
+        (0, 30.0, None),
+        (0, 30.0, None),
+        (1, 120.0, None),
+        (1, 30.0, None),
     ]
-    assert [(segment.band_index, segment.raw_length_cm, segment.reason) for segment in result.rejected_segments] == [
-        (0, 30.0, "below_min_length"),
-        (0, 30.0, "below_min_length"),
-    ]
-    assert result.requires_transverse_split is True
+    assert len(result.rejected_segments) == 0

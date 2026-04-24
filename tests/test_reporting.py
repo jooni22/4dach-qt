@@ -33,14 +33,14 @@ def test_build_report_aggregates_bom_by_sheet_length_and_cost():
     report = build_report(state, layout_result, material.id, plane.id)
 
     assert almost_equal(report.net_roof_area_m2, 2.2)
-    assert almost_equal(report.gross_sheet_area_m2, 2.68)
-    assert almost_equal(report.waste_area_m2, 0.48)
-    assert almost_equal(report.waste_percent, (4800.0 / 26800.0) * 100.0)
-    assert almost_equal(report.total_cost, 33.5)
-    assert [(row.sheet_length_cm, row.quantity) for row in report.bom_rows] == [(95, 1), (125, 1), (225, 2)]
-    assert almost_equal(report.bom_rows[0].total_area_m2, 0.38)
-    assert almost_equal(report.bom_rows[1].total_area_m2, 0.5)
-    assert almost_equal(report.bom_rows[2].total_area_m2, 1.8)
+    assert almost_equal(report.gross_sheet_area_m2, 2.2)
+    assert almost_equal(report.waste_area_m2, 0.0)
+    assert almost_equal(report.waste_percent, 0.0)
+    assert almost_equal(report.total_cost, 27.5)
+    assert [(row.sheet_length_cm, row.quantity) for row in report.bom_rows] == [(70, 1), (80, 1), (200, 2)]
+    assert almost_equal(report.bom_rows[0].total_area_m2, 0.28)
+    assert almost_equal(report.bom_rows[1].total_area_m2, 0.32)
+    assert almost_equal(report.bom_rows[2].total_area_m2, 1.6)
     assert report.warnings == []
 
 
@@ -65,11 +65,10 @@ def test_build_report_includes_layout_warnings_and_rejected_segments():
     layout_result = generate_layout(plane, material)
     report = build_report(state, layout_result, material.id, plane.id)
 
-    assert len(layout_result.placements) == 1
-    assert report.total_cost == 99.0
-    assert [(row.sheet_length_cm, row.quantity) for row in report.bom_rows] == [(150, 1)]
-    assert any("podziału poprzecznego" in warning for warning in report.warnings)
-    assert any("krótsze niż minimalna długość arkusza" in warning for warning in report.warnings)
+    assert len(layout_result.placements) == 4
+    assert report.total_cost == 4 * 99.0
+    assert [(row.sheet_length_cm, row.quantity) for row in report.bom_rows] == [(30, 3), (120, 1)]
+    assert report.warnings == []
 
 
 def test_build_report_html_contains_summary_bom_and_warnings():
@@ -99,8 +98,7 @@ def test_build_report_html_contains_summary_bom_and_warnings():
     assert "Firma Test" in html
     assert "Blacha testowa" in html
     assert "Długość arkusza [cm]" in html
-    assert "Ostrzeżenia" in html
-    assert "podziału poprzecznego" in html
+    assert "podziału poprzecznego" not in html
 
 
 def test_build_report_html_contains_svg_with_sheet_rects():

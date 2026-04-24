@@ -140,27 +140,6 @@ class _UnionFind:
             self._parent[right_root] = left_root
 
 
-def normalize_sheet_length(
-    raw_length_cm: float,
-    material: Material,
-    *,
-    y_top_cm: float = 0.0,
-    y_bottom_cm: float = 0.0,
-    base_line_y_cm: float | None = None,
-) -> float:
-    base_length = raw_length_cm + material.bottom_margin_cm + material.top_margin_cm
-    module_length_cm = material.module_length_cm or 0.0
-    if material.type == "dachówkowa" and module_length_cm > 0:
-        if base_line_y_cm is not None:
-            span_from_base = max(base_line_y_cm - y_top_cm, 0.0)
-            trimmed_bottom = max(base_line_y_cm - y_bottom_cm, 0.0)
-            modules = ceil((span_from_base + material.bottom_margin_cm + material.top_margin_cm) / module_length_cm)
-            return max(modules * module_length_cm - trimmed_bottom, raw_length_cm)
-        modules = ceil(base_length / module_length_cm)
-        return modules * module_length_cm
-    return base_length
-
-
 def generate_layout(plane: RoofPlane, material: Material) -> LayoutResult:
     result = LayoutResult()
     if plane.outline is None:
@@ -195,59 +174,37 @@ def generate_layout(plane: RoofPlane, material: Material) -> LayoutResult:
         layout_band = LayoutBand(band_index=band_index, x_left_cm=x_left, x_right_cm=x_right)
 
         for segment_index, band_segment in enumerate(band_segments):
-            raw_length = band_segment.raw_length_cm
-            final_length = normalize_sheet_length(
-                raw_length,
-                material,
-                y_top_cm=band_segment.y_top_cm,
-                y_bottom_cm=band_segment.y_bottom_cm,
-                base_line_y_cm=plane.generation_settings.base_line_y_cm,
-            )
+            y_cursor = band_segment.y_bottom_cm
+            y_top = band_segment.y_top_cm
+            max_len = material.max_sheet_length_cm
+            row_index = 0
 
-            if final_length < material.min_sheet_length_cm:
-                result.rejected_segments.append(
-                    RejectedSegment(
+            while y_cursor > y_top + EPSILON:
+                sheet_height = min(max_len, y_cursor - y_top)
+                sheet_top = y_cursor - sheet_height
+                sheet_bottom = y_cursor
+                
+                placement_id = f"{plane.id}-b{band_index}-s{segment_index}-r{row_index}"
+                result.placements.append(
+                    SheetPlacement(
+                        id=placement_id,
                         band_index=band_index,
                         x_left_cm=band_segment.x_left_cm,
                         x_right_cm=band_segment.x_right_cm,
-                        y_top_cm=band_segment.y_top_cm,
-                        y_bottom_cm=band_segment.y_bottom_cm,
-                        raw_length_cm=raw_length,
-                        reason="below_min_length",
+                        y_top_cm=sheet_top,
+                        y_bottom_cm=sheet_bottom,
+                        raw_length_cm=sheet_height,
+                        final_length_cm=sheet_height,
+                        split_reason=None,
                     )
                 )
-                continue
+                
+                y_cursor -= sheet_height
+                row_index += 1
 
-            split_reason = None
-            if final_length > material.max_sheet_length_cm:
-                result.requires_transverse_split = True
-                split_reason = "exceeds_max_length"
-                result.warnings.append(
-                    LayoutWarning(
-                        code="requires_transverse_split",
-                        message="Arkusz przekracza maksymalną długość i wymaga podziału poprzecznego",
-                        data={"band_index": band_index, "material_id": material.id, "final_length_cm": final_length},
-                    )
-                )
-
-            placement_id = f"{plane.id}-b{band_index}-s{segment_index}"
             band_segment.segment_index = segment_index
-            band_segment.placement_id = placement_id
-            band_segment.split_reason = split_reason
+            band_segment.placement_id = f"{plane.id}-b{band_index}-s{segment_index}-r0"
             layout_band.segments.append(band_segment)
-            result.placements.append(
-                SheetPlacement(
-                    id=placement_id,
-                    band_index=band_index,
-                    x_left_cm=band_segment.x_left_cm,
-                    x_right_cm=band_segment.x_right_cm,
-                    y_top_cm=band_segment.y_top_cm,
-                    y_bottom_cm=band_segment.y_bottom_cm,
-                    raw_length_cm=raw_length,
-                    final_length_cm=final_length,
-                    split_reason=split_reason,
-                )
-            )
 
         result.bands.append(layout_band)
 
@@ -316,18 +273,16 @@ def _build_band_segments(plane: RoofPlane, band_index: int, x_left: float, x_rig
             piece.polygon
             for piece in sorted(component, key=lambda item: (item.x_left_cm, item.y_top_cm, item.piece_index))
         ]
-        representative_piece = max(
-            component,
-            key=lambda piece: (piece.raw_length_cm, -piece.y_top_cm, piece.piece_index),
-        )
+        y_top_cm = min(piece.y_top_cm for piece in component)
+        y_bottom_cm = max(piece.y_bottom_cm for piece in component)
         band_segments.append(
             LayoutBandSegment(
                 segment_index=segment_index,
                 x_left_cm=min(piece.x_left_cm for piece in component),
                 x_right_cm=max(piece.x_right_cm for piece in component),
-                y_top_cm=representative_piece.y_top_cm,
-                y_bottom_cm=representative_piece.y_bottom_cm,
-                raw_length_cm=representative_piece.raw_length_cm,
+                y_top_cm=y_top_cm,
+                y_bottom_cm=y_bottom_cm,
+                raw_length_cm=y_bottom_cm - y_top_cm,
                 coverage_polygons=coverage_polygons,
             )
         )
@@ -350,8 +305,8 @@ def _band_pieces_for_range(plane: RoofPlane, x_left: float, x_right: float) -> l
         if not mid_segments:
             continue
 
-        left_segments = vertical_segments_for_band(plane.outline, plane.holes, slab_left, x_mid)
-        right_segments = vertical_segments_for_band(plane.outline, plane.holes, x_mid, slab_right)
+        left_segments = vertical_segments_for_band(plane.outline, plane.holes, slab_left, slab_left)
+        right_segments = vertical_segments_for_band(plane.outline, plane.holes, slab_right, slab_right)
 
         if len(left_segments) != len(mid_segments):
             left_segments = mid_segments
@@ -361,15 +316,8 @@ def _band_pieces_for_range(plane: RoofPlane, x_left: float, x_right: float) -> l
         for segment_index, (mid_top, mid_bottom) in enumerate(mid_segments):
             left_top, left_bottom = left_segments[segment_index]
             right_top, right_bottom = right_segments[segment_index]
-            sampled_sections = [
-                (left_top, left_bottom),
-                (mid_top, mid_bottom),
-                (right_top, right_bottom),
-            ]
-            y_top_cm, y_bottom_cm = max(
-                sampled_sections,
-                key=lambda interval: (interval[1] - interval[0], -interval[0]),
-            )
+            y_top_cm = min(left_top, mid_top, right_top)
+            y_bottom_cm = max(left_bottom, mid_bottom, right_bottom)
             polygon = Polygon2D(
                 [
                     Point2D(slab_left, left_top),
