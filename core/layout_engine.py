@@ -118,6 +118,10 @@ class _BandPiece:
     right_interval: tuple[float, float]
     polygon: Polygon2D
 
+    @property
+    def raw_length_cm(self) -> float:
+        return self.y_bottom_cm - self.y_top_cm
+
 
 class _UnionFind:
     def __init__(self, size: int) -> None:
@@ -312,16 +316,18 @@ def _build_band_segments(plane: RoofPlane, band_index: int, x_left: float, x_rig
             piece.polygon
             for piece in sorted(component, key=lambda item: (item.x_left_cm, item.y_top_cm, item.piece_index))
         ]
-        y_top = min(piece.y_top_cm for piece in component)
-        y_bottom = max(piece.y_bottom_cm for piece in component)
+        representative_piece = max(
+            component,
+            key=lambda piece: (piece.raw_length_cm, -piece.y_top_cm, piece.piece_index),
+        )
         band_segments.append(
             LayoutBandSegment(
                 segment_index=segment_index,
                 x_left_cm=min(piece.x_left_cm for piece in component),
                 x_right_cm=max(piece.x_right_cm for piece in component),
-                y_top_cm=y_top,
-                y_bottom_cm=y_bottom,
-                raw_length_cm=y_bottom - y_top,
+                y_top_cm=representative_piece.y_top_cm,
+                y_bottom_cm=representative_piece.y_bottom_cm,
+                raw_length_cm=representative_piece.raw_length_cm,
                 coverage_polygons=coverage_polygons,
             )
         )
@@ -355,6 +361,15 @@ def _band_pieces_for_range(plane: RoofPlane, x_left: float, x_right: float) -> l
         for segment_index, (mid_top, mid_bottom) in enumerate(mid_segments):
             left_top, left_bottom = left_segments[segment_index]
             right_top, right_bottom = right_segments[segment_index]
+            sampled_sections = [
+                (left_top, left_bottom),
+                (mid_top, mid_bottom),
+                (right_top, right_bottom),
+            ]
+            y_top_cm, y_bottom_cm = max(
+                sampled_sections,
+                key=lambda interval: (interval[1] - interval[0], -interval[0]),
+            )
             polygon = Polygon2D(
                 [
                     Point2D(slab_left, left_top),
@@ -369,8 +384,8 @@ def _band_pieces_for_range(plane: RoofPlane, x_left: float, x_right: float) -> l
                     slab_index=slab_index,
                     x_left_cm=slab_left,
                     x_right_cm=slab_right,
-                    y_top_cm=min(left_top, right_top, mid_top),
-                    y_bottom_cm=max(left_bottom, right_bottom, mid_bottom),
+                    y_top_cm=y_top_cm,
+                    y_bottom_cm=y_bottom_cm,
                     left_interval=(left_top, left_bottom),
                     right_interval=(right_top, right_bottom),
                     polygon=polygon,

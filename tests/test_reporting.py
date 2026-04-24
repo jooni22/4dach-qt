@@ -123,6 +123,31 @@ def test_build_report_html_contains_svg_with_sheet_rects():
     assert "Ostrzeżenia" in html
 
 
+def test_build_report_html_uses_supplied_report_when_project_state_has_no_saved_placements():
+    material = Material(
+        id="MAT1",
+        nazwa="Material 1",
+        type="trapezowa",
+        effective_width_cm=50,
+        module_length_cm=0,
+        bottom_margin_cm=0,
+        top_margin_cm=0,
+        min_sheet_length_cm=1,
+        max_sheet_length_cm=500,
+    )
+    state = ProjectState(materials=[material])
+    plane = state.add_roof_plane(Polygon2D.rectangle(100, 150), selected_material_id=material.id)
+
+    layout_result = generate_layout(plane, material)
+    report = build_report(state, layout_result, material.id, plane.id)
+    html = build_report_html(state, report, material.id, plane.id)
+
+    assert "Powierzchnia efektywna [m2]</th><td>1.500" in html
+    assert "Zużycie materiału [m2]</th><td>1.500" in html
+    assert "Długość arkusza [cm]" in html
+    assert "<td>Material 1</td><td>MAT1</td><td>150.00</td><td>2</td><td>1.500</td>" in html
+
+
 def test_build_project_report_aggregates_multiple_roof_planes_and_groups_lengths():
     material = Material(
         id="MAT",

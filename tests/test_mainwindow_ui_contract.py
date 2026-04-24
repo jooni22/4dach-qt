@@ -11,6 +11,7 @@ pytest.importorskip("pytestqt")
 
 from PySide6.QtWidgets import QDialogButtonBox, QInputDialog, QMenu, QMessageBox
 from PySide6.QtWidgets import QDialog
+from PySide6.QtCore import QPointF
 
 from mainwindow import MainWindow
 from ui.dialogs.material_dialog import BlachyDialog
@@ -446,6 +447,78 @@ def test_mainwindow_connects_initial_canvas_edit_signals_on_startup(qtbot, monke
     canvas.outline_edit_committed.emit(updated_outline)
 
     assert window.project_state.roof_plane_by_id("plane-1").outline == updated_outline
+
+
+def test_mainwindow_freehand_outline_uses_canvas_mapper_instead_of_raw_pixels(qtbot):
+    first = MainWindow()
+    qtbot.addWidget(first)
+    first_canvas = first._workspace.primary_canvas
+    first_canvas.resize(640, 420)
+    first_canvas.polygon_closed.connect(first._on_polygon_closed)
+    first._on_polygon_closed(
+        [
+            QPointF(110, 80),
+            QPointF(530, 80),
+            QPointF(530, 340),
+            QPointF(110, 340),
+        ]
+    )
+
+    second = MainWindow()
+    qtbot.addWidget(second)
+    second_canvas = second._workspace.primary_canvas
+    second_canvas.resize(960, 630)
+    second_canvas.polygon_closed.connect(second._on_polygon_closed)
+    second._on_polygon_closed(
+        [
+            QPointF(165, 120),
+            QPointF(795, 120),
+            QPointF(795, 510),
+            QPointF(165, 510),
+        ]
+    )
+
+    first_outline = first.project_state.active_roof_plane().outline
+    second_outline = second.project_state.active_roof_plane().outline
+
+    assert first_outline is not None
+    assert second_outline is not None
+    assert first_outline.points == second_outline.points
+
+
+def test_mainwindow_open_project_resets_cached_report_and_company_title(qtbot, monkeypatch):
+    initial_config = {
+        "company_data": {"name": "Firma A"},
+        "blachy": [
+            {
+                "id": "PD510",
+                "nazwa": "PD510",
+                "type": "dachówkowa",
+                "effective_width_cm": 51,
+                "module_length_cm": 25,
+                "bottom_margin_cm": 10,
+                "top_margin_cm": 80,
+                "min_sheet_length_cm": 20,
+            }
+        ],
+    }
+    reopened_config = {
+        "company_data": {"name": "Firma B"},
+        "blachy": initial_config["blachy"],
+    }
+    loads = iter([initial_config, reopened_config])
+    monkeypatch.setattr("ui.main_window.load_config", lambda: next(loads))
+
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window._latest_report_html = "<html>stary raport</html>"
+    window._latest_report_plane_id = "plane-123"
+
+    window._open_project()
+
+    assert window._latest_report_html == ""
+    assert window._latest_report_plane_id is None
+    assert window.windowTitle() == "4Dach — Firma B"
 
 
 def test_mainwindow_marks_project_dirty_until_explicit_save(qtbot, monkeypatch):

@@ -19,7 +19,7 @@ from PySide6.QtGui import QDesktopServices
 from app_icons import build_icon
 from persistence import load_config, save_config
 from core.canvas_mapper import CanvasMapper
-from core.models import Point2D, Polygon2D, SheetPlacement
+from core.models import Bounds2D, Point2D, Polygon2D, SheetPlacement
 from core.project_state import ProjectState
 from core.reporting import build_project_report, build_project_report_html
 from core.geometry import make_rectangle, make_trapezoid, make_triangle
@@ -303,6 +303,10 @@ class MainWindow(QMainWindow):
         self._config = load_config()
         self.project_state = ProjectState.from_config(self._config)
         self._workspace.bind_project_state(self.project_state, self.project_state.material_by_id)
+        self._latest_report_html = ""
+        self._latest_report_plane_id = None
+        company = self._config.get("company_data", {}).get("name", "") or "4Dach"
+        self._set_company_title(company)
         self._refresh_material_combo()
         self._refresh_canvas()
         self._mark_saved_state()
@@ -658,7 +662,7 @@ class MainWindow(QMainWindow):
         canvas = self._workspace.primary_canvas
         try:
             canvas.polygon_closed.disconnect(self._on_polygon_closed)
-        except RuntimeError:
+        except (RuntimeError, TypeError):
             pass
         canvas.set_mode(canvas.MODE_VIEW)
 
@@ -668,16 +672,15 @@ class MainWindow(QMainWindow):
 
         from PySide6.QtCore import QRectF
 
-        rect = QRectF(canvas.rect())
-        if rect.isEmpty():
-            self.statusBar().showMessage("Nie udało się odczytać obszaru rysowania.", 4000)
+        xs = [point.x() for point in pixel_points]
+        ys = [point.y() for point in pixel_points]
+        bounds_rect = QRectF(min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys))
+        if bounds_rect.isEmpty():
+            self.statusBar().showMessage("Nie udało się znormalizować szkicu.", 4000)
             return
 
-        min_x = min(point.x() for point in pixel_points)
-        min_y = min(point.y() for point in pixel_points)
-        domain_pts = [Point2D(point.x() - min_x, point.y() - min_y) for point in pixel_points]
-
-        outline = Polygon2D(domain_pts)
+        mapper = CanvasMapper(Bounds2D(0.0, 0.0, 1000.0, 1000.0), bounds_rect, margin=0.0)
+        outline = Polygon2D([mapper.unmap_point(point) for point in pixel_points])
         self._set_active_plane_geometry(outline, "Ustawiono obrys z odręcznego rysowania")
 
     def _on_cutout_closed(self, pixel_points: list) -> None:
@@ -687,7 +690,7 @@ class MainWindow(QMainWindow):
             return
         try:
             canvas.cutout_closed.disconnect(self._on_cutout_closed)
-        except RuntimeError:
+        except (RuntimeError, TypeError):
             pass
         canvas.set_mode(canvas.MODE_VIEW)
 

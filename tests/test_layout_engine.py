@@ -30,7 +30,13 @@ def test_layout_engine_generates_deterministic_bands_for_simple_rectangle():
         (1, 50.0, 100.0, 200.0),
         (2, 100.0, 120.0, 200.0),
     ]
-    assert [band.to_dict() for band in result.bands] == [band.to_dict() for band in result.bands]
+    assert [band.band_index for band in result.bands] == [0, 1, 2]
+    assert [(band.x_left_cm, band.x_right_cm, len(band.segments)) for band in result.bands] == [
+        (0.0, 50.0, 1),
+        (50.0, 100.0, 1),
+        (100.0, 120.0, 1),
+    ]
+    assert [segment.raw_length_cm for band in result.bands for segment in band.segments] == [200.0, 200.0, 200.0]
     assert result.warnings == []
 
 
@@ -107,6 +113,27 @@ def test_layout_engine_handles_irregular_polygon_without_qt_dependencies():
     assert len(result.placements) == 3
     assert [len(band.segments[0].coverage_polygons) for band in result.bands] == [3, 2, 1]
     assert result.placements[0].raw_length_cm < result.placements[1].raw_length_cm
+
+
+def test_layout_engine_uses_single_cross_section_for_skewed_band_lengths():
+    plane = RoofPlane(
+        id="plane-1",
+        name="Skewed",
+        outline=Polygon2D(
+            [
+                Point2D(0, 20),
+                Point2D(120, 0),
+                Point2D(120, 100),
+                Point2D(0, 120),
+            ]
+        ),
+    )
+
+    result = generate_layout(plane, _material(max_sheet_length_cm=100))
+
+    assert [placement.raw_length_cm for placement in result.placements] == [100.0, 100.0, 100.0]
+    assert [placement.final_length_cm for placement in result.placements] == [100.0, 100.0, 100.0]
+    assert result.requires_transverse_split is False
 
 
 def test_layout_engine_tracks_multiple_cutouts_inside_band_coverage():
