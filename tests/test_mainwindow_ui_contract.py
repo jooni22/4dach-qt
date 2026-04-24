@@ -262,3 +262,22 @@ def test_mainwindow_rolls_back_invalid_canvas_outline_edit(qtbot, monkeypatch):
     assert plane.outline == original_outline
     assert messages
     assert "Wycinek musi leżeć w całości wewnątrz obrysu" in messages[-1]
+
+
+def test_mainwindow_commits_canvas_cutout_edits_to_project_state(qtbot):
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.project_state = ProjectState(materials=window.project_state.materials)
+    window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
+    plane = window.project_state.add_roof_plane(build_rectangle_outline(320, 180), selected_material_id="PD510")
+    window.project_state.add_hole_to_plane(Polygon2D.rectangle(60, 50, origin_x=40, origin_y=30), plane.id)
+    window._refresh_canvas_from_state()
+
+    updated_hole = Polygon2D.rectangle(80, 50, origin_x=40, origin_y=30)
+    canvas = window._workspace.canvas_for_plane(plane.id)
+
+    canvas.hole_edit_committed.emit(0, updated_hole)
+
+    assert plane.holes[0] == updated_hole
+    assert plane.layout_dirty_reason == "geometry_changed"

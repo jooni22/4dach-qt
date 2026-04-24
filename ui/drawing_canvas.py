@@ -5,18 +5,19 @@ Modes
 -----
 MODE_VIEW          — passive display of the active roof plane
 MODE_DRAW_OUTLINE  — click to add vertices; close polygon to create a new roof plane
+MODE_DRAW_CUTOUT   — click to add vertices; close polygon to create a cutout inside the plane
 MODE_SELECT_SHEET  — click a sheet placement to select/highlight it
 
-Polygon drawing (MODE_DRAW_OUTLINE)
-------------------------------------
+Polygon drawing (MODE_DRAW_OUTLINE / MODE_DRAW_CUTOUT)
+------------------------------------------------------
 * Left-click adds a vertex.
 * When the cursor is within SNAP_RADIUS pixels of the *first* vertex (and ≥ 3
   vertices have been placed) the canvas shows a snap indicator and the cursor
   changes to a crosshair — clicking there closes the polygon.
 * Pressing Enter also closes the polygon when ≥ 3 vertices are present.
 * Right-click / Escape clears the in-progress sketch.
-* The ``polygon_closed`` signal is emitted with the list of QPointF vertices so
-  that the controller can convert them to domain coordinates and add a RoofPlane.
+* The controller receives the closed polygon and decides whether it becomes a
+  new roof plane outline or a cutout inside the active plane.
 """
 from __future__ import annotations
 
@@ -27,8 +28,8 @@ from PySide6.QtGui import QColor, QKeyEvent, QMouseEvent, QPainter, QPalette, QP
 from PySide6.QtWidgets import QWidget
 
 from core.canvas_mapper import CanvasMapper
-from core.geometry import point_in_polygon, polygon_edges, replace_polygon_point, segment_length, validate_polygon
-from core.models import Point2D, Polygon2D
+from core.geometry import point_in_polygon, polygon_edges, replace_polygon_point, segment_length, validate_hole_polygon, validate_polygon
+from core.models import Polygon2D
 
 SNAP_RADIUS = 10
 VERTEX_HANDLE_RADIUS = 6
@@ -41,10 +42,13 @@ class DrawingCanvas(QWidget):
 
     MODE_VIEW = "view"
     MODE_DRAW_OUTLINE = "draw_outline"
+    MODE_DRAW_CUTOUT = "draw_cutout"
     MODE_SELECT_SHEET = "select_sheet"
 
     polygon_closed = Signal(list)
+    cutout_closed = Signal(list)
     outline_edit_committed = Signal(object)
+    hole_edit_committed = Signal(int, object)
     outline_edit_rejected = Signal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -63,11 +67,16 @@ class DrawingCanvas(QWidget):
         self._show_module_count: bool = False
 
         self._plane_selected: bool = False
+        self._selected_hole_index: int | None = None
         self._active_vertex_index: int | None = None
         self._active_edge_index: int | None = None
+        self._active_hole_vertex_index: int | None = None
         self._dragging_vertex_index: int | None = None
+        self._dragging_hole_index: int | None = None
         self._drag_start_outline: Polygon2D | None = None
+        self._drag_start_hole: Polygon2D | None = None
         self._preview_outline: Polygon2D | None = None
+        self._preview_hole: Polygon2D | None = None
         self._drag_mapper: CanvasMapper | None = None
 
         self.setMouseTracking(True)
@@ -92,8 +101,8 @@ class DrawingCanvas(QWidget):
         self.user_points.clear()
         self.preview_point = None
         self._snap_active = False
-        self._cancel_outline_drag()
-        if mode == self.MODE_DRAW_OUTLINE:
+        self._cancel_geometry_drag()
+        if mode in {self.MODE_DRAW_OUTLINE, self.MODE_DRAW_CUTOUT}:
             self.setCursor(Qt.CursorShape.CrossCursor)
         elif mode == self.MODE_SELECT_SHEET:
             self.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -103,10 +112,8 @@ class DrawingCanvas(QWidget):
 
     def set_roof_plane(self, roof_plane) -> None:
         self.roof_plane = roof_plane
-        self._cancel_outline_drag()
-        self._plane_selected = bool(roof_plane is not None and roof_plane.outline is not None)
-        self._active_vertex_index = None
-        self._active_edge_index = None
+        self._cancel_geometry_drag()
+        self._reset_selection(select_plane=bool(roof_plane is not None and roof_plane.outline is not None))
         self.update()
 
     def set_material(self, material) -> None:
@@ -119,6 +126,28 @@ class DrawingCanvas(QWidget):
         if self.roof_plane is None:
             return None
         return self.roof_plane.outline
+
+    def display_holes(self) -> list[Polygon2D]:
+        if self.roof_plane is None:
+            return []
+        holes = list(self.roof_plane.holes)
+        if self._preview_hole is not None and self._dragging_hole_index is not None:
+            holes[self._dragging_hole_index] = self._preview_hole
+        return holes
+
+    def selected_cutout_index(self) -> int | None:
+        return self._selected_hole_index
+
+    def selected_geometry_kind(self) -> str | None:
+        if self._selected_hole_index is not None and self._active_hole_vertex_index is not None:
+            return "cutout_vertex"
+        if self._selected_hole_index is not None:
+            return "cutout_polygon"
+        if self._plane_selected and self._active_vertex_index is not None:
+            return "main_polygon_vertex"
+        if self._plane_selected:
+            return "main_polygon"
+        return None
 
     def edge_lengths_cm(self) -> list[float]:
         outline = self.display_outline()
@@ -159,25 +188,29 @@ class DrawingCanvas(QWidget):
     def _close_polygon(self) -> None:
         if len(self.user_points) < 3:
             return
-        self.polygon_closed.emit(list(self.user_points))
+        points = list(self.user_points)
         self.user_points.clear()
         self.preview_point = None
         self._snap_active = False
+        if self._mode == self.MODE_DRAW_CUTOUT:
+            self.cutout_closed.emit(points)
+        else:
+            self.polygon_closed.emit(points)
         self.update()
 
-    def _outline_handle_points(self, mapper: CanvasMapper, outline: Polygon2D) -> list[QPointF]:
-        return [mapper.map_point(point) for point in outline.points]
+    def _polygon_handle_points(self, mapper: CanvasMapper, polygon: Polygon2D) -> list[QPointF]:
+        return [mapper.map_point(point) for point in polygon.points]
 
-    def _edge_midpoints(self, mapper: CanvasMapper, outline: Polygon2D) -> list[QPointF]:
+    def _edge_midpoints(self, mapper: CanvasMapper, polygon: Polygon2D) -> list[QPointF]:
         handles: list[QPointF] = []
-        for start, end in polygon_edges(outline):
+        for start, end in polygon_edges(polygon):
             start_point = mapper.map_point(start)
             end_point = mapper.map_point(end)
             handles.append(QPointF((start_point.x() + end_point.x()) / 2.0, (start_point.y() + end_point.y()) / 2.0))
         return handles
 
-    def _hit_test_vertex(self, pos: QPointF, mapper: CanvasMapper, outline: Polygon2D) -> int | None:
-        for index, vertex in enumerate(self._outline_handle_points(mapper, outline)):
+    def _hit_test_vertex(self, pos: QPointF, mapper: CanvasMapper, polygon: Polygon2D) -> int | None:
+        for index, vertex in enumerate(self._polygon_handle_points(mapper, polygon)):
             if self._distance(pos, vertex) <= VERTEX_HANDLE_RADIUS + 2:
                 return index
         return None
@@ -189,51 +222,117 @@ class DrawingCanvas(QWidget):
         return None
 
     def _start_outline_drag(self, vertex_index: int, mapper: CanvasMapper, outline: Polygon2D) -> None:
-        self._plane_selected = True
+        self._reset_selection(select_plane=True)
         self._active_vertex_index = vertex_index
-        self._active_edge_index = None
         self._dragging_vertex_index = vertex_index
+        self._dragging_hole_index = None
         self._drag_start_outline = outline
+        self._drag_start_hole = None
         self._preview_outline = outline
+        self._preview_hole = None
         self._drag_mapper = mapper
         self.setCursor(Qt.CursorShape.ClosedHandCursor)
 
-    def _update_outline_drag(self, pos: QPointF) -> None:
-        if self._dragging_vertex_index is None or self._drag_start_outline is None or self._drag_mapper is None:
+    def _start_hole_drag(self, hole_index: int, vertex_index: int, mapper: CanvasMapper, hole: Polygon2D) -> None:
+        self._reset_selection()
+        self._selected_hole_index = hole_index
+        self._active_hole_vertex_index = vertex_index
+        self._dragging_vertex_index = vertex_index
+        self._dragging_hole_index = hole_index
+        self._drag_start_outline = None
+        self._drag_start_hole = hole
+        self._preview_outline = None
+        self._preview_hole = hole
+        self._drag_mapper = mapper
+        self.setCursor(Qt.CursorShape.ClosedHandCursor)
+
+    def _update_geometry_drag(self, pos: QPointF) -> None:
+        if self._dragging_vertex_index is None or self._drag_mapper is None:
             return
         domain_point = self._drag_mapper.unmap_point(pos)
-        self._preview_outline = replace_polygon_point(self._drag_start_outline, self._dragging_vertex_index, domain_point)
+        if self._drag_start_outline is not None:
+            self._preview_outline = replace_polygon_point(self._drag_start_outline, self._dragging_vertex_index, domain_point)
+        elif self._drag_start_hole is not None:
+            self._preview_hole = replace_polygon_point(self._drag_start_hole, self._dragging_vertex_index, domain_point)
         self.update()
 
-    def _commit_outline_drag(self) -> None:
-        if self._dragging_vertex_index is None or self._preview_outline is None:
-            self._cancel_outline_drag()
+    def _commit_geometry_drag(self) -> None:
+        if self._dragging_vertex_index is None:
+            self._cancel_geometry_drag()
             return
+
+        if self._preview_hole is not None and self._dragging_hole_index is not None and self.roof_plane is not None:
+            outline = self.display_outline()
+            issues = validate_polygon(self._preview_hole)
+            if outline is not None and not issues:
+                sibling_holes = [
+                    hole for index, hole in enumerate(self.display_holes()) if index != self._dragging_hole_index
+                ]
+                issues = validate_hole_polygon(outline, self._preview_hole, sibling_holes)
+            if issues:
+                self.outline_edit_rejected.emit("; ".join(issues))
+                self._cancel_geometry_drag()
+                self.update()
+                return
+            hole_index = self._dragging_hole_index
+            committed_hole = self._preview_hole
+            self._cancel_geometry_drag()
+            self.hole_edit_committed.emit(hole_index, committed_hole)
+            return
+
+        if self._preview_outline is None:
+            self._cancel_geometry_drag()
+            return
+
         issues = validate_polygon(self._preview_outline)
         if issues:
             self.outline_edit_rejected.emit("; ".join(issues))
-            self._preview_outline = self._drag_start_outline
-            self._cancel_outline_drag()
+            self._cancel_geometry_drag()
             self.update()
             return
         committed_outline = self._preview_outline
-        self._cancel_outline_drag()
+        self._cancel_geometry_drag()
         self.outline_edit_committed.emit(committed_outline)
 
-    def _cancel_outline_drag(self) -> None:
+    def _cancel_geometry_drag(self) -> None:
         self._dragging_vertex_index = None
+        self._dragging_hole_index = None
         self._drag_start_outline = None
+        self._drag_start_hole = None
         self._preview_outline = None
+        self._preview_hole = None
         self._drag_mapper = None
         if self._mode == self.MODE_VIEW:
             self.setCursor(Qt.CursorShape.ArrowCursor)
 
     def _select_plane_at(self, pos: QPointF, outline: Polygon2D, mapper: CanvasMapper) -> None:
         domain_point = mapper.unmap_point(pos)
-        self._plane_selected = point_in_polygon(domain_point, outline)
-        if not self._plane_selected:
-            self._active_vertex_index = None
-            self._active_edge_index = None
+        self._reset_selection(select_plane=point_in_polygon(domain_point, outline))
+        if self._plane_selected:
+            self._active_edge_index = self._hit_test_edge_midpoint(pos, mapper, outline)
+
+    def _select_hole_at(self, pos: QPointF, mapper: CanvasMapper) -> bool:
+        domain_point = mapper.unmap_point(pos)
+        for hole_index, hole in enumerate(self.display_holes()):
+            if point_in_polygon(domain_point, hole):
+                self._reset_selection()
+                self._selected_hole_index = hole_index
+                return True
+        return False
+
+    def _hit_test_hole_vertex(self, pos: QPointF, mapper: CanvasMapper) -> tuple[int, int] | None:
+        for hole_index, hole in enumerate(self.display_holes()):
+            vertex_index = self._hit_test_vertex(pos, mapper, hole)
+            if vertex_index is not None:
+                return hole_index, vertex_index
+        return None
+
+    def _reset_selection(self, *, select_plane: bool = False) -> None:
+        self._plane_selected = select_plane
+        self._selected_hole_index = None
+        self._active_vertex_index = None
+        self._active_edge_index = None
+        self._active_hole_vertex_index = None
 
     @staticmethod
     def _distance(left: QPointF, right: QPointF) -> float:
@@ -253,7 +352,7 @@ class DrawingCanvas(QWidget):
         pos = event.position()
 
         if event.button() == Qt.MouseButton.LeftButton:
-            if self._mode == self.MODE_DRAW_OUTLINE:
+            if self._mode in {self.MODE_DRAW_OUTLINE, self.MODE_DRAW_CUTOUT}:
                 if self._snap_active:
                     self._close_polygon()
                 else:
@@ -272,20 +371,29 @@ class DrawingCanvas(QWidget):
                 outline = self.display_outline()
                 mapper = self._canvas_mapper()
                 if outline is not None and mapper is not None:
+                    hole_vertex = self._hit_test_hole_vertex(pos, mapper)
+                    if hole_vertex is not None:
+                        hole_index, vertex_index = hole_vertex
+                        self._start_hole_drag(hole_index, vertex_index, mapper, self.display_holes()[hole_index])
+                        self.update()
+                        return
+
                     vertex_index = self._hit_test_vertex(pos, mapper, outline)
                     if vertex_index is not None:
                         self._start_outline_drag(vertex_index, mapper, outline)
                         self.update()
                         return
 
+                    if self._select_hole_at(pos, mapper):
+                        self.update()
+                        return
+
                     self._select_plane_at(pos, outline, mapper)
-                    if self._plane_selected:
-                        self._active_edge_index = self._hit_test_edge_midpoint(pos, mapper, outline)
                     self.update()
                     return
 
         if event.button() == Qt.MouseButton.RightButton:
-            if self._mode == self.MODE_DRAW_OUTLINE:
+            if self._mode in {self.MODE_DRAW_OUTLINE, self.MODE_DRAW_CUTOUT}:
                 self.user_points.clear()
                 self.preview_point = None
                 self._snap_active = False
@@ -299,7 +407,7 @@ class DrawingCanvas(QWidget):
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
-        if self._mode == self.MODE_DRAW_OUTLINE:
+        if self._mode in {self.MODE_DRAW_OUTLINE, self.MODE_DRAW_CUTOUT}:
             pos = event.position()
             self.preview_point = pos
             near = self._is_near_first_vertex(pos)
@@ -309,25 +417,25 @@ class DrawingCanvas(QWidget):
                 self.setCursor(cursor)
             self.update()
         elif self._mode == self.MODE_VIEW and self._dragging_vertex_index is not None:
-            self._update_outline_drag(event.position())
+            self._update_geometry_drag(event.position())
             return
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         if self._mode == self.MODE_VIEW and event.button() == Qt.MouseButton.LeftButton and self._dragging_vertex_index is not None:
-            self._commit_outline_drag()
+            self._commit_geometry_drag()
             return
         super().mouseReleaseEvent(event)
 
     def leaveEvent(self, event) -> None:
-        if self._mode == self.MODE_DRAW_OUTLINE:
+        if self._mode in {self.MODE_DRAW_OUTLINE, self.MODE_DRAW_CUTOUT}:
             self.preview_point = None
             self._snap_active = False
             self.update()
         super().leaveEvent(event)
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
-        if self._mode == self.MODE_DRAW_OUTLINE:
+        if self._mode in {self.MODE_DRAW_OUTLINE, self.MODE_DRAW_CUTOUT}:
             if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
                 self._close_polygon()
                 return
@@ -338,7 +446,7 @@ class DrawingCanvas(QWidget):
                 self.update()
                 return
         elif self._mode == self.MODE_VIEW and event.key() == Qt.Key.Key_Escape and self._dragging_vertex_index is not None:
-            self._cancel_outline_drag()
+            self._cancel_geometry_drag()
             self.update()
             return
         super().keyPressEvent(event)
@@ -365,7 +473,7 @@ class DrawingCanvas(QWidget):
                 self._draw_grid(painter)
             self._draw_empty_state(painter)
 
-        if self._mode == self.MODE_DRAW_OUTLINE:
+        if self._mode in {self.MODE_DRAW_OUTLINE, self.MODE_DRAW_CUTOUT}:
             self._draw_user_path(painter)
 
         if self._selected_sheet_id and self._mode == self.MODE_SELECT_SHEET:
@@ -429,6 +537,7 @@ class DrawingCanvas(QWidget):
     def _draw_roof_plane(self, painter: QPainter) -> None:
         plane = self.roof_plane
         outline = self.display_outline()
+        holes = self.display_holes()
         mapper = self._canvas_mapper()
         if plane is None or outline is None or mapper is None:
             return
@@ -437,8 +546,10 @@ class DrawingCanvas(QWidget):
         fill_color = self.palette().color(QPalette.ColorRole.AlternateBase)
         outline_color = self.palette().color(QPalette.ColorRole.Highlight)
         text_color = self.palette().color(QPalette.ColorRole.Text)
+        background_color = self.palette().color(QPalette.ColorRole.Base)
         hole_color = QColor(outline_color)
         hole_color.setAlpha(180)
+        selected_hole_color = QColor("#d44848")
 
         invalid_preview = self._preview_outline is not None and bool(validate_polygon(outline))
         if invalid_preview:
@@ -450,17 +561,38 @@ class DrawingCanvas(QWidget):
         painter.setBrush(fill_color)
         painter.drawPolygon(outline_polygon)
 
+        self._draw_sheet_placements(painter, plane, mapper, text_color)
+
         painter.setPen(QPen(hole_color, 1.5, Qt.PenStyle.DashLine))
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        for hole in plane.holes:
-            painter.drawPolygon(QPolygonF([mapper.map_point(point) for point in hole.points]))
+        for hole_index, hole in enumerate(holes):
+            hole_polygon = QPolygonF([mapper.map_point(point) for point in hole.points])
+            painter.setBrush(background_color)
+            painter.drawPolygon(hole_polygon)
+            if hole_index == self._selected_hole_index:
+                painter.setPen(QPen(selected_hole_color, 2.0, Qt.PenStyle.DashLine))
+            else:
+                painter.setPen(QPen(hole_color, 1.5, Qt.PenStyle.DashLine))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawPolygon(hole_polygon)
 
         self._draw_edge_measurements(painter, mapper, outline, text_color, outline_color)
         if self._plane_selected:
-            self._draw_vertex_handles(painter, mapper, outline, outline_color)
+            self._draw_vertex_handles(
+                painter,
+                mapper,
+                outline,
+                outline_color,
+                active_vertex_index=self._active_vertex_index,
+            )
             self._draw_midpoint_handles(painter, mapper, outline, outline_color)
-
-        self._draw_sheet_placements(painter, plane, mapper, text_color)
+        if self._selected_hole_index is not None and self._selected_hole_index < len(holes):
+            self._draw_vertex_handles(
+                painter,
+                mapper,
+                holes[self._selected_hole_index],
+                selected_hole_color,
+                active_vertex_index=self._active_hole_vertex_index,
+            )
 
         painter.setPen(text_color)
         label = f"Połać {plane.name}"
@@ -469,11 +601,19 @@ class DrawingCanvas(QWidget):
         r = self.rect().adjusted(40, 30, -40, -30)
         painter.drawText(r.left(), r.top() - 8, label)
 
-    def _draw_vertex_handles(self, painter: QPainter, mapper: CanvasMapper, outline: Polygon2D, outline_color: QColor) -> None:
+    def _draw_vertex_handles(
+        self,
+        painter: QPainter,
+        mapper: CanvasMapper,
+        polygon: Polygon2D,
+        outline_color: QColor,
+        *,
+        active_vertex_index: int | None = None,
+    ) -> None:
         painter.setPen(QPen(outline_color, 1))
-        for index, point in enumerate(outline.points):
+        for index, point in enumerate(polygon.points):
             mapped = mapper.map_point(point)
-            is_active = index == self._active_vertex_index
+            is_active = index == active_vertex_index
             painter.setBrush(outline_color.lighter(140) if is_active else outline_color)
             radius = VERTEX_HANDLE_RADIUS + (2 if is_active else 0)
             painter.drawEllipse(mapped, radius, radius)

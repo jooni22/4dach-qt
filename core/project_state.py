@@ -251,6 +251,21 @@ class ProjectState:
         self._mark_layout_inputs_changed(plane, "geometry_changed")
         return plane
 
+    def set_hole_polygon(self, hole_index: int, hole: Polygon2D, plane_id: str | None = None) -> RoofPlane:
+        plane = self._require_plane(plane_id)
+        outline = self._require_plane_outline(plane)
+        if hole_index < 0 or hole_index >= len(plane.holes):
+            raise IndexError("Nie znaleziono wycinku o podanym indeksie")
+
+        sibling_holes = [candidate for index, candidate in enumerate(plane.holes) if index != hole_index]
+        issues = validate_hole_polygon(outline, hole, sibling_holes)
+        if issues:
+            raise ValueError("; ".join(issues))
+
+        plane.holes[hole_index] = hole
+        self._mark_layout_inputs_changed(plane, "geometry_changed")
+        return plane
+
     def delete_hole_from_plane(self, hole_index: int, plane_id: str | None = None) -> RoofPlane:
         plane = self._require_plane(plane_id)
         self._require_plane_outline(plane)
@@ -263,19 +278,28 @@ class ProjectState:
 
     def move_hole_in_plane(self, hole_index: int, dx: float, dy: float, plane_id: str | None = None) -> RoofPlane:
         plane = self._require_plane(plane_id)
-        outline = self._require_plane_outline(plane)
         if hole_index < 0 or hole_index >= len(plane.holes):
             raise IndexError("Nie znaleziono wycinku o podanym indeksie")
 
         moved_hole = translate_polygon(plane.holes[hole_index], dx, dy)
-        sibling_holes = [hole for index, hole in enumerate(plane.holes) if index != hole_index]
-        issues = validate_hole_polygon(outline, moved_hole, sibling_holes)
-        if issues:
-            raise ValueError("; ".join(issues))
+        return self.set_hole_polygon(hole_index, moved_hole, plane.id)
 
-        plane.holes[hole_index] = moved_hole
-        self._mark_layout_inputs_changed(plane, "geometry_changed")
-        return plane
+    def move_hole_point(self, hole_index: int, point_index: int, dx: float, dy: float, plane_id: str | None = None) -> RoofPlane:
+        plane = self._require_plane(plane_id)
+        if hole_index < 0 or hole_index >= len(plane.holes):
+            raise IndexError("Nie znaleziono wycinku o podanym indeksie")
+
+        hole = plane.holes[hole_index]
+        if point_index < 0 or point_index >= len(hole.points):
+            raise IndexError("Nie znaleziono punktu wycinka o podanym indeksie")
+
+        current_point = hole.points[point_index]
+        updated_hole = replace_polygon_point(
+            hole,
+            point_index,
+            Point2D(current_point.x + dx, current_point.y + dy),
+        )
+        return self.set_hole_polygon(hole_index, updated_hole, plane.id)
 
     def active_sheet_placements_for_plane(self, plane_id: str | None = None) -> list[SheetPlacement]:
         plane = self.roof_plane_by_id(plane_id or self.active_plane_id)

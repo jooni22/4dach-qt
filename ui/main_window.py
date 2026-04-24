@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 import tempfile
 
-from PySide6.QtCore import QSettings, QSize, Qt, QUrl
+from PySide6.QtCore import QSettings, QRectF, QSize, Qt, QUrl
 from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QDialog, QInputDialog, QMainWindow,
@@ -15,12 +15,14 @@ from PySide6.QtGui import QDesktopServices
 
 from app_icons import build_icon
 from persistence import load_config, save_config
+from core.canvas_mapper import CanvasMapper
 from core.models import Point2D, Polygon2D, SheetPlacement
 from core.project_state import ProjectState
 from core.reporting import build_report, build_report_html
 from core.geometry import make_rectangle, make_trapezoid, make_triangle
 
 from ui.theme_manager import ThemeManager
+from ui.drawing_canvas import DrawingCanvas
 from ui.workspace import WorkspaceController
 from ui.report_view import ReportController
 from ui.dialogs import BlachyDialog, DaneFirmyDialog, ProstokatDialog, TrapezDialog, TrojkatDialog
@@ -121,9 +123,9 @@ class MainWindow(QMainWindow):
         ksztalt.addAction(act("Dowolny", None, self._start_draw_outline))
 
         wyc = mb.addMenu("Wycinki")
-        wyc.addAction(act("Dodaj wycinek", None, self._dlg_add_hole))
+        wyc.addAction(act("Dodaj prostokątny wycinek...", None, self._dlg_add_hole))
+        wyc.addAction(act("Rysuj wycinek", None, self._start_draw_cutout))
         wyc.addAction(act("Usuń wycinek", None, self._dlg_del_hole))
-        wyc.addAction(act("Przesuń wycinek", None, self._dlg_move_hole))
 
         kat = mb.addMenu("Katalog")
         kat.addAction(act("Blachy...", None, self._dlg_blachy))
@@ -191,6 +193,13 @@ class MainWindow(QMainWindow):
             try:
                 candidate.outline_edit_rejected.connect(
                     self._on_outline_edit_rejected,
+                    Qt.ConnectionType.UniqueConnection,
+                )
+            except TypeError:
+                pass
+            try:
+                candidate.hole_edit_committed.connect(
+                    self._on_hole_edit_committed,
                     Qt.ConnectionType.UniqueConnection,
                 )
             except TypeError:
@@ -371,6 +380,12 @@ class MainWindow(QMainWindow):
     def _on_outline_edit_committed(self, outline: Polygon2D) -> None:
         self._commit_active_plane_geometry_edit(outline, "Zaktualizowano geometrię połaci")
 
+    def _on_hole_edit_committed(self, hole_index: int, hole: Polygon2D) -> None:
+        self._edit(
+            lambda: self.project_state.set_hole_polygon(hole_index, hole),
+            f"Zaktualizowano wycinek {hole_index}",
+        )
+
     def _on_outline_edit_rejected(self, message: str) -> None:
         QMessageBox.warning(self, "Nieprawidłowa geometria", message)
         self.statusBar().showMessage("Odrzucono zmianę geometrii połaci", 4000)
@@ -410,6 +425,18 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
     # Polygon drawing
     def _start_draw_outline(self) -> None:
+        self._begin_polygon_capture(mode=DrawingCanvas.MODE_DRAW_OUTLINE, handler=self._on_polygon_closed)
+
+    def _start_draw_cutout(self) -> None:
+        plane = self._active_or_warn()
+        if plane is None:
+            return
+        if plane.outline is None:
+            QMessageBox.information(self, "Brak obrysu", "Aktywna połać nie ma jeszcze obrysu")
+            return
+        self._begin_polygon_capture(mode=DrawingCanvas.MODE_DRAW_CUTOUT, handler=self._on_cutout_closed)
+
+    def _begin_polygon_capture(self, *, mode: str, handler) -> None:
         canvas = self._workspace.primary_canvas
         if canvas is None:
             return
@@ -417,9 +444,17 @@ class MainWindow(QMainWindow):
             canvas.polygon_closed.disconnect(self._on_polygon_closed)
         except (RuntimeError, TypeError):
             pass
-        canvas.set_mode(canvas.MODE_DRAW_OUTLINE)
-        canvas.polygon_closed.connect(self._on_polygon_closed)
-        self.statusBar().showMessage("Kliknij, aby dodać wierzchołki. Enter lub klik na pkt 1 = zamknij. Esc = anuluj.", 0)
+        try:
+            canvas.cutout_closed.disconnect(self._on_cutout_closed)
+        except (RuntimeError, TypeError):
+            pass
+        canvas.set_mode(mode)
+        if mode == canvas.MODE_DRAW_CUTOUT:
+            canvas.cutout_closed.connect(handler)
+            self.statusBar().showMessage("Rysuj wycinek wewnątrz połaci. Enter lub klik na pkt 1 = zamknij. Esc = anuluj.", 0)
+        else:
+            canvas.polygon_closed.connect(handler)
+            self.statusBar().showMessage("Kliknij, aby dodać wierzchołki. Enter lub klik na pkt 1 = zamknij. Esc = anuluj.", 0)
 
     def _on_polygon_closed(self, pixel_points: list) -> None:
         canvas = self._workspace.primary_canvas
@@ -446,6 +481,28 @@ class MainWindow(QMainWindow):
 
         outline = Polygon2D(domain_pts)
         self._set_active_plane_geometry(outline, "Ustawiono obrys z odręcznego rysowania")
+
+    def _on_cutout_closed(self, pixel_points: list) -> None:
+        canvas = self._workspace.primary_canvas
+        plane = self.project_state.active_roof_plane()
+        if canvas is None or plane is None:
+            return
+        try:
+            canvas.cutout_closed.disconnect(self._on_cutout_closed)
+        except RuntimeError:
+            pass
+        canvas.set_mode(canvas.MODE_VIEW)
+
+        if len(pixel_points) < 3:
+            self.statusBar().showMessage("Za mało punktów — minimum 3.", 4000)
+            return
+        if plane.outline is None:
+            self.statusBar().showMessage("Aktywna połać nie ma jeszcze obrysu.", 4000)
+            return
+
+        mapper = CanvasMapper(plane.outline.bounds(), QRectF(canvas.rect()))
+        hole = Polygon2D([mapper.unmap_point(point) for point in pixel_points])
+        self._edit(lambda: self.project_state.add_hole_to_plane(hole, plane.id), f"Dodano wycinek do {plane.name}")
 
     # ------------------------------------------------------------------
     # Report generation
@@ -538,9 +595,13 @@ class MainWindow(QMainWindow):
         if plane is None or not plane.holes:
             QMessageBox.information(self, "Brak wycinków", "Aktywna połać nie ma wycinków")
             return
-        idx, ok = QInputDialog.getInt(self, "Usuń wycinek", f"Indeks 0-{len(plane.holes)-1}:", 0, 0, len(plane.holes)-1)
-        if ok:
-            self._edit(lambda: self.project_state.delete_hole_from_plane(idx, plane.id), f"Usunięto wycinek {idx}")
+        canvas = self._workspace.canvas_for_plane(plane.id) or self._workspace.primary_canvas
+        idx = canvas.selected_cutout_index() if canvas is not None else None
+        if idx is None:
+            idx, ok = QInputDialog.getInt(self, "Usuń wycinek", f"Indeks 0-{len(plane.holes)-1}:", 0, 0, len(plane.holes)-1)
+            if not ok:
+                return
+        self._edit(lambda: self.project_state.delete_hole_from_plane(idx, plane.id), f"Usunięto wycinek {idx}")
 
     def _dlg_move_hole(self) -> None:
         plane = self._active_or_warn()

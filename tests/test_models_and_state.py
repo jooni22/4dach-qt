@@ -247,12 +247,38 @@ def test_project_state_hole_workflow_updates_layout_revision_and_serialization()
     assert plane_payload["holes"][0][0] == {"x": 110, "y": 55}
 
 
+def test_project_state_supports_multiple_holes_and_round_trip():
+    state = ProjectState()
+    plane = state.add_roof_plane(build_rectangle_outline(400, 300))
+    first_hole = Polygon2D.rectangle(50, 60, origin_x=40, origin_y=50)
+    second_hole = Polygon2D.rectangle(70, 40, origin_x=220, origin_y=120)
+
+    state.add_hole_to_plane(first_hole, plane.id)
+    state.add_hole_to_plane(second_hole, plane.id)
+    payload = state.to_config_fragment()
+    reloaded = ProjectState.from_config(payload)
+
+    assert len(plane.holes) == 2
+    assert len(reloaded.roof_planes[0].holes) == 2
+    assert reloaded.roof_planes[0].holes[0].points == first_hole.points
+    assert reloaded.roof_planes[0].holes[1].points == second_hole.points
+
+
 def test_project_state_rejects_hole_outside_outline():
     state = ProjectState()
     plane = state.add_roof_plane(build_rectangle_outline(300, 200))
 
     with pytest.raises(ValueError, match="Wycinek musi leżeć w całości wewnątrz obrysu"):
         state.add_hole_to_plane(Polygon2D.rectangle(80, 80, origin_x=260, origin_y=20), plane.id)
+
+
+def test_project_state_rejects_overlapping_holes():
+    state = ProjectState()
+    plane = state.add_roof_plane(build_rectangle_outline(300, 200))
+    state.add_hole_to_plane(Polygon2D.rectangle(80, 80, origin_x=40, origin_y=30), plane.id)
+
+    with pytest.raises(ValueError, match="Wycinki nie mogą na siebie nachodzić"):
+        state.add_hole_to_plane(Polygon2D.rectangle(60, 60, origin_x=90, origin_y=70), plane.id)
 
 
 def test_project_state_roof_plane_edit_operations_update_geometry_revision():
@@ -290,6 +316,19 @@ def test_project_state_delete_hole_marks_geometry_changed():
     assert updated_plane.layout_revision == 2
     assert updated_plane.holes == []
     assert almost_equal(updated_plane.generation_settings.base_line_y_cm or 0.0, 200.0)
+
+
+def test_project_state_can_edit_cutout_vertex_and_persist_result():
+    state = ProjectState()
+    plane = state.add_roof_plane(build_rectangle_outline(300, 200))
+    state.add_hole_to_plane(Polygon2D.rectangle(50, 50, origin_x=80, origin_y=60), plane.id)
+
+    updated_plane = state.move_hole_point(0, 1, 20, 10, plane.id)
+    payload = state.to_config_fragment()
+    reloaded = ProjectState.from_config(payload)
+
+    assert updated_plane.holes[0].points[1] == Point2D(150, 70)
+    assert reloaded.roof_planes[0].holes[0].points[1] == Point2D(150, 70)
 
 
 def test_project_state_generates_layout_for_active_plane_and_persists_auto_placements():

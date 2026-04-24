@@ -14,10 +14,10 @@ from core.models import Point2D, Polygon2D, RoofPlane
 from ui.drawing_canvas import DrawingCanvas
 
 
-def _make_canvas(qtbot, outline: Polygon2D) -> DrawingCanvas:
+def _make_canvas(qtbot, outline: Polygon2D, *, holes: list[Polygon2D] | None = None) -> DrawingCanvas:
     canvas = DrawingCanvas()
     canvas.resize(640, 420)
-    canvas.set_roof_plane(RoofPlane(id="plane-1", name="1", outline=outline))
+    canvas.set_roof_plane(RoofPlane(id="plane-1", name="1", outline=outline, holes=list(holes or [])))
     qtbot.addWidget(canvas)
     canvas.show()
     qtbot.waitExposed(canvas)
@@ -110,3 +110,54 @@ def test_canvas_rejects_invalid_geometry_and_restores_original_outline(qtbot):
     assert "Polygon" in blocker.args[0]
     assert canvas.display_outline() == canvas.roof_plane.outline
     assert canvas.roof_plane.outline.points == outline.points
+
+
+def test_canvas_selects_cutout_polygon_before_main_plane(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    hole = Polygon2D.rectangle(80, 60, origin_x=100, origin_y=70)
+    canvas = _make_canvas(qtbot, outline, holes=[hole])
+
+    inside_hole = _point_on_canvas(canvas, Point2D(120, 90))
+    QTest.mouseClick(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, inside_hole)
+
+    assert canvas.selected_cutout_index() == 0
+    assert canvas.selected_geometry_kind() == "cutout_polygon"
+
+
+def test_canvas_dragging_cutout_vertex_emits_updated_hole(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    hole = Polygon2D.rectangle(80, 60, origin_x=100, origin_y=70)
+    canvas = _make_canvas(qtbot, outline, holes=[hole])
+
+    start = _point_on_canvas(canvas, hole.points[1])
+    target_domain = Point2D(210, 70)
+    target = _point_on_canvas(canvas, target_domain)
+
+    with qtbot.waitSignal(canvas.hole_edit_committed, timeout=1000) as blocker:
+        QTest.mousePress(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, start)
+        QTest.mouseMove(canvas, target)
+        QTest.mouseRelease(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, target)
+
+    assert blocker.args[0] == 0
+    committed_hole = blocker.args[1]
+    assert committed_hole.points[1].x == pytest.approx(target_domain.x, abs=1.5)
+    assert committed_hole.points[1].y == pytest.approx(target_domain.y, abs=1.5)
+    assert canvas.selected_geometry_kind() == "cutout_vertex"
+
+
+def test_canvas_rejects_cutout_vertex_drag_outside_plane(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    hole = Polygon2D.rectangle(80, 60, origin_x=100, origin_y=70)
+    canvas = _make_canvas(qtbot, outline, holes=[hole])
+
+    start = _point_on_canvas(canvas, hole.points[0])
+    invalid_domain = Point2D(-10, 70)
+    target = _point_on_canvas(canvas, invalid_domain)
+
+    with qtbot.waitSignal(canvas.outline_edit_rejected, timeout=1000) as blocker:
+        QTest.mousePress(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, start)
+        QTest.mouseMove(canvas, target)
+        QTest.mouseRelease(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, target)
+
+    assert "Wycinek musi leżeć w całości wewnątrz obrysu" in blocker.args[0]
+    assert canvas.display_holes()[0].points == hole.points
