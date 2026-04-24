@@ -18,7 +18,7 @@ from persistence import load_config, save_config
 from core.canvas_mapper import CanvasMapper
 from core.models import Point2D, Polygon2D, SheetPlacement
 from core.project_state import ProjectState
-from core.reporting import build_report, build_report_html
+from core.reporting import build_project_report, build_project_report_html
 from core.geometry import make_rectangle, make_trapezoid, make_triangle
 
 from ui.theme_manager import ThemeManager
@@ -507,25 +507,23 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
     # Report generation
     def _gen_report(self, variant: str, open_external: bool = False) -> bool:
-        plane = self._active_or_warn()
-        if plane is None:
-            return False
-        material_id = plane.selected_material_id or self.project_state.active_material_id()
-        material = self.project_state.material_by_id(material_id)
-        if material is None:
-            QMessageBox.warning(self, "Brak materiału", "Brak aktywnego materiału dla połaci")
+        if not self.project_state.roof_planes:
+            QMessageBox.information(self, "Brak połaci", "Brak połaci do raportu")
             return False
         try:
-            layout = self.project_state.generate_layout_for_plane(plane.id)
-            report = build_report(self.project_state, layout, material_id, plane.id)
-            html = build_report_html(self.project_state, report, material_id, plane.id,
-                                     title_suffix={"continuous": "ciągły", "short": "skrócony"}.get(variant, ""),
-                                     include_bom=(variant != "short"))
+            report = build_project_report(self.project_state)
+            html = build_project_report_html(
+                report,
+                title_suffix={"continuous": "ciągły", "short": "skrócony"}.get(variant, ""),
+                include_aggregated_bom=True,
+                include_plane_sheet_tables=(variant != "short"),
+                page_break_between_planes=(variant != "continuous"),
+            )
         except ValueError as e:
             QMessageBox.warning(self, "Błąd raportu", str(e))
             return False
         self._latest_report_html = html
-        self._latest_report_plane_id = plane.id
+        self._latest_report_plane_id = None
         self._persist()
         self._refresh_canvas()
         if open_external:
@@ -539,8 +537,19 @@ class MainWindow(QMainWindow):
         return True
 
     def _recalculate(self) -> None:
-        if self._gen_report("standard"):
-            self.statusBar().showMessage("Przeliczono aktywną połać", 4000)
+        plane = self._active_or_warn()
+        if plane is None:
+            return
+        try:
+            self.project_state.generate_layout_for_plane(plane.id)
+        except ValueError as e:
+            QMessageBox.warning(self, "Błąd przeliczania", str(e))
+            return
+        self._latest_report_html = ""
+        self._latest_report_plane_id = None
+        self._persist()
+        self._refresh_canvas()
+        self.statusBar().showMessage(f"Przeliczono połać {plane.name}", 4000)
 
     # ------------------------------------------------------------------
     # Shape dialogs

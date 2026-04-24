@@ -52,9 +52,11 @@ class ReportController:
         dirty_reason_hint_fn,
     ) -> None:
         if (
-            active_plane is not None
-            and cached_plane_id == active_plane.id
-            and cached_html
+            cached_html
+            and (
+                cached_plane_id is None
+                or (active_plane is not None and cached_plane_id == active_plane.id)
+            )
         ):
             self._view.setHtml(cached_html)
         else:

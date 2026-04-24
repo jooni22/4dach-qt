@@ -3,7 +3,12 @@ from __future__ import annotations
 from core.layout_engine import generate_layout
 from core.models import Material, Polygon2D, almost_equal
 from core.project_state import ProjectState
-from core.reporting import build_report, build_report_html
+from core.reporting import (
+    build_project_report,
+    build_project_report_html,
+    build_report,
+    build_report_html,
+)
 
 
 def test_build_report_aggregates_bom_by_sheet_length_and_cost():
@@ -116,3 +121,100 @@ def test_build_report_html_contains_svg_with_sheet_rects():
     assert "</svg>" in html
     assert html.count("<rect") >= len(layout_result.placements)
     assert "Ostrzeżenia" in html
+
+
+def test_build_project_report_aggregates_multiple_roof_planes_and_groups_lengths():
+    material = Material(
+        id="MAT",
+        nazwa="Panel Dachowy",
+        type="trapezowa",
+        effective_width_cm=50,
+        module_length_cm=0,
+        bottom_margin_cm=0,
+        top_margin_cm=0,
+        min_sheet_length_cm=1,
+        max_sheet_length_cm=500,
+        price_unit="m2",
+        price_value=10.0,
+    )
+    state = ProjectState(materials=[material])
+    first_plane = state.add_roof_plane(Polygon2D.rectangle(100, 100), name="Front", selected_material_id=material.id)
+    second_plane = state.add_roof_plane(Polygon2D.rectangle(50, 100), name="Back", selected_material_id=material.id)
+
+    report = build_project_report(state)
+
+    assert [section.plane_name for section in report.plane_sections] == ["Front", "Back"]
+    assert len(report.plane_sections) == 2
+    assert [(row.sheet_length_cm, row.quantity) for row in report.plane_sections[0].sheet_rows] == [(100, 2)]
+    assert [(row.sheet_length_cm, row.quantity) for row in report.plane_sections[1].sheet_rows] == [(100, 1)]
+    assert [(row.material_id, row.sheet_length_cm, row.quantity) for row in report.aggregated_bom_rows] == [("MAT", 100, 3)]
+    assert almost_equal(report.totals.total_effective_area_m2, 1.5)
+    assert almost_equal(report.totals.total_material_usage_area_m2, 1.5)
+    assert almost_equal(report.totals.total_waste_area_m2, 0.0)
+    assert almost_equal(report.totals.total_waste_percent, 0.0)
+    assert almost_equal(report.totals.total_cost, 15.0)
+
+
+def test_build_project_report_html_contains_all_plane_sections_and_global_summary():
+    material = Material(
+        id="MAT",
+        nazwa="Blacha testowa",
+        type="trapezowa",
+        effective_width_cm=50,
+        module_length_cm=0,
+        bottom_margin_cm=0,
+        top_margin_cm=0,
+        min_sheet_length_cm=1,
+        max_sheet_length_cm=500,
+        price_unit="m2",
+        price_value=10.0,
+    )
+    state = ProjectState(materials=[material])
+    state.company_data.name = "Firma Test"
+    first_plane = state.add_roof_plane(Polygon2D.rectangle(100, 100), name="Połać A", selected_material_id=material.id)
+    second_plane = state.add_roof_plane(Polygon2D.rectangle(50, 100), name="Połać B", selected_material_id=material.id)
+
+    report = build_project_report(state)
+    html = build_project_report_html(report)
+
+    assert "Raport projektu 4Dach" in html
+    assert "Firma Test" in html
+    assert "Zbiorcze zestawienie materiałów" in html
+    assert "Połać A" in html
+    assert "Połać B" in html
+    assert "Panel Dachowy" not in html
+    assert "Blacha testowa" in html
+    assert html.count("<svg") == 2
+    assert "Łączna powierzchnia efektywna [m2]" in html
+    assert "Łączny koszt [zł]" in html
+
+
+def test_build_project_report_html_escapes_user_entered_text():
+    material = Material(
+        id="MAT<script>",
+        nazwa='Blacha <img src=x onerror="alert(1)">',
+        type="trapezowa",
+        effective_width_cm=50,
+        module_length_cm=0,
+        bottom_margin_cm=0,
+        top_margin_cm=0,
+        min_sheet_length_cm=1,
+        max_sheet_length_cm=500,
+    )
+    state = ProjectState(materials=[material])
+    state.company_data.name = 'Firma <script>alert("x")</script>'
+    state.company_data.address = "Adres & 1"
+    state.add_roof_plane(
+        Polygon2D.rectangle(50, 100),
+        name='Połać <b>niebezpieczna</b>',
+        selected_material_id=material.id,
+    )
+
+    report = build_project_report(state)
+    html = build_project_report_html(report)
+
+    assert "<script>" not in html
+    assert "<img" not in html
+    assert "&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;" in html
+    assert "Połać &lt;b&gt;niebezpieczna&lt;/b&gt;" in html
+    assert "Blacha &lt;img src=x onerror=&quot;alert(1)&quot;&gt;" in html
