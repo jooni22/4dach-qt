@@ -208,6 +208,25 @@ def test_mainwindow_keeps_generated_shapes_separate_per_tab_and_persists_geometr
     assert reloaded.roof_planes[1].outline.points == second_plane.outline.points
 
 
+def test_mainwindow_generates_project_report_for_all_roof_planes(qtbot):
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.project_state = ProjectState(materials=window.project_state.materials)
+    window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
+    window.project_state.add_roof_plane(build_rectangle_outline(320, 180), name="Front", selected_material_id="PD510")
+    window.project_state.add_roof_plane(build_rectangle_outline(210, 140), name="Back", selected_material_id="PD510")
+    window._refresh_canvas_from_state()
+
+    assert window._gen_report("standard") is True
+    assert "Raport projektu 4Dach" in window._latest_report_html
+    assert "Front" in window._latest_report_html
+    assert "Back" in window._latest_report_html
+    assert "Zbiorcze zestawienie materiałów" in window._latest_report_html
+    assert window._latest_report_plane_id is None
+    assert window.workspace_tabs.currentIndex() == window._workspace.report_tab_index()
+
+
 def test_mainwindow_commits_canvas_outline_edits_to_project_state(qtbot):
     window = MainWindow()
     qtbot.addWidget(window)
