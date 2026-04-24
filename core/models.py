@@ -101,61 +101,122 @@ class CompanyData:
 
 
 @dataclass(slots=True)
-class Material:
+class MaterialDefinition:
     id: str
-    nazwa: str
+    display_name: str
     type: MaterialType
     effective_width_cm: float
-    module_length_cm: float
-    bottom_margin_cm: float
-    top_margin_cm: float
     min_sheet_length_cm: float
     max_sheet_length_cm: float = 900.0
+    top_margin_cm: float = 0.0
+    bottom_margin_cm: float = 0.0
+    module_length_cm: float | None = None
+    price_per_m2: float | None = None
     batten_spacing_cm: float = 0.0
     counter_batten_spacing_cm: float = 0.0
     modules: list[int] = field(default_factory=list)
     price_unit: str = "m2"
-    price_value: float = 0.0
+
+    def __init__(
+        self,
+        id: str,
+        display_name: str | None = None,
+        type: MaterialType = "trapezowa",
+        effective_width_cm: float = 0.0,
+        min_sheet_length_cm: float = 0.0,
+        max_sheet_length_cm: float = 900.0,
+        top_margin_cm: float = 0.0,
+        bottom_margin_cm: float = 0.0,
+        module_length_cm: float | None = None,
+        price_per_m2: float | None = None,
+        batten_spacing_cm: float = 0.0,
+        counter_batten_spacing_cm: float = 0.0,
+        modules: list[int] | None = None,
+        price_unit: str = "m2",
+        nazwa: str | None = None,
+        price_value: float | None = None,
+    ) -> None:
+        self.id = id
+        self.display_name = (display_name or nazwa or id).strip() or id
+        self.type = type
+        self.effective_width_cm = float(effective_width_cm)
+        self.min_sheet_length_cm = float(min_sheet_length_cm)
+        self.max_sheet_length_cm = float(max_sheet_length_cm)
+        self.top_margin_cm = float(top_margin_cm)
+        self.bottom_margin_cm = float(bottom_margin_cm)
+        self.module_length_cm = None if module_length_cm in (None, 0, 0.0) else float(module_length_cm)
+        resolved_price = price_per_m2 if price_per_m2 is not None else price_value
+        self.price_per_m2 = None if resolved_price is None else float(resolved_price)
+        self.batten_spacing_cm = float(batten_spacing_cm)
+        self.counter_batten_spacing_cm = float(counter_batten_spacing_cm)
+        self.modules = list(modules or [])
+        self.price_unit = price_unit
+
+    @property
+    def nazwa(self) -> str:
+        return self.display_name
+
+    @property
+    def price_value(self) -> float:
+        return 0.0 if self.price_per_m2 is None else self.price_per_m2
 
     @classmethod
-    def from_dict(cls, data: dict) -> "Material":
+    def from_dict(cls, data: dict) -> "MaterialDefinition":
         return cls(
-            id=data.get("id") or data.get("nazwa") or "material",
-            nazwa=data.get("nazwa") or data.get("id") or "material",
+            id=data.get("id") or data.get("nazwa") or data.get("display_name") or "material",
+            display_name=data.get("display_name") or data.get("nazwa") or data.get("id") or "material",
             type=data.get("type", "dachówkowa"),
-            effective_width_cm=float(data.get("szerokosc_efektywna", 0)),
-            module_length_cm=float(data.get("dlugosc_modulu", 0)),
-            bottom_margin_cm=float(data.get("zapas_dolny", 0)),
-            top_margin_cm=float(data.get("zapas_gorny", 0)),
+            effective_width_cm=float(data.get("effective_width_cm", data.get("szerokosc_efektywna", 0))),
             min_sheet_length_cm=float(data.get("min_dlugosc_arkusza", 0)),
-            max_sheet_length_cm=float(data.get("max_dlugosc_arkusza", 900)),
+            max_sheet_length_cm=float(data.get("max_sheet_length_cm", data.get("max_dlugosc_arkusza", 900))),
+            top_margin_cm=float(data.get("top_allowance_cm", data.get("zapas_gorny", 0))),
+            bottom_margin_cm=float(data.get("bottom_allowance_cm", data.get("zapas_dolny", 0))),
+            module_length_cm=data.get("module_length_cm", data.get("dlugosc_modulu")),
+            price_per_m2=(
+                data.get("price_per_m2")
+                if "price_per_m2" in data
+                else float(data.get("cena_zl", 0)) + float(data.get("cena_gr", 0)) / 100.0
+            ),
             batten_spacing_cm=float(data.get("odleglosc_miedzy_latami", 0)),
             counter_batten_spacing_cm=float(data.get("odleglosc_miedzy_kontrlatami", 0)),
             modules=[int(value) for value in data.get("moduly", [])],
             price_unit=data.get("cena_za", "m2"),
-            price_value=float(data.get("cena_zl", 0)) + float(data.get("cena_gr", 0)) / 100.0,
         )
 
     def to_dict(self) -> dict:
-        zl = int(self.price_value)
-        gr = int(round((self.price_value - zl) * 100))
+        normalized_price = 0.0 if self.price_per_m2 is None else self.price_per_m2
+        zl = int(normalized_price)
+        gr = int(round((normalized_price - zl) * 100))
+        if gr == 100:
+            zl += 1
+            gr = 0
         return {
             "id": self.id,
             "type": self.type,
-            "nazwa": self.nazwa,
+            "display_name": self.display_name,
+            "nazwa": self.display_name,
+            "effective_width_cm": self.effective_width_cm,
             "szerokosc_efektywna": self.effective_width_cm,
-            "dlugosc_modulu": self.module_length_cm,
+            "module_length_cm": self.module_length_cm,
+            "dlugosc_modulu": 0 if self.module_length_cm is None else self.module_length_cm,
+            "top_allowance_cm": self.top_margin_cm,
+            "bottom_allowance_cm": self.bottom_margin_cm,
             "zapas_dolny": self.bottom_margin_cm,
             "zapas_gorny": self.top_margin_cm,
             "min_dlugosc_arkusza": self.min_sheet_length_cm,
+            "max_sheet_length_cm": self.max_sheet_length_cm,
             "max_dlugosc_arkusza": self.max_sheet_length_cm,
             "odleglosc_miedzy_latami": self.batten_spacing_cm,
             "odleglosc_miedzy_kontrlatami": self.counter_batten_spacing_cm,
             "moduly": list(self.modules),
             "cena_za": self.price_unit,
+            "price_per_m2": self.price_per_m2,
             "cena_zl": zl,
             "cena_gr": gr,
         }
+
+
+Material = MaterialDefinition
 
 
 @dataclass(slots=True)

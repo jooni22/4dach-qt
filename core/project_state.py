@@ -26,7 +26,10 @@ class ProjectState:
     def from_config(cls, config_data: dict | None) -> "ProjectState":
         payload = config_data or {}
         project_payload = payload.get("project_state", {})
-        materials = [Material.from_dict(item) for item in payload.get("blachy", [])]
+        material_payloads = payload.get("materials")
+        if material_payloads is None:
+            material_payloads = payload.get("blachy", [])
+        materials = [Material.from_dict(item) for item in material_payloads]
         roof_planes: list[RoofPlane] = []
 
         for plane_payload in project_payload.get("roof_planes", []):
@@ -88,6 +91,61 @@ class ProjectState:
 
     def available_material_ids(self) -> list[str]:
         return [material.id for material in self.materials]
+
+    def upsert_material(self, material: Material) -> Material:
+        normalized = Material.from_dict(material.to_dict())
+        if not normalized.id.strip():
+            raise ValueError("Identyfikator materiału nie może być pusty")
+        if normalized.effective_width_cm <= 0:
+            raise ValueError("Szerokość efektywna materiału musi być dodatnia")
+        if normalized.min_sheet_length_cm < 0:
+            raise ValueError("Minimalna długość arkusza nie może być ujemna")
+        if normalized.max_sheet_length_cm < normalized.min_sheet_length_cm:
+            raise ValueError("Maksymalna długość arkusza nie może być mniejsza niż minimalna")
+
+        existing = self.material_by_id(normalized.id)
+        if existing is None:
+            self.materials.append(normalized)
+            return normalized
+
+        material_changed = existing.to_dict() != normalized.to_dict()
+        existing.display_name = normalized.display_name
+        existing.type = normalized.type
+        existing.effective_width_cm = normalized.effective_width_cm
+        existing.min_sheet_length_cm = normalized.min_sheet_length_cm
+        existing.max_sheet_length_cm = normalized.max_sheet_length_cm
+        existing.top_margin_cm = normalized.top_margin_cm
+        existing.bottom_margin_cm = normalized.bottom_margin_cm
+        existing.module_length_cm = normalized.module_length_cm
+        existing.price_per_m2 = normalized.price_per_m2
+        existing.batten_spacing_cm = normalized.batten_spacing_cm
+        existing.counter_batten_spacing_cm = normalized.counter_batten_spacing_cm
+        existing.modules = list(normalized.modules)
+        existing.price_unit = normalized.price_unit
+        if material_changed:
+            self._mark_planes_using_material_dirty(normalized.id)
+        return existing
+
+    def remove_material(self, material_id: str) -> Material:
+        material = self.material_by_id(material_id)
+        if material is None:
+            raise ValueError("Nie znaleziono materiału o podanym identyfikatorze")
+
+        self.materials = [candidate for candidate in self.materials if candidate.id != material_id]
+        for plane in self.roof_planes:
+            if plane.selected_material_id == material_id:
+                plane.selected_material_id = None
+                self._mark_layout_inputs_changed(plane, "material_changed")
+        return material
+
+    def replace_materials(self, materials: list[Material]) -> list[Material]:
+        desired_ids = [material.id for material in materials]
+        for material_id in [material.id for material in self.materials if material.id not in desired_ids]:
+            self.remove_material(material_id)
+        for material in materials:
+            self.upsert_material(material)
+        self.materials = [self.material_by_id(material_id) for material_id in desired_ids if self.material_by_id(material_id) is not None]
+        return self.materials
 
     def next_plane_id(self) -> str:
         used_ids = {plane.id for plane in self.roof_planes}
@@ -435,12 +493,19 @@ class ProjectState:
         plane.generation_settings.base_line_y_cm = self.resolve_base_line_y_cm(plane)
         plane.layout_dirty_reason = reason
 
+    def _mark_planes_using_material_dirty(self, material_id: str) -> None:
+        for plane in self.roof_planes:
+            if plane.selected_material_id == material_id:
+                self._mark_layout_inputs_changed(plane, "material_changed")
+
     def apply_to_config(self, config_data: dict) -> dict:
         config_data.update(self.to_config_fragment())
         return config_data
 
     def to_config_fragment(self) -> dict:
         return {
+            "materials": [material.to_dict() for material in self.materials],
+            "blachy": [material.to_dict() for material in self.materials],
             "project_state": {
                 "version": self.version,
                 "active_plane_id": self.active_plane_id,

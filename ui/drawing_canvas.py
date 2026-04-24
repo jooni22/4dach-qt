@@ -687,8 +687,9 @@ class DrawingCanvas(QWidget):
             painter.setBrush(color)
             painter.drawRect(rect)
 
-            if self._material and self._material.module_length_cm > 0:
-                mod_len_px = mapper.map_length(self._material.module_length_cm)
+            module_length_cm = self._material.module_length_cm if self._material is not None else None
+            if module_length_cm and module_length_cm > 0:
+                mod_len_px = mapper.map_length(module_length_cm)
                 if mod_len_px > 4:
                     mod_pen = QPen(text_color)
                     mod_pen.setStyle(Qt.PenStyle.DotLine)
@@ -703,8 +704,9 @@ class DrawingCanvas(QWidget):
                         painter.drawLine(QPointF(x_left, mod_y), QPointF(x_right, mod_y))
                         mod_y += mod_len_px
 
-            if self._show_module_count and self._material and self._material.module_length_cm > 0:
-                modules = max(1, int(round(sheet.final_length_cm / self._material.module_length_cm)))
+            module_length_cm = self._material.module_length_cm if self._material is not None else None
+            if self._show_module_count and module_length_cm and module_length_cm > 0:
+                modules = max(1, int(round(sheet.final_length_cm / module_length_cm)))
                 label_text = f"{modules}"
             else:
                 label_text = f"{sheet.final_length_cm:.0f}"

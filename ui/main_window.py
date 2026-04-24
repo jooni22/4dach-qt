@@ -693,14 +693,11 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
     # Catalogue dialogs
     def _dlg_blachy(self) -> None:
-        dlg = BlachyDialog(self._config, self)
+        dlg = BlachyDialog(self.project_state.materials, self)
         if dlg.exec() == QDialog.DialogCode.Accepted:
-            self._config["blachy"] = dlg.get_values()
+            self.project_state.replace_materials(dlg.get_values())
             self._latest_report_html = ""
             self._persist()
-            save_config(self._config, self)
-            self.project_state = ProjectState.from_config(self._config)
-            self._workspace.bind_project_state(self.project_state, self.project_state.material_by_id)
             self._refresh_material_combo()
             self._refresh_canvas()
 

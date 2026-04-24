@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from core.geometry import build_rectangle_outline
-from core.models import Point2D, Polygon2D
+from core.models import Material, Point2D, Polygon2D
 from core.project_state import ProjectState
 
 pytest.importorskip("PySide6")
@@ -281,3 +281,77 @@ def test_mainwindow_commits_canvas_cutout_edits_to_project_state(qtbot):
 
     assert plane.holes[0] == updated_hole
     assert plane.layout_dirty_reason == "geometry_changed"
+
+
+def test_mainwindow_material_catalog_edit_updates_project_state_and_dependent_workspace(qtbot, monkeypatch):
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.project_state = ProjectState(
+        materials=[
+            Material(
+                id="PD510",
+                nazwa="PD510",
+                type="dachówkowa",
+                effective_width_cm=51,
+                module_length_cm=25,
+                bottom_margin_cm=10,
+                top_margin_cm=80,
+                min_sheet_length_cm=20,
+            ),
+            Material(
+                id="T20",
+                nazwa="T20",
+                type="trapezowa",
+                effective_width_cm=110,
+                module_length_cm=0,
+                bottom_margin_cm=0,
+                top_margin_cm=0,
+                min_sheet_length_cm=20,
+            ),
+        ]
+    )
+    window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
+    dependent_plane = window.project_state.add_roof_plane(build_rectangle_outline(320, 180), selected_material_id="PD510")
+    other_plane = window.project_state.add_roof_plane(build_rectangle_outline(210, 140), selected_material_id="T20")
+    window.project_state.generate_layout_for_plane(dependent_plane.id)
+    window.project_state.generate_layout_for_plane(other_plane.id)
+    window.project_state.set_active_plane(dependent_plane.id)
+    window._refresh_canvas_from_state()
+
+    updated_materials = [
+        Material(
+            id="PD510",
+            nazwa="PD510 Plus",
+            type="dachówkowa",
+            effective_width_cm=53,
+            module_length_cm=30,
+            bottom_margin_cm=12,
+            top_margin_cm=82,
+            min_sheet_length_cm=25,
+        ),
+        window.project_state.material_by_id("T20"),
+    ]
+
+    class FakeMaterialsDialog:
+        def __init__(self, materials, parent=None) -> None:
+            self._materials = materials
+
+        def exec(self) -> int:
+            return QDialog.DialogCode.Accepted
+
+        def get_values(self):
+            return list(updated_materials)
+
+    monkeypatch.setattr("ui.main_window.BlachyDialog", FakeMaterialsDialog)
+
+    window._dlg_blachy()
+
+    active_canvas = window._workspace.canvas_for_plane(dependent_plane.id)
+    assert window.project_state.material_by_id("PD510").nazwa == "PD510 Plus"
+    assert dependent_plane.layout_dirty_reason == "material_changed"
+    assert other_plane.layout_dirty_reason is None
+    assert active_canvas is not None
+    assert active_canvas._material is not None
+    assert active_canvas._material.id == "PD510"
+    assert active_canvas._material.module_length_cm == 30

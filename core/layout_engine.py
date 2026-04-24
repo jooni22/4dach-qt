@@ -35,14 +35,15 @@ class LayoutResult:
 
 def normalize_sheet_length(raw_length_cm: float, material: Material, *, y_top_cm: float = 0.0, y_bottom_cm: float = 0.0, base_line_y_cm: float | None = None) -> float:
     base_length = raw_length_cm + material.bottom_margin_cm + material.top_margin_cm
-    if material.type == "dachówkowa" and material.module_length_cm > 0:
+    module_length_cm = material.module_length_cm or 0.0
+    if material.type == "dachówkowa" and module_length_cm > 0:
         if base_line_y_cm is not None:
             span_from_base = max(base_line_y_cm - y_top_cm, 0.0)
             trimmed_bottom = max(base_line_y_cm - y_bottom_cm, 0.0)
-            modules = ceil((span_from_base + material.bottom_margin_cm + material.top_margin_cm) / material.module_length_cm)
-            return max(modules * material.module_length_cm - trimmed_bottom, raw_length_cm)
-        modules = ceil(base_length / material.module_length_cm)
-        return modules * material.module_length_cm
+            modules = ceil((span_from_base + material.bottom_margin_cm + material.top_margin_cm) / module_length_cm)
+            return max(modules * module_length_cm - trimmed_bottom, raw_length_cm)
+        modules = ceil(base_length / module_length_cm)
+        return modules * module_length_cm
     return base_length
 
 

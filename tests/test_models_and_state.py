@@ -479,6 +479,153 @@ def test_project_state_material_change_marks_layout_dirty_without_dropping_manua
     assert plane.layout_dirty_reason == "material_changed"
 
 
+def test_project_state_can_create_and_edit_material_definitions():
+    state = ProjectState()
+
+    created = state.upsert_material(
+        Material(
+            id="MAT1",
+            nazwa="Material 1",
+            type="trapezowa",
+            effective_width_cm=50,
+            module_length_cm=0,
+            bottom_margin_cm=10,
+            top_margin_cm=15,
+            min_sheet_length_cm=20,
+            max_sheet_length_cm=800,
+            price_value=42.5,
+        )
+    )
+
+    updated = state.upsert_material(
+        Material(
+            id="MAT1",
+            nazwa="Material 1 Plus",
+            type="trapezowa",
+            effective_width_cm=53,
+            module_length_cm=0,
+            bottom_margin_cm=12,
+            top_margin_cm=18,
+            min_sheet_length_cm=25,
+            max_sheet_length_cm=820,
+            price_value=55.0,
+        )
+    )
+
+    assert created is updated
+    assert state.available_material_ids() == ["MAT1"]
+    assert state.material_by_id("MAT1") is updated
+    assert updated.nazwa == "Material 1 Plus"
+    assert almost_equal(updated.effective_width_cm, 53.0)
+    assert almost_equal(updated.price_value, 55.0)
+
+
+def test_project_state_material_edit_marks_only_dependent_planes_dirty():
+    state = ProjectState(
+        materials=[
+            Material(
+                id="MAT1",
+                nazwa="Material 1",
+                type="trapezowa",
+                effective_width_cm=50,
+                module_length_cm=0,
+                bottom_margin_cm=10,
+                top_margin_cm=15,
+                min_sheet_length_cm=20,
+            ),
+            Material(
+                id="MAT2",
+                nazwa="Material 2",
+                type="trapezowa",
+                effective_width_cm=60,
+                module_length_cm=0,
+                bottom_margin_cm=5,
+                top_margin_cm=5,
+                min_sheet_length_cm=20,
+            ),
+        ]
+    )
+    first_plane = state.add_roof_plane(build_rectangle_outline(300, 200), selected_material_id="MAT1")
+    second_plane = state.add_roof_plane(build_rectangle_outline(240, 160), selected_material_id="MAT1")
+    third_plane = state.add_roof_plane(build_rectangle_outline(180, 120), selected_material_id="MAT2")
+
+    state.generate_layout_for_plane(first_plane.id)
+    state.generate_layout_for_plane(second_plane.id)
+    state.generate_layout_for_plane(third_plane.id)
+
+    original_revision = third_plane.layout_revision
+
+    state.upsert_material(
+        Material(
+            id="MAT1",
+            nazwa="Material 1 New",
+            type="trapezowa",
+            effective_width_cm=52,
+            module_length_cm=0,
+            bottom_margin_cm=10,
+            top_margin_cm=20,
+            min_sheet_length_cm=25,
+        )
+    )
+
+    assert first_plane.layout_dirty_reason == "material_changed"
+    assert second_plane.layout_dirty_reason == "material_changed"
+    assert third_plane.layout_dirty_reason is None
+    assert first_plane.auto_sheet_placements == []
+    assert second_plane.auto_sheet_placements == []
+    assert third_plane.auto_sheet_placements
+    assert third_plane.layout_revision == original_revision
+
+
+def test_project_state_round_trip_preserves_material_registry_and_assignments():
+    state = ProjectState(
+        materials=[
+            Material(
+                id="MAT1",
+                nazwa="Material 1",
+                type="trapezowa",
+                effective_width_cm=50,
+                module_length_cm=0,
+                bottom_margin_cm=10,
+                top_margin_cm=15,
+                min_sheet_length_cm=20,
+                max_sheet_length_cm=800,
+                price_value=44.99,
+            )
+        ]
+    )
+    plane = state.add_roof_plane(build_rectangle_outline(300, 200), selected_material_id="MAT1")
+    state.generate_layout_for_plane(plane.id)
+    state.upsert_material(
+        Material(
+            id="MAT1",
+            nazwa="Material 1 Updated",
+            type="trapezowa",
+            effective_width_cm=54,
+            module_length_cm=0,
+            bottom_margin_cm=12,
+            top_margin_cm=16,
+            min_sheet_length_cm=22,
+            max_sheet_length_cm=850,
+            price_value=49.5,
+        )
+    )
+
+    payload: dict = {}
+    state.apply_to_config(payload)
+    reloaded = ProjectState.from_config(payload)
+
+    reloaded_material = reloaded.material_by_id("MAT1")
+    reloaded_plane = reloaded.roof_planes[0]
+
+    assert reloaded_material is not None
+    assert reloaded_material.nazwa == "Material 1 Updated"
+    assert almost_equal(reloaded_material.effective_width_cm, 54.0)
+    assert almost_equal(reloaded_material.price_value, 49.5)
+    assert reloaded_plane.selected_material_id == "MAT1"
+    assert reloaded_plane.layout_dirty_reason == "material_changed"
+
+
 def test_layout_engine_uses_shared_baseline_for_module_lengths():
     material = Material(
         id="PD510",
