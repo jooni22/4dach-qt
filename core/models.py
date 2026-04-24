@@ -256,16 +256,22 @@ class SheetPlacement:
 
     @classmethod
     def from_dict(cls, data: dict) -> "SheetPlacement":
+        source = data.get("source", "auto")
+        y_top_cm = float(data.get("y_top_cm", 0.0))
+        y_bottom_cm = float(data.get("y_bottom_cm", 0.0))
+        raw_length_cm = float(data.get("raw_length_cm", 0.0))
+        final_length_cm = float(data.get("final_length_cm", 0.0))
+
         return cls(
             id=data["id"],
             band_index=int(data.get("band_index", 0)),
             x_left_cm=float(data.get("x_left_cm", 0.0)),
             x_right_cm=float(data.get("x_right_cm", 0.0)),
-            y_top_cm=float(data.get("y_top_cm", 0.0)),
-            y_bottom_cm=float(data.get("y_bottom_cm", 0.0)),
-            raw_length_cm=float(data.get("raw_length_cm", 0.0)),
-            final_length_cm=float(data.get("final_length_cm", 0.0)),
-            source=data.get("source", "auto"),
+            y_top_cm=y_top_cm,
+            y_bottom_cm=y_bottom_cm,
+            raw_length_cm=raw_length_cm,
+            final_length_cm=final_length_cm,
+            source=source,
             split_reason=data.get("split_reason"),
         )
 

@@ -115,7 +115,9 @@ def test_layout_engine_handles_irregular_polygon_without_qt_dependencies():
     assert result.placements[0].raw_length_cm < result.placements[1].raw_length_cm
 
 
-def test_layout_engine_uses_single_cross_section_for_skewed_band_lengths():
+def test_layout_engine_uses_envelope_for_skewed_band_lengths():
+    """Slanted edges produce envelopes wider than any single cross-section.
+    With a large enough max_sheet_length the sheet fits in one row."""
     plane = RoofPlane(
         id="plane-1",
         name="Skewed",
@@ -129,11 +131,14 @@ def test_layout_engine_uses_single_cross_section_for_skewed_band_lengths():
         ),
     )
 
-    result = generate_layout(plane, _material(max_sheet_length_cm=100))
+    result = generate_layout(plane, _material(max_sheet_length_cm=500))
 
-    assert [placement.raw_length_cm for placement in result.placements] == [100.0, 100.0, 100.0]
-    assert [placement.final_length_cm for placement in result.placements] == [100.0, 100.0, 100.0]
-    assert result.requires_transverse_split is False
+    # The envelope for each band spans from min(top samples) to max(bottom samples),
+    # so raw_length > 100 (the constant perpendicular span).
+    assert len(result.placements) == 3
+    for placement in result.placements:
+        assert placement.raw_length_cm > 100.0
+        assert placement.y_bottom_cm - placement.y_top_cm == placement.raw_length_cm
 
 
 def test_layout_engine_tracks_multiple_cutouts_inside_band_coverage():
@@ -185,11 +190,68 @@ def test_layout_engine_validates_min_and_max_sheet_length_edges():
 
     result = generate_layout(plane, material)
 
-    assert [(placement.band_index, placement.final_length_cm, placement.split_reason) for placement in result.placements] == [
-        (1, 150.0, "exceeds_max_length"),
+    # Band 1 (no hole): raw=150, final=150 > max=120 → split into rows 120+30.
+    # Row 2 (raw=30, final=30) is below min_sheet_length=80 → rejected.
+    assert [(p.band_index, p.final_length_cm) for p in result.placements] == [
+        (1, 120.0),
     ]
     assert [(segment.band_index, segment.raw_length_cm, segment.reason) for segment in result.rejected_segments] == [
         (0, 30.0, "below_min_length"),
         (0, 30.0, "below_min_length"),
+        (1, 30.0, "below_min_length"),
     ]
-    assert result.requires_transverse_split is True
+
+
+def test_layout_engine_transverse_split_for_large_rectangle():
+    """A 1000x1000 rectangle with max_sheet_length=900 splits into 2 rows."""
+    plane = RoofPlane(
+        id="plane-1",
+        name="Large",
+        outline=Polygon2D.rectangle(100, 1000),
+    )
+    material = _material(
+        effective_width_cm=50,
+        max_sheet_length_cm=900,
+        min_sheet_length_cm=10,
+        top_margin_cm=0,
+        bottom_margin_cm=0,
+    )
+
+    result = generate_layout(plane, material)
+
+    # 2 bands × 2 rows each = 4 placements.
+    assert len(result.placements) == 4
+    # Each band: row-0 = 900, row-1 = 100.
+    band_0 = [p for p in result.placements if p.band_index == 0]
+    assert [p.final_length_cm for p in band_0] == [900.0, 100.0]
+    assert [p.y_top_cm for p in band_0] == [0.0, 900.0]
+    assert [p.y_bottom_cm for p in band_0] == [900.0, 1000.0]
+
+
+def test_layout_engine_transverse_split_with_margins():
+    """Margins reduce max coverage per row, so a 1000cm height with 50+50 margins
+    on a max=900 sheet splits into rows of 800 coverage + 200 coverage."""
+    plane = RoofPlane(
+        id="plane-1",
+        name="Margins",
+        outline=Polygon2D.rectangle(50, 1000),
+    )
+    material = _material(
+        effective_width_cm=50,
+        max_sheet_length_cm=900,
+        min_sheet_length_cm=10,
+        top_margin_cm=50,
+        bottom_margin_cm=50,
+    )
+
+    result = generate_layout(plane, material)
+
+    # raw=1000, final=1000+100=1100 > max=900.
+    # max_coverage = 900 - 100 = 800 per row.
+    # Row 0: raw=800, final=800+100=900.
+    # Row 1: raw=200, final=200+100=300.
+    assert len(result.placements) == 2
+    assert [p.final_length_cm for p in result.placements] == [900.0, 300.0]
+    assert [p.raw_length_cm for p in result.placements] == [800.0, 200.0]
+    assert [p.y_top_cm for p in result.placements] == [0.0, 800.0]
+    assert [p.y_bottom_cm for p in result.placements] == [800.0, 1000.0]

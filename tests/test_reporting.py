@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from core.geometry import build_trapezoid_outline
 from core.layout_engine import generate_layout
-from core.models import Material, Polygon2D, almost_equal
+from core.models import Material, Polygon2D, RoofPlane, SheetPlacement, almost_equal
 from core.project_state import ProjectState
 from core.reporting import (
+    _build_plane_preview,
     build_project_report,
     build_project_report_html,
     build_report,
@@ -67,8 +69,9 @@ def test_build_report_includes_layout_warnings_and_rejected_segments():
 
     assert len(layout_result.placements) == 1
     assert report.total_cost == 99.0
-    assert [(row.sheet_length_cm, row.quantity) for row in report.bom_rows] == [(150, 1)]
-    assert any("podziału poprzecznego" in warning for warning in report.warnings)
+    assert [(row.sheet_length_cm, row.quantity) for row in report.bom_rows] == [(120, 1)]
+    # No "podziału poprzecznego" warning — engine splits directly.
+    assert not any("podziału poprzecznego" in warning for warning in report.warnings)
     assert any("krótsze niż minimalna długość arkusza" in warning for warning in report.warnings)
 
 
@@ -100,7 +103,8 @@ def test_build_report_html_contains_summary_bom_and_warnings():
     assert "Blacha testowa" in html
     assert "Długość arkusza [cm]" in html
     assert "Ostrzeżenia" in html
-    assert "podziału poprzecznego" in html
+    # No "podziału poprzecznego" warning — engine splits directly.
+    assert "krótsze niż minimalna długość arkusza" in html
 
 
 def test_build_report_html_contains_svg_with_sheet_rects():
@@ -146,6 +150,28 @@ def test_build_report_html_uses_supplied_report_when_project_state_has_no_saved_
     assert "Zużycie materiału [m2]</th><td>1.500" in html
     assert "Długość arkusza [cm]" in html
     assert "<td>Material 1</td><td>MAT1</td><td>150.00</td><td>2</td><td>1.500</td>" in html
+
+
+def test_build_plane_preview_uses_full_sheet_rectangle_height():
+    plane = RoofPlane(id="plane-1", name="Skewed", outline=build_trapezoid_outline("równoramienny", 200, 100, 120))
+    placement = SheetPlacement(
+        id="plane-1-b0-s0",
+        band_index=0,
+        x_left_cm=0,
+        x_right_cm=50,
+        y_top_cm=30,
+        y_bottom_cm=120,
+        raw_length_cm=60,
+        final_length_cm=90,
+        source="auto",
+    )
+
+    preview = _build_plane_preview(plane, [placement])
+
+    assert preview is not None
+    assert preview.placements[0].y_top_cm == 30
+    assert preview.placements[0].y_bottom_cm == 120
+    assert preview.placements[0].y_bottom_cm - preview.placements[0].y_top_cm == 90
 
 
 def test_build_project_report_aggregates_multiple_roof_planes_and_groups_lengths():

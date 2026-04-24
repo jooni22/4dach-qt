@@ -10,6 +10,7 @@ from PySide6.QtGui import QPalette
 from PySide6.QtTest import QTest
 
 from core.canvas_mapper import CanvasMapper
+from core.geometry import point_in_polygon
 from core.geometry import segment_length
 from core.layout_engine import generate_layout
 from core.models import Material, Point2D, Polygon2D, RoofPlane
@@ -224,11 +225,46 @@ def test_canvas_render_items_preserve_cutout_exclusions(qtbot):
         (1, 30.0),
         (2, 100.0),
     ]
+    assert all(len(item.polygons) == 1 for item in items)
+    assert items[1].polygons[0].bounds().max_y == pytest.approx(30.0)
+    assert items[2].polygons[0].bounds().min_y == pytest.approx(70.0)
     image = canvas.grab().toImage()
     hole_color = image.pixelColor(_point_on_canvas(canvas, Point2D(45, 50)))
     covered_color = image.pixelColor(_point_on_canvas(canvas, Point2D(15, 50)))
     assert hole_color == canvas.palette().color(QPalette.ColorRole.Base)
     assert covered_color != hole_color
+
+
+def test_canvas_renders_skewed_plane_sheets_as_full_rectangles(qtbot):
+    outline = Polygon2D(
+        [
+            Point2D(0, 20),
+            Point2D(120, 0),
+            Point2D(120, 100),
+            Point2D(0, 120),
+        ]
+    )
+    plane = RoofPlane(id="plane-1", name="Skewed", outline=outline)
+    canvas = _make_canvas(qtbot, outline)
+
+    _apply_layout(canvas, plane, _material())
+
+    items = canvas._sheet_render_items()
+
+    assert len(items) == 3
+    assert all(len(item.polygons) == 1 for item in items)
+    # Each rendered polygon spans from y_top to y_bottom (raw coverage),
+    # which equals raw_length_cm, not final_length_cm.
+    for item, placement in zip(items, plane.auto_sheet_placements):
+        bounds = item.polygons[0].bounds()
+        assert bounds.min_y == pytest.approx(placement.y_top_cm)
+        assert bounds.max_y == pytest.approx(placement.y_bottom_cm)
+        polygon_height = bounds.max_y - bounds.min_y
+        assert polygon_height == pytest.approx(placement.raw_length_cm)
+
+    # With envelope, Point2D(10, 15) should be within the first sheet's
+    # coverage (which extends above y=20 on the left edge).
+    assert point_in_polygon(Point2D(10, 15), items[0].polygons[0]) is True
 
 
 def test_canvas_render_items_follow_layout_direction_change(qtbot):

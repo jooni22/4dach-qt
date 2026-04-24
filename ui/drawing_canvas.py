@@ -196,41 +196,9 @@ class DrawingCanvas(QWidget):
             return []
 
         visible_placements = self._visible_sheet_placements()
-        placements_by_id = {placement.id: placement for placement in visible_placements}
         render_items: list[_SheetRenderItem] = []
-        seen_ids: set[str] = set()
-
-        for band in self.roof_plane.layout_bands:
-            for segment in band.get("segments", []):
-                placement_id = segment.get("placement_id")
-                if not placement_id:
-                    continue
-                placement = placements_by_id.get(placement_id)
-                if placement is None:
-                    continue
-                coverage_polygons = [
-                    Polygon2D([Point2D(point["x"], point["y"]) for point in polygon])
-                    for polygon in segment.get("coverage_polygons", [])
-                    if len(polygon) >= 3
-                ]
-                if not coverage_polygons:
-                    coverage_polygons = [self._placement_polygon(placement)]
-                render_items.append(
-                    _SheetRenderItem(
-                        placement_id=placement.id,
-                        source=placement.source,
-                        band_index=placement.band_index,
-                        polygons=coverage_polygons,
-                        raw_length_cm=placement.raw_length_cm,
-                        final_length_cm=placement.final_length_cm,
-                        split_reason=placement.split_reason,
-                    )
-                )
-                seen_ids.add(placement.id)
 
         for placement in visible_placements:
-            if placement.id in seen_ids:
-                continue
             render_items.append(
                 _SheetRenderItem(
                     placement_id=placement.id,
@@ -650,6 +618,9 @@ class DrawingCanvas(QWidget):
         painter.drawPolygon(outline_polygon)
 
         self._draw_sheet_placements(painter, plane, mapper, text_color)
+        painter.setPen(QPen(outline_color, 2))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawPolygon(outline_polygon)
 
         painter.setPen(QPen(hole_color, 1.5, Qt.PenStyle.DashLine))
         for hole_index, hole in enumerate(holes):

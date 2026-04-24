@@ -218,40 +218,129 @@ def generate_layout(plane: RoofPlane, material: Material) -> LayoutResult:
                 )
                 continue
 
-            split_reason = None
-            if final_length > material.max_sheet_length_cm:
-                result.requires_transverse_split = True
-                split_reason = "exceeds_max_length"
-                result.warnings.append(
-                    LayoutWarning(
-                        code="requires_transverse_split",
-                        message="Arkusz przekracza maksymalną długość i wymaga podziału poprzecznego",
-                        data={"band_index": band_index, "material_id": material.id, "final_length_cm": final_length},
-                    )
-                )
-
-            placement_id = f"{plane.id}-b{band_index}-s{segment_index}"
-            band_segment.segment_index = segment_index
-            band_segment.placement_id = placement_id
-            band_segment.split_reason = split_reason
-            layout_band.segments.append(band_segment)
-            result.placements.append(
-                SheetPlacement(
-                    id=placement_id,
-                    band_index=band_index,
-                    x_left_cm=band_segment.x_left_cm,
-                    x_right_cm=band_segment.x_right_cm,
-                    y_top_cm=band_segment.y_top_cm,
-                    y_bottom_cm=band_segment.y_bottom_cm,
-                    raw_length_cm=raw_length,
-                    final_length_cm=final_length,
-                    split_reason=split_reason,
-                )
+            # --- Transverse split: break oversized sheets into rows ---
+            row_placements = _split_segment_into_rows(
+                band_segment, final_length, material, plane, band_index, segment_index,
             )
+
+            for row_placement in row_placements:
+                # Each split row must independently meet min_sheet_length.
+                if row_placement.final_length_cm < material.min_sheet_length_cm:
+                    result.rejected_segments.append(
+                        RejectedSegment(
+                            band_index=band_index,
+                            x_left_cm=row_placement.x_left_cm,
+                            x_right_cm=row_placement.x_right_cm,
+                            y_top_cm=row_placement.y_top_cm,
+                            y_bottom_cm=row_placement.y_bottom_cm,
+                            raw_length_cm=row_placement.raw_length_cm,
+                            reason="below_min_length",
+                        )
+                    )
+                    continue
+                band_segment_copy = LayoutBandSegment(
+                    segment_index=segment_index,
+                    x_left_cm=row_placement.x_left_cm,
+                    x_right_cm=row_placement.x_right_cm,
+                    y_top_cm=row_placement.y_top_cm,
+                    y_bottom_cm=row_placement.y_bottom_cm,
+                    raw_length_cm=row_placement.raw_length_cm,
+                    coverage_polygons=band_segment.coverage_polygons,
+                    placement_id=row_placement.id,
+                    split_reason=row_placement.split_reason,
+                )
+                layout_band.segments.append(band_segment_copy)
+                result.placements.append(row_placement)
 
         result.bands.append(layout_band)
 
     return result
+
+
+def _split_segment_into_rows(
+    segment: LayoutBandSegment,
+    full_final_length: float,
+    material: Material,
+    plane: RoofPlane,
+    band_index: int,
+    segment_index: int,
+) -> list[SheetPlacement]:
+    """Split a segment into one or more row placements, each within max_sheet_length.
+
+    When the normalised sheet length fits within *max_sheet_length*, a single
+    placement is returned covering the entire segment.
+
+    Otherwise the coverage height is divided into rows whose manufactured
+    length (``normalize_sheet_length``) does not exceed the material limit.
+    """
+    max_len = material.max_sheet_length_cm
+    margin_sum = material.top_margin_cm + material.bottom_margin_cm
+
+    if full_final_length <= max_len:
+        # Fits in one sheet — no split needed.
+        placement_id = f"{plane.id}-b{band_index}-s{segment_index}"
+        return [
+            SheetPlacement(
+                id=placement_id,
+                band_index=band_index,
+                x_left_cm=segment.x_left_cm,
+                x_right_cm=segment.x_right_cm,
+                y_top_cm=segment.y_top_cm,
+                y_bottom_cm=segment.y_bottom_cm,
+                raw_length_cm=segment.raw_length_cm,
+                final_length_cm=full_final_length,
+            ),
+        ]
+
+    # Maximum raw coverage a single sheet can provide.
+    max_coverage = max_len - margin_sum
+    if max_coverage <= 0:
+        # Margins alone exceed max sheet length — degenerate case.
+        max_coverage = max_len
+
+    raw_total = segment.raw_length_cm
+    placements: list[SheetPlacement] = []
+    y_cursor = segment.y_top_cm
+    row_index = 0
+
+    while raw_total > EPSILON:
+        row_raw = min(max_coverage, raw_total)
+        row_final = normalize_sheet_length(
+            row_raw,
+            material,
+            y_top_cm=y_cursor,
+            y_bottom_cm=y_cursor + row_raw,
+            base_line_y_cm=plane.generation_settings.base_line_y_cm,
+        )
+        # Safety clamp: ensure manufactured length never exceeds max.
+        if row_final > max_len:
+            row_final = max_len
+            row_raw = max_len - margin_sum
+            if row_raw <= 0:
+                row_raw = max_len
+
+        placement_id = f"{plane.id}-b{band_index}-s{segment_index}-r{row_index}"
+        placements.append(
+            SheetPlacement(
+                id=placement_id,
+                band_index=band_index,
+                x_left_cm=segment.x_left_cm,
+                x_right_cm=segment.x_right_cm,
+                y_top_cm=y_cursor,
+                y_bottom_cm=y_cursor + row_raw,
+                raw_length_cm=row_raw,
+                final_length_cm=row_final,
+            ),
+        )
+
+        y_cursor += row_raw
+        raw_total -= row_raw
+        row_index += 1
+        # Prevent infinite loop on very small remainders.
+        if row_raw <= 0:
+            break
+
+    return placements
 
 
 def _iter_band_ranges(plane: RoofPlane, band_width_cm: float) -> list[tuple[float, float]]:
@@ -366,10 +455,11 @@ def _band_pieces_for_range(plane: RoofPlane, x_left: float, x_right: float) -> l
                 (mid_top, mid_bottom),
                 (right_top, right_bottom),
             ]
-            y_top_cm, y_bottom_cm = max(
-                sampled_sections,
-                key=lambda interval: (interval[1] - interval[0], -interval[0]),
-            )
+            # Use the full envelope of all sampled sections so that
+            # the sheet rectangle covers the entire slab span on
+            # slanted edges (no small uncovered triangles).
+            y_top_cm = min(top for top, _bottom in sampled_sections)
+            y_bottom_cm = max(bottom for _top, bottom in sampled_sections)
             polygon = Polygon2D(
                 [
                     Point2D(slab_left, left_top),
