@@ -4,7 +4,7 @@
 .DEFAULT_GOAL := help
 
 # Zmienne
-PYTHON := python3
+PYTHON := python3.11
 PIP := pip3
 PYTEST := pytest
 

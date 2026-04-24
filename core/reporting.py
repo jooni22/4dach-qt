@@ -93,6 +93,47 @@ def _rejected_segment_warning(reason: str, quantity: int) -> str:
     return f"Pominięto {quantity} segment(y) z powodu: {reason}"
 
 
+def _build_svg(plane, placements: list, width: int = 800, height: int = 600) -> str:
+    if plane is None:
+        return ""
+    bounds = plane.outline.bounds()
+    margin = 40.0
+    avail_w = width - 2 * margin
+    avail_h = height - 2 * margin
+    domain_w = max(bounds.width, 1.0)
+    domain_h = max(bounds.height, 1.0)
+    scale = min(avail_w / domain_w, avail_h / domain_h)
+    off_x = margin + (avail_w - domain_w * scale) / 2.0
+    off_y = margin + (avail_h - domain_h * scale) / 2.0
+
+    def px(x: float, y: float) -> tuple[float, float]:
+        return (off_x + (x - bounds.min_x) * scale, off_y + (y - bounds.min_y) * scale)
+
+    def poly_pts(poly) -> str:
+        return " ".join(f"{px(p.x, p.y)[0]:.2f},{px(p.x, p.y)[1]:.2f}" for p in poly.points)
+
+    svg_parts: list[str] = [
+        f'<svg width="{width}" height="{height}" xmlns="http://www.w3.org/2000/svg">',
+        '<rect width="100%" height="100%" fill="#f8f8f8"/>',
+        f'<polygon points="{poly_pts(plane.outline)}" fill="#e8e8e8" stroke="#333" stroke-width="2"/>',
+    ]
+    for hole in plane.holes:
+        svg_parts.append(f'<polygon points="{poly_pts(hole)}" fill="none" stroke="#555" stroke-width="1.5" stroke-dasharray="4,2"/>')
+
+    for sheet in placements:
+        x1, y1 = px(sheet.x_left_cm, sheet.y_top_cm)
+        x2, y2 = px(sheet.x_right_cm, sheet.y_bottom_cm)
+        fill = "#a8d5ff" if sheet.source == "auto" else "#ffd5a8"
+        svg_parts.append(f'<rect x="{x1:.2f}" y="{y1:.2f}" width="{x2-x1:.2f}" height="{y2-y1:.2f}" fill="{fill}" stroke="#444" stroke-width="1"/>')
+        label = f"{sheet.final_length_cm:.0f}"
+        cx = (x1 + x2) / 2
+        cy = (y1 + y2) / 2
+        svg_parts.append(f'<text x="{cx:.2f}" y="{cy:.2f}" font-size="12" text-anchor="middle" dominant-baseline="middle" fill="#222">{escape(label)}</text>')
+
+    svg_parts.append("</svg>")
+    return "\n".join(svg_parts)
+
+
 def build_report_html(
     project_state: ProjectState,
     report: LayoutReport,
@@ -135,6 +176,16 @@ def build_report_html(
             ]
         )
 
+    svg_html = ""
+    if plane is not None:
+        placements = project_state.active_sheet_placements_for_plane(plane.id)
+        if not placements:
+            placements = list(report.bom_rows)  # fallback, but bom_rows don't have coordinates
+        # Use actual placements if available, otherwise empty SVG
+        if hasattr(plane, "auto_sheet_placements"):
+            all_placements = list(plane.auto_sheet_placements) + list(plane.manual_sheet_placements)
+            svg_html = f'<section><h2>Rzut połaci</h2>{_build_svg(plane, all_placements)}</section>'
+
     return "".join(
         [
             "<!DOCTYPE html>",
@@ -164,6 +215,7 @@ def build_report_html(
             "</table>",
             "</section>",
             bom_section_html,
+            svg_html,
             "<section>",
             "<h2>Ostrzeżenia</h2>",
             f"<ul>{warnings_html}</ul>",

@@ -96,3 +96,23 @@ def test_build_report_html_contains_summary_bom_and_warnings():
     assert "Długość arkusza [cm]" in html
     assert "Ostrzeżenia" in html
     assert "podziału poprzecznego" in html
+
+
+def test_build_report_html_contains_svg_with_sheet_rects():
+    config_dict = {
+        "company_data": {"name": "Test", "nip": "123", "address": "Addr", "website": "web.test", "logo": "logo.png"},
+        "blachy": [
+            {"id": "MAT1", "nazwa": "Material 1", "type": "trapezowa", "szerokosc_efektywna": 50, "dlugosc_modulu": 25, "zapas_dolny": 10, "zapas_gorny": 15, "min_dlugosc_arkusza": 20},
+        ],
+    }
+
+    state = ProjectState.from_config(config_dict)
+    plane = state.add_roof_plane(Polygon2D.rectangle(300, 200), selected_material_id="MAT1")
+    layout_result = state.generate_layout_for_plane(plane.id)
+    report = build_report(state, layout_result, "MAT1", plane.id)
+    html = build_report_html(state, report, "MAT1", plane.id)
+
+    assert "<svg" in html
+    assert "</svg>" in html
+    assert html.count("<rect") >= len(layout_result.placements)
+    assert "Ostrzeżenia" in html
