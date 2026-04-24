@@ -44,6 +44,25 @@ def test_project_state_loads_materials_from_config():
     assert state.material_by_id("PD510") is not None
 
 
+def test_material_definition_supports_min_sheet_length_dual_keys():
+    material = Material.from_dict(
+        {
+            "id": "MAT1",
+            "display_name": "Material 1",
+            "type": "trapezowa",
+            "effective_width_cm": 50,
+            "min_sheet_length_cm": 42,
+            "max_sheet_length_cm": 300,
+        }
+    )
+
+    payload = material.to_dict()
+
+    assert material.min_sheet_length_cm == 42
+    assert payload["min_sheet_length_cm"] == 42
+    assert payload["min_dlugosc_arkusza"] == 42
+
+
 def test_layout_engine_splits_band_by_hole_and_flags_long_sheet():
     plane = RoofPlane(
         id="plane-1",

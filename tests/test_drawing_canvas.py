@@ -6,11 +6,13 @@ pytest.importorskip("PySide6")
 pytest.importorskip("pytestqt")
 
 from PySide6.QtCore import QPoint, Qt
+from PySide6.QtGui import QPalette
 from PySide6.QtTest import QTest
 
 from core.canvas_mapper import CanvasMapper
 from core.geometry import segment_length
-from core.models import Point2D, Polygon2D, RoofPlane
+from core.layout_engine import generate_layout
+from core.models import Material, Point2D, Polygon2D, RoofPlane
 from ui.drawing_canvas import DrawingCanvas
 
 
@@ -27,6 +29,32 @@ def _make_canvas(qtbot, outline: Polygon2D, *, holes: list[Polygon2D] | None = N
 def _point_on_canvas(canvas: DrawingCanvas, point: Point2D) -> QPoint:
     mapper = CanvasMapper(canvas.roof_plane.outline.bounds(), canvas.rect())
     return mapper.map_point(point).toPoint()
+
+
+def _material(**overrides) -> Material:
+    payload = {
+        "id": "PD510",
+        "nazwa": "PD510",
+        "type": "dachówkowa",
+        "effective_width_cm": 50,
+        "min_sheet_length_cm": 10,
+        "max_sheet_length_cm": 500,
+        "top_margin_cm": 0,
+        "bottom_margin_cm": 0,
+        "module_length_cm": 25,
+    }
+    payload.update(overrides)
+    return Material(**payload)
+
+
+def _apply_layout(canvas: DrawingCanvas, plane: RoofPlane, material: Material) -> None:
+    result = generate_layout(plane, material)
+    plane.auto_sheet_placements = list(result.placements)
+    plane.layout_bands = [band.to_dict() for band in result.bands]
+    plane.selected_material_id = material.id
+    canvas.set_roof_plane(plane)
+    canvas.set_material(material)
+    canvas.repaint()
 
 
 def test_canvas_selects_vertex_handle_on_mouse_press(qtbot):
@@ -161,3 +189,81 @@ def test_canvas_rejects_cutout_vertex_drag_outside_plane(qtbot):
 
     assert "Wycinek musi leżeć w całości wewnątrz obrysu" in blocker.args[0]
     assert canvas.display_holes()[0].points == hole.points
+
+
+def test_canvas_builds_sheet_render_items_for_simple_rectangle(qtbot):
+    outline = Polygon2D.rectangle(120, 100)
+    plane = RoofPlane(id="plane-1", name="Rect", outline=outline)
+    canvas = _make_canvas(qtbot, outline)
+
+    _apply_layout(canvas, plane, _material())
+
+    items = canvas._sheet_render_items()
+
+    assert [(item.band_index, item.final_length_cm, len(item.polygons)) for item in items] == [
+        (0, 100.0, 1),
+        (1, 100.0, 1),
+        (2, 100.0, 1),
+    ]
+    assert canvas._sheet_label_text(items[0]) == "100 cm"
+
+
+def test_canvas_render_items_preserve_cutout_exclusions(qtbot):
+    outline = Polygon2D.rectangle(90, 100)
+    hole = Polygon2D.rectangle(30, 40, origin_x=30, origin_y=30)
+    plane = RoofPlane(id="plane-1", name="Hole", outline=outline, holes=[hole])
+    canvas = _make_canvas(qtbot, outline, holes=[hole])
+
+    _apply_layout(canvas, plane, _material(effective_width_cm=30, module_length_cm=0))
+
+    items = canvas._sheet_render_items()
+
+    assert [(item.band_index, item.final_length_cm) for item in items] == [
+        (0, 100.0),
+        (1, 30.0),
+        (1, 30.0),
+        (2, 100.0),
+    ]
+    image = canvas.grab().toImage()
+    hole_color = image.pixelColor(_point_on_canvas(canvas, Point2D(45, 50)))
+    covered_color = image.pixelColor(_point_on_canvas(canvas, Point2D(15, 50)))
+    assert hole_color == canvas.palette().color(QPalette.ColorRole.Base)
+    assert covered_color != hole_color
+
+
+def test_canvas_render_items_follow_layout_direction_change(qtbot):
+    outline = Polygon2D.rectangle(120, 100)
+    plane = RoofPlane(id="plane-1", name="Direction", outline=outline)
+    canvas = _make_canvas(qtbot, outline)
+    material = _material()
+
+    _apply_layout(canvas, plane, material)
+    left_items = canvas._sheet_render_items()
+
+    plane.generation_settings.layout_origin = "right"
+    _apply_layout(canvas, plane, material)
+    right_items = canvas._sheet_render_items()
+
+    assert left_items[0].polygons[0].bounds().min_x == pytest.approx(0.0)
+    assert right_items[0].polygons[0].bounds().min_x == pytest.approx(70.0)
+
+
+def test_canvas_updates_render_items_after_geometry_edit_and_relayout(qtbot):
+    outline = Polygon2D.rectangle(120, 100)
+    plane = RoofPlane(id="plane-1", name="Geom", outline=outline)
+    canvas = _make_canvas(qtbot, outline)
+    material = _material()
+
+    _apply_layout(canvas, plane, material)
+    assert len(canvas._sheet_render_items()) == 3
+
+    plane.outline = Polygon2D.rectangle(180, 100)
+    plane.layout_bands.clear()
+    plane.auto_sheet_placements.clear()
+    canvas.set_roof_plane(plane)
+    assert canvas._sheet_render_items() == []
+
+    _apply_layout(canvas, plane, material)
+    items = canvas._sheet_render_items()
+    assert len(items) == 4
+    assert items[-1].polygons[0].bounds().max_x == pytest.approx(180.0)
