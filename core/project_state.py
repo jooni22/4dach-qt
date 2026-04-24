@@ -31,13 +31,13 @@ class ProjectState:
 
         for plane_payload in project_payload.get("roof_planes", []):
             outline_points = plane_payload.get("outline", [])
-            if len(outline_points) < 3:
-                continue
-            outline = Polygon2D([Point2D(point["x"], point["y"]) for point in outline_points])
+            outline = None
+            if len(outline_points) >= 3:
+                outline = Polygon2D([Point2D(point["x"], point["y"]) for point in outline_points])
             holes = [
                 Polygon2D([Point2D(point["x"], point["y"]) for point in hole_points])
                 for hole_points in plane_payload.get("holes", [])
-                if len(hole_points) >= 3
+                if len(hole_points) >= 3 and outline is not None
             ]
             roof_planes.append(
                 RoofPlane(
@@ -134,14 +134,15 @@ class ProjectState:
 
     def add_roof_plane(
         self,
-        outline: Polygon2D,
+        outline: Polygon2D | None = None,
         *,
         name: str | None = None,
         selected_material_id: str | None = None,
     ) -> RoofPlane:
-        issues = validate_polygon(outline)
-        if issues:
-            raise ValueError("; ".join(issues))
+        if outline is not None:
+            issues = validate_polygon(outline)
+            if issues:
+                raise ValueError("; ".join(issues))
 
         material_id = selected_material_id or self.active_material_id()
         plane = RoofPlane(
@@ -155,10 +156,55 @@ class ProjectState:
         self.active_plane_id = plane.id
         return plane
 
+    def add_empty_roof_plane(
+        self,
+        *,
+        name: str | None = None,
+        selected_material_id: str | None = None,
+    ) -> RoofPlane:
+        return self.add_roof_plane(None, name=name, selected_material_id=selected_material_id)
+
+    def rename_roof_plane(self, plane_id: str, name: str) -> RoofPlane:
+        plane = self.roof_plane_by_id(plane_id)
+        if plane is None:
+            raise ValueError("Nie znaleziono połaci o podanym identyfikatorze")
+
+        normalized_name = name.strip()
+        if not normalized_name:
+            raise ValueError("Nazwa połaci nie może być pusta")
+
+        plane.name = normalized_name
+        return plane
+
+    def delete_roof_plane(self, plane_id: str) -> RoofPlane:
+        plane_index = next((index for index, plane in enumerate(self.roof_planes) if plane.id == plane_id), None)
+        if plane_index is None:
+            raise ValueError("Nie znaleziono połaci o podanym identyfikatorze")
+
+        removed_plane = self.roof_planes.pop(plane_index)
+        if not self.roof_planes:
+            self.active_plane_id = None
+        elif self.active_plane_id == plane_id:
+            replacement_index = min(plane_index, len(self.roof_planes) - 1)
+            self.active_plane_id = self.roof_planes[replacement_index].id
+        return removed_plane
+
+    def set_roof_plane_outline(self, outline: Polygon2D, plane_id: str | None = None) -> RoofPlane:
+        plane = self.roof_plane_by_id(plane_id or self.active_plane_id)
+        if plane is None:
+            raise ValueError("Nie znaleziono aktywnej połaci")
+
+        self._validate_plane_geometry(outline, plane.holes)
+        plane.outline = outline
+        self._mark_layout_inputs_changed(plane, "geometry_changed")
+        return plane
+
     def move_roof_plane(self, dx: float, dy: float, plane_id: str | None = None) -> RoofPlane:
         plane = self.roof_plane_by_id(plane_id or self.active_plane_id)
         if plane is None:
             raise ValueError("Nie znaleziono aktywnej połaci")
+        if plane.outline is None:
+            raise ValueError("Aktywna połać nie ma jeszcze obrysu")
 
         plane.outline = translate_polygon(plane.outline, dx, dy)
         plane.holes = [translate_polygon(hole, dx, dy) for hole in plane.holes]
@@ -169,6 +215,8 @@ class ProjectState:
         plane = self.roof_plane_by_id(plane_id or self.active_plane_id)
         if plane is None:
             raise ValueError("Nie znaleziono aktywnej połaci")
+        if plane.outline is None:
+            raise ValueError("Aktywna połać nie ma jeszcze obrysu")
         if point_index < 0 or point_index >= len(plane.outline.points):
             raise IndexError("Nie znaleziono punktu o podanym indeksie")
 
@@ -185,6 +233,8 @@ class ProjectState:
         plane = self.roof_plane_by_id(plane_id or self.active_plane_id)
         if plane is None:
             raise ValueError("Nie znaleziono aktywnej połaci")
+        if plane.outline is None:
+            raise ValueError("Aktywna połać nie ma jeszcze obrysu")
         if edge_index < 0 or edge_index >= len(plane.outline.points):
             raise IndexError("Nie znaleziono krawędzi o podanym indeksie")
 
@@ -196,6 +246,8 @@ class ProjectState:
         plane = self.roof_plane_by_id(plane_id or self.active_plane_id)
         if plane is None:
             raise ValueError("Nie znaleziono aktywnej połaci")
+        if plane.outline is None:
+            raise ValueError("Aktywna połać nie ma jeszcze obrysu")
         if point_index < 0 or point_index >= len(plane.outline.points):
             raise IndexError("Nie znaleziono punktu o podanym indeksie")
 
@@ -207,6 +259,8 @@ class ProjectState:
         plane = self.roof_plane_by_id(plane_id or self.active_plane_id)
         if plane is None:
             raise ValueError("Nie znaleziono aktywnej połaci")
+        if plane.outline is None:
+            raise ValueError("Aktywna połać nie ma jeszcze obrysu")
 
         issues = validate_hole_polygon(plane.outline, hole, plane.holes)
         if issues:
@@ -220,6 +274,8 @@ class ProjectState:
         plane = self.roof_plane_by_id(plane_id or self.active_plane_id)
         if plane is None:
             raise ValueError("Nie znaleziono aktywnej połaci")
+        if plane.outline is None:
+            raise ValueError("Aktywna połać nie ma jeszcze obrysu")
         if hole_index < 0 or hole_index >= len(plane.holes):
             raise IndexError("Nie znaleziono wycinku o podanym indeksie")
 
@@ -308,12 +364,16 @@ class ProjectState:
         raise ValueError("Nie znaleziono arkusza o podanym identyfikatorze")
 
     def resolve_base_line_y_cm(self, plane: RoofPlane) -> float:
+        if plane.outline is None:
+            return 0.0
         return plane.outline.bounds().max_y
 
     def generate_layout_for_plane(self, plane_id: str | None = None) -> LayoutResult:
         plane = self.roof_plane_by_id(plane_id or self.active_plane_id)
         if plane is None:
             raise ValueError("Nie znaleziono aktywnej połaci")
+        if plane.outline is None:
+            raise ValueError("Aktywna połać nie ma jeszcze obrysu")
 
         material = self.material_by_id(plane.selected_material_id) or self.material_by_id(self.active_material_id())
         if material is None:
@@ -383,7 +443,7 @@ class ProjectState:
                         "manually_removed_auto_sheet_ids": list(plane.manually_removed_auto_sheet_ids),
                         "layout_revision": plane.layout_revision,
                         "layout_dirty_reason": plane.layout_dirty_reason,
-                        "outline": [{"x": point.x, "y": point.y} for point in plane.outline.points],
+                        "outline": [] if plane.outline is None else [{"x": point.x, "y": point.y} for point in plane.outline.points],
                         "holes": [
                             [{"x": point.x, "y": point.y} for point in hole.points]
                             for hole in plane.holes

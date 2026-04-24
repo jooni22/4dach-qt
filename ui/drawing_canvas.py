@@ -102,7 +102,7 @@ class DrawingCanvas(QWidget):
     # ------------------------------------------------------------------
 
     def _canvas_mapper(self) -> CanvasMapper | None:
-        if self.roof_plane is None:
+        if self.roof_plane is None or self.roof_plane.outline is None:
             return None
         return CanvasMapper(self.roof_plane.outline.bounds(), QRectF(self.rect()))
 
@@ -218,7 +218,7 @@ class DrawingCanvas(QWidget):
         painter.setPen(QPen(frame_color, 1))
         painter.drawRect(self.rect().adjusted(0, 0, -1, -1))
 
-        if self.roof_plane is not None:
+        if self.roof_plane is not None and self.roof_plane.outline is not None:
             if self._show_grid:
                 self._draw_grid(painter)
             self._draw_roof_plane(painter)
@@ -233,8 +233,6 @@ class DrawingCanvas(QWidget):
         if self._selected_sheet_id and self._mode == self.MODE_SELECT_SHEET:
             self._draw_selected_sheet_highlight(painter)
 
-        painter.end()
-        super().paintEvent(event)
 
     def _draw_grid(self, painter: QPainter) -> None:
         grid_color = self.palette().color(QPalette.ColorRole.Mid)
@@ -252,7 +250,6 @@ class DrawingCanvas(QWidget):
         if not muted.isValid():
             muted = self.palette().color(QPalette.ColorRole.Mid)
         painter.setPen(QPen(muted, 1))
-        from PySide6.QtGui import QFont  # noqa: PLC0415
         font = painter.font()
         font.setPointSize(11)
         painter.setFont(font)
@@ -300,7 +297,7 @@ class DrawingCanvas(QWidget):
 
     def _draw_roof_plane(self, painter: QPainter) -> None:
         plane = self.roof_plane
-        if plane is None:
+        if plane is None or plane.outline is None:
             return
 
         bounds = plane.outline.bounds()

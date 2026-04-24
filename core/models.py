@@ -234,7 +234,7 @@ class SheetPlacement:
 class RoofPlane:
     id: str
     name: str
-    outline: Polygon2D
+    outline: Polygon2D | None = None
     holes: list[Polygon2D] = field(default_factory=list)
     selected_material_id: str | None = None
     generation_settings: GenerationSettings = field(default_factory=GenerationSettings)
@@ -246,6 +246,8 @@ class RoofPlane:
 
     @property
     def net_area_cm2(self) -> float:
+        if self.outline is None:
+            return 0.0
         holes_area = sum(hole.area() for hole in self.holes)
         return self.outline.area() - holes_area
 

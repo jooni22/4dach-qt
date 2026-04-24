@@ -134,6 +134,83 @@ def test_project_state_can_switch_active_plane_explicitly():
     assert second_plane.id != first_plane.id
 
 
+def test_project_state_can_add_multiple_empty_roof_planes_and_persist_them():
+    state = ProjectState(
+        materials=[
+            Material(
+                id="PD510",
+                nazwa="PD510",
+                type="dachówkowa",
+                effective_width_cm=51,
+                module_length_cm=25,
+                bottom_margin_cm=10,
+                top_margin_cm=80,
+                min_sheet_length_cm=20,
+            )
+        ]
+    )
+
+    first_plane = state.add_empty_roof_plane()
+    second_plane = state.add_empty_roof_plane()
+    third_plane = state.add_empty_roof_plane()
+    payload = {"blachy": [material.to_dict() for material in state.materials]}
+    state.apply_to_config(payload)
+    reloaded = ProjectState.from_config(payload)
+
+    assert [plane.id for plane in state.roof_planes] == ["plane-1", "plane-2", "plane-3"]
+    assert [plane.name for plane in state.roof_planes] == ["1", "2", "3"]
+    assert state.active_plane_id == third_plane.id
+    assert first_plane.outline is None
+    assert second_plane.selected_material_id == "PD510"
+    assert len(reloaded.roof_planes) == 3
+    assert all(plane.outline is None for plane in reloaded.roof_planes)
+
+
+def test_project_state_delete_roof_plane_keeps_other_planes_intact():
+    state = ProjectState()
+    first_plane = state.add_roof_plane(build_rectangle_outline(300, 200))
+    second_plane = state.add_roof_plane(build_rectangle_outline(240, 160))
+    third_plane = state.add_roof_plane(build_rectangle_outline(180, 120))
+
+    removed_plane = state.delete_roof_plane(second_plane.id)
+
+    assert removed_plane.id == second_plane.id
+    assert [plane.id for plane in state.roof_planes] == [first_plane.id, third_plane.id]
+    assert state.roof_plane_by_id(second_plane.id) is None
+    assert state.roof_plane_by_id(first_plane.id) is first_plane
+    assert state.roof_plane_by_id(third_plane.id) is third_plane
+    assert state.active_plane_id == third_plane.id
+
+
+def test_project_state_round_trip_preserves_multiple_roof_planes():
+    state = ProjectState(
+        materials=[
+            Material(
+                id="MAT1",
+                nazwa="Material 1",
+                type="trapezowa",
+                effective_width_cm=50,
+                module_length_cm=25,
+                bottom_margin_cm=10,
+                top_margin_cm=15,
+                min_sheet_length_cm=20,
+            )
+        ]
+    )
+    first_plane = state.add_roof_plane(build_rectangle_outline(300, 200), selected_material_id="MAT1")
+    second_plane = state.add_empty_roof_plane(name="Taras", selected_material_id="MAT1")
+    state.rename_roof_plane(first_plane.id, "Front")
+    payload = {"blachy": [material.to_dict() for material in state.materials]}
+
+    state.apply_to_config(payload)
+    reloaded = ProjectState.from_config(payload)
+
+    assert [plane.name for plane in reloaded.roof_planes] == ["Front", "Taras"]
+    assert reloaded.roof_planes[0].outline is not None
+    assert reloaded.roof_planes[1].outline is None
+    assert reloaded.active_plane_id == second_plane.id
+
+
 def test_project_state_hole_workflow_updates_layout_revision_and_serialization():
     state = ProjectState(
         materials=[

@@ -48,6 +48,11 @@ def normalize_sheet_length(raw_length_cm: float, material: Material, *, y_top_cm
 
 def generate_layout(plane: RoofPlane, material: Material) -> LayoutResult:
     result = LayoutResult()
+    if plane.outline is None:
+        result.warnings.append(
+            LayoutWarning(code="missing_outline", message="Połać nie ma jeszcze obrysu", data={"plane_id": plane.id})
+        )
+        return result
     result.warnings.extend(
         LayoutWarning(code="invalid_outline", message=issue, data={"plane_id": plane.id})
         for issue in validate_polygon(plane.outline)

@@ -94,7 +94,7 @@ def _rejected_segment_warning(reason: str, quantity: int) -> str:
 
 
 def _build_svg(plane, placements: list, width: int = 800, height: int = 600) -> str:
-    if plane is None:
+    if plane is None or plane.outline is None:
         return ""
     bounds = plane.outline.bounds()
     margin = 40.0
@@ -177,7 +177,7 @@ def build_report_html(
         )
 
     svg_html = ""
-    if plane is not None:
+    if plane is not None and plane.outline is not None:
         placements = project_state.active_sheet_placements_for_plane(plane.id)
         if not placements:
             placements = list(report.bom_rows)  # fallback, but bom_rows don't have coordinates
