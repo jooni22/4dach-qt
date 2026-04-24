@@ -1,0 +1,168 @@
+from __future__ import annotations
+
+from core.geometry import build_trapezoid_outline
+from core.layout_engine import generate_layout
+from core.models import Material, Point2D, Polygon2D, RoofPlane, almost_equal
+
+
+def _material(**overrides) -> Material:
+    payload = {
+        "id": "TEST",
+        "nazwa": "TEST",
+        "type": "trapezowa",
+        "effective_width_cm": 50,
+        "min_sheet_length_cm": 10,
+        "max_sheet_length_cm": 500,
+        "top_margin_cm": 0,
+        "bottom_margin_cm": 0,
+    }
+    payload.update(overrides)
+    return Material(**payload)
+
+
+def test_layout_engine_generates_deterministic_bands_for_simple_rectangle():
+    plane = RoofPlane(id="plane-1", name="Rect", outline=Polygon2D.rectangle(120, 200))
+
+    result = generate_layout(plane, _material())
+
+    assert [(placement.band_index, placement.x_left_cm, placement.x_right_cm, placement.final_length_cm) for placement in result.placements] == [
+        (0, 0.0, 50.0, 200.0),
+        (1, 50.0, 100.0, 200.0),
+        (2, 100.0, 120.0, 200.0),
+    ]
+    assert [band.to_dict() for band in result.bands] == [band.to_dict() for band in result.bands]
+    assert result.warnings == []
+
+
+def test_layout_engine_splits_band_when_cutout_disconnects_vertical_strip():
+    plane = RoofPlane(
+        id="plane-1",
+        name="Hole",
+        outline=Polygon2D.rectangle(90, 100),
+        holes=[Polygon2D.rectangle(30, 40, origin_x=30, origin_y=30)],
+    )
+
+    result = generate_layout(plane, _material(effective_width_cm=30))
+
+    assert [(placement.band_index, placement.y_top_cm, placement.y_bottom_cm, placement.raw_length_cm) for placement in result.placements] == [
+        (0, 0.0, 100.0, 100.0),
+        (1, 0.0, 30.0, 30.0),
+        (1, 70.0, 100.0, 30.0),
+        (2, 0.0, 100.0, 100.0),
+    ]
+    assert len(result.bands[1].segments) == 2
+    assert all(len(segment.coverage_polygons) == 1 for segment in result.bands[1].segments)
+
+
+def test_layout_engine_keeps_connected_notched_band_as_one_segment_with_coverage_polygons():
+    plane = RoofPlane(
+        id="plane-1",
+        name="Notch",
+        outline=Polygon2D.rectangle(153, 200),
+        holes=[Polygon2D.rectangle(30, 50, origin_x=60, origin_y=70)],
+    )
+
+    result = generate_layout(plane, _material(effective_width_cm=51))
+
+    assert len(result.placements) == 3
+    assert len(result.bands[1].segments) == 1
+    assert len(result.bands[1].segments[0].coverage_polygons) == 4
+    assert result.placements[1].x_left_cm == 51.0
+    assert result.placements[1].x_right_cm == 102.0
+
+
+def test_layout_engine_handles_trapezoid_strip_lengths():
+    plane = RoofPlane(
+        id="plane-1",
+        name="Trap",
+        outline=build_trapezoid_outline("równoramienny", 200, 100, 120),
+    )
+
+    result = generate_layout(plane, _material())
+
+    assert [placement.final_length_cm for placement in result.placements] == [90.0, 120.0, 120.0, 90.0]
+    assert almost_equal(result.placements[0].y_top_cm, 30.0)
+    assert almost_equal(result.placements[-1].y_top_cm, 30.0)
+
+
+def test_layout_engine_handles_irregular_polygon_without_qt_dependencies():
+    plane = RoofPlane(
+        id="plane-1",
+        name="Irregular",
+        outline=Polygon2D(
+            [
+                Point2D(0, 20),
+                Point2D(40, 0),
+                Point2D(90, 0),
+                Point2D(120, 50),
+                Point2D(100, 140),
+                Point2D(30, 120),
+                Point2D(0, 80),
+            ]
+        ),
+    )
+
+    result = generate_layout(plane, _material())
+
+    assert len(result.placements) == 3
+    assert [len(band.segments[0].coverage_polygons) for band in result.bands] == [3, 2, 1]
+    assert result.placements[0].raw_length_cm < result.placements[1].raw_length_cm
+
+
+def test_layout_engine_tracks_multiple_cutouts_inside_band_coverage():
+    plane = RoofPlane(
+        id="plane-1",
+        name="Multi",
+        outline=Polygon2D.rectangle(150, 150),
+        holes=[
+            Polygon2D.rectangle(20, 40, origin_x=15, origin_y=20),
+            Polygon2D.rectangle(20, 50, origin_x=65, origin_y=40),
+            Polygon2D.rectangle(20, 30, origin_x=115, origin_y=60),
+        ],
+    )
+
+    result = generate_layout(plane, _material())
+
+    assert len(result.placements) == 3
+    assert [len(band.segments[0].coverage_polygons) for band in result.bands] == [4, 4, 4]
+
+
+def test_layout_engine_supports_layout_direction_change():
+    plane = RoofPlane(id="plane-1", name="Direction", outline=Polygon2D.rectangle(120, 100))
+    material = _material()
+
+    left_result = generate_layout(plane, material)
+    plane.generation_settings.layout_origin = "right"
+    right_result = generate_layout(plane, material)
+
+    assert [(placement.band_index, placement.x_left_cm, placement.x_right_cm) for placement in left_result.placements] == [
+        (0, 0.0, 50.0),
+        (1, 50.0, 100.0),
+        (2, 100.0, 120.0),
+    ]
+    assert [(placement.band_index, placement.x_left_cm, placement.x_right_cm) for placement in right_result.placements] == [
+        (0, 70.0, 120.0),
+        (1, 20.0, 70.0),
+        (2, 0.0, 20.0),
+    ]
+
+
+def test_layout_engine_validates_min_and_max_sheet_length_edges():
+    plane = RoofPlane(
+        id="plane-1",
+        name="Edges",
+        outline=Polygon2D.rectangle(100, 150),
+        holes=[Polygon2D.rectangle(50, 90, origin_x=0, origin_y=30)],
+    )
+    material = _material(effective_width_cm=50, min_sheet_length_cm=80, max_sheet_length_cm=120)
+
+    result = generate_layout(plane, material)
+
+    assert [(placement.band_index, placement.final_length_cm, placement.split_reason) for placement in result.placements] == [
+        (1, 150.0, "exceeds_max_length"),
+    ]
+    assert [(segment.band_index, segment.raw_length_cm, segment.reason) for segment in result.rejected_segments] == [
+        (0, 30.0, "below_min_length"),
+        (0, 30.0, "below_min_length"),
+    ]
+    assert result.requires_transverse_split is True

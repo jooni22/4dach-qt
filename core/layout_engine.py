@@ -4,7 +4,10 @@ from dataclasses import dataclass, field
 from math import ceil
 
 from core.geometry import validate_polygon, vertical_segments_for_band
-from core.models import Material, RoofPlane, SheetPlacement
+from core.models import Material, Point2D, Polygon2D, RoofPlane, SheetPlacement
+
+
+EPSILON = 1e-6
 
 
 @dataclass(slots=True)
@@ -26,14 +29,121 @@ class RejectedSegment:
 
 
 @dataclass(slots=True)
+class LayoutBandSegment:
+    segment_index: int
+    x_left_cm: float
+    x_right_cm: float
+    y_top_cm: float
+    y_bottom_cm: float
+    raw_length_cm: float
+    coverage_polygons: list[Polygon2D] = field(default_factory=list)
+    placement_id: str | None = None
+    split_reason: str | None = None
+
+    def to_dict(self) -> dict:
+        return {
+            "segment_index": self.segment_index,
+            "x_left_cm": self.x_left_cm,
+            "x_right_cm": self.x_right_cm,
+            "y_top_cm": self.y_top_cm,
+            "y_bottom_cm": self.y_bottom_cm,
+            "raw_length_cm": self.raw_length_cm,
+            "coverage_polygons": [_polygon_to_dict(polygon) for polygon in self.coverage_polygons],
+            "placement_id": self.placement_id,
+            "split_reason": self.split_reason,
+        }
+
+
+@dataclass(slots=True)
+class LayoutBand:
+    band_index: int
+    x_left_cm: float
+    x_right_cm: float
+    segments: list[LayoutBandSegment] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {
+            "band_index": self.band_index,
+            "x_left_cm": self.x_left_cm,
+            "x_right_cm": self.x_right_cm,
+            "segments": [segment.to_dict() for segment in self.segments],
+        }
+
+
+@dataclass(slots=True)
 class LayoutResult:
     placements: list[SheetPlacement] = field(default_factory=list)
+    bands: list[LayoutBand] = field(default_factory=list)
     warnings: list[LayoutWarning] = field(default_factory=list)
     rejected_segments: list[RejectedSegment] = field(default_factory=list)
     requires_transverse_split: bool = False
 
+    def to_dict(self) -> dict:
+        return {
+            "placements": [placement.to_dict() for placement in self.placements],
+            "bands": [band.to_dict() for band in self.bands],
+            "warnings": [
+                {
+                    "code": warning.code,
+                    "message": warning.message,
+                    "data": dict(warning.data),
+                }
+                for warning in self.warnings
+            ],
+            "rejected_segments": [
+                {
+                    "band_index": segment.band_index,
+                    "x_left_cm": segment.x_left_cm,
+                    "x_right_cm": segment.x_right_cm,
+                    "y_top_cm": segment.y_top_cm,
+                    "y_bottom_cm": segment.y_bottom_cm,
+                    "raw_length_cm": segment.raw_length_cm,
+                    "reason": segment.reason,
+                }
+                for segment in self.rejected_segments
+            ],
+            "requires_transverse_split": self.requires_transverse_split,
+        }
 
-def normalize_sheet_length(raw_length_cm: float, material: Material, *, y_top_cm: float = 0.0, y_bottom_cm: float = 0.0, base_line_y_cm: float | None = None) -> float:
+
+@dataclass(slots=True)
+class _BandPiece:
+    piece_index: int
+    slab_index: int
+    x_left_cm: float
+    x_right_cm: float
+    y_top_cm: float
+    y_bottom_cm: float
+    left_interval: tuple[float, float]
+    right_interval: tuple[float, float]
+    polygon: Polygon2D
+
+
+class _UnionFind:
+    def __init__(self, size: int) -> None:
+        self._parent = list(range(size))
+
+    def find(self, item: int) -> int:
+        parent = self._parent[item]
+        if parent != item:
+            self._parent[item] = self.find(parent)
+        return self._parent[item]
+
+    def union(self, left: int, right: int) -> None:
+        left_root = self.find(left)
+        right_root = self.find(right)
+        if left_root != right_root:
+            self._parent[right_root] = left_root
+
+
+def normalize_sheet_length(
+    raw_length_cm: float,
+    material: Material,
+    *,
+    y_top_cm: float = 0.0,
+    y_bottom_cm: float = 0.0,
+    base_line_y_cm: float | None = None,
+) -> float:
     base_length = raw_length_cm + material.bottom_margin_cm + material.top_margin_cm
     module_length_cm = material.module_length_cm or 0.0
     if material.type == "dachówkowa" and module_length_cm > 0:
@@ -54,6 +164,7 @@ def generate_layout(plane: RoofPlane, material: Material) -> LayoutResult:
             LayoutWarning(code="missing_outline", message="Połać nie ma jeszcze obrysu", data={"plane_id": plane.id})
         )
         return result
+
     result.warnings.extend(
         LayoutWarning(code="invalid_outline", message=issue, data={"plane_id": plane.id})
         for issue in validate_polygon(plane.outline)
@@ -67,87 +178,235 @@ def generate_layout(plane: RoofPlane, material: Material) -> LayoutResult:
     width = material.effective_width_cm
     if width <= 0:
         result.warnings.append(
-            LayoutWarning(code="invalid_material_width", message="Szerokość efektywna materiału musi być dodatnia", data={"material_id": material.id})
+            LayoutWarning(
+                code="invalid_material_width",
+                message="Szerokość efektywna materiału musi być dodatnia",
+                data={"material_id": material.id},
+            )
         )
         return result
 
-    bounds = plane.outline.bounds()
-    if plane.generation_settings.layout_origin == "right":
-        x_cursor = bounds.max_x
-        band_index = 0
-        while x_cursor > bounds.min_x:
-            x_left = max(bounds.min_x, x_cursor - width)
-            x_right = x_cursor
-            _collect_band_segments(result, plane, material, band_index, x_left, x_right)
-            x_cursor -= width
-            band_index += 1
-        return result
+    for band_index, (x_left, x_right) in enumerate(_iter_band_ranges(plane, width)):
+        band_segments = _build_band_segments(plane, band_index, x_left, x_right)
+        layout_band = LayoutBand(band_index=band_index, x_left_cm=x_left, x_right_cm=x_right)
 
-    x_cursor = bounds.min_x
-    band_index = 0
-    while x_cursor < bounds.max_x:
-        x_left = x_cursor
-        x_right = min(bounds.max_x, x_cursor + width)
-        _collect_band_segments(result, plane, material, band_index, x_left, x_right)
-        x_cursor += width
-        band_index += 1
+        for segment_index, band_segment in enumerate(band_segments):
+            raw_length = band_segment.raw_length_cm
+            final_length = normalize_sheet_length(
+                raw_length,
+                material,
+                y_top_cm=band_segment.y_top_cm,
+                y_bottom_cm=band_segment.y_bottom_cm,
+                base_line_y_cm=plane.generation_settings.base_line_y_cm,
+            )
+
+            if final_length < material.min_sheet_length_cm:
+                result.rejected_segments.append(
+                    RejectedSegment(
+                        band_index=band_index,
+                        x_left_cm=band_segment.x_left_cm,
+                        x_right_cm=band_segment.x_right_cm,
+                        y_top_cm=band_segment.y_top_cm,
+                        y_bottom_cm=band_segment.y_bottom_cm,
+                        raw_length_cm=raw_length,
+                        reason="below_min_length",
+                    )
+                )
+                continue
+
+            split_reason = None
+            if final_length > material.max_sheet_length_cm:
+                result.requires_transverse_split = True
+                split_reason = "exceeds_max_length"
+                result.warnings.append(
+                    LayoutWarning(
+                        code="requires_transverse_split",
+                        message="Arkusz przekracza maksymalną długość i wymaga podziału poprzecznego",
+                        data={"band_index": band_index, "material_id": material.id, "final_length_cm": final_length},
+                    )
+                )
+
+            placement_id = f"{plane.id}-b{band_index}-s{segment_index}"
+            band_segment.segment_index = segment_index
+            band_segment.placement_id = placement_id
+            band_segment.split_reason = split_reason
+            layout_band.segments.append(band_segment)
+            result.placements.append(
+                SheetPlacement(
+                    id=placement_id,
+                    band_index=band_index,
+                    x_left_cm=band_segment.x_left_cm,
+                    x_right_cm=band_segment.x_right_cm,
+                    y_top_cm=band_segment.y_top_cm,
+                    y_bottom_cm=band_segment.y_bottom_cm,
+                    raw_length_cm=raw_length,
+                    final_length_cm=final_length,
+                    split_reason=split_reason,
+                )
+            )
+
+        result.bands.append(layout_band)
+
     return result
 
 
-def _collect_band_segments(
-    result: LayoutResult,
-    plane: RoofPlane,
-    material: Material,
-    band_index: int,
-    x_left: float,
-    x_right: float,
-) -> None:
-    for segment_index, (y_top, y_bottom) in enumerate(vertical_segments_for_band(plane.outline, plane.holes, x_left, x_right)):
-        raw_length = y_bottom - y_top
-        final_length = normalize_sheet_length(
-            raw_length,
-            material,
-            y_top_cm=y_top,
-            y_bottom_cm=y_bottom,
-            base_line_y_cm=plane.generation_settings.base_line_y_cm,
-        )
+def _iter_band_ranges(plane: RoofPlane, band_width_cm: float) -> list[tuple[float, float]]:
+    outline = plane.outline
+    if outline is None:
+        return []
 
-        if final_length < material.min_sheet_length_cm:
-            result.rejected_segments.append(
-                RejectedSegment(
-                    band_index=band_index,
-                    x_left_cm=x_left,
-                    x_right_cm=x_right,
-                    y_top_cm=y_top,
-                    y_bottom_cm=y_bottom,
-                    raw_length_cm=raw_length,
-                    reason="below_min_length",
-                )
-            )
+    bounds = outline.bounds()
+    bands: list[tuple[float, float]] = []
+    if plane.generation_settings.layout_origin == "right":
+        x_cursor = bounds.max_x
+        while x_cursor > bounds.min_x + EPSILON:
+            x_left = max(bounds.min_x, x_cursor - band_width_cm)
+            bands.append((x_left, x_cursor))
+            x_cursor -= band_width_cm
+        return bands
+
+    x_cursor = bounds.min_x
+    while x_cursor < bounds.max_x - EPSILON:
+        x_right = min(bounds.max_x, x_cursor + band_width_cm)
+        bands.append((x_cursor, x_right))
+        x_cursor += band_width_cm
+    return bands
+
+
+def _build_band_segments(plane: RoofPlane, band_index: int, x_left: float, x_right: float) -> list[LayoutBandSegment]:
+    pieces = _band_pieces_for_range(plane, x_left, x_right)
+    if not pieces:
+        return []
+
+    union_find = _UnionFind(len(pieces))
+    pieces_by_slab: dict[int, list[_BandPiece]] = {}
+    for piece in pieces:
+        pieces_by_slab.setdefault(piece.slab_index, []).append(piece)
+
+    for slab_index in sorted(pieces_by_slab):
+        current_pieces = pieces_by_slab[slab_index]
+        next_pieces = pieces_by_slab.get(slab_index + 1)
+        if not next_pieces:
             continue
+        for current_piece in current_pieces:
+            for next_piece in next_pieces:
+                if _intervals_touch_or_overlap(current_piece.right_interval, next_piece.left_interval):
+                    union_find.union(current_piece.piece_index, next_piece.piece_index)
 
-        split_reason = None
-        if final_length > material.max_sheet_length_cm:
-            result.requires_transverse_split = True
-            split_reason = "exceeds_max_length"
-            result.warnings.append(
-                LayoutWarning(
-                    code="requires_transverse_split",
-                    message="Arkusz przekracza maksymalną długość i wymaga podziału poprzecznego",
-                    data={"band_index": band_index, "material_id": material.id, "final_length_cm": final_length},
-                )
-            )
+    groups: dict[int, list[_BandPiece]] = {}
+    for piece in pieces:
+        groups.setdefault(union_find.find(piece.piece_index), []).append(piece)
 
-        result.placements.append(
-            SheetPlacement(
-                id=f"{plane.id}-b{band_index}-s{segment_index}",
-                band_index=band_index,
-                x_left_cm=x_left,
-                x_right_cm=x_right,
+    band_segments: list[LayoutBandSegment] = []
+    for segment_index, component in enumerate(
+        sorted(
+            groups.values(),
+            key=lambda group: (
+                min(piece.x_left_cm for piece in group),
+                min(piece.y_top_cm for piece in group),
+                max(piece.y_bottom_cm for piece in group),
+            ),
+        )
+    ):
+        coverage_polygons = [
+            piece.polygon
+            for piece in sorted(component, key=lambda item: (item.x_left_cm, item.y_top_cm, item.piece_index))
+        ]
+        y_top = min(piece.y_top_cm for piece in component)
+        y_bottom = max(piece.y_bottom_cm for piece in component)
+        band_segments.append(
+            LayoutBandSegment(
+                segment_index=segment_index,
+                x_left_cm=min(piece.x_left_cm for piece in component),
+                x_right_cm=max(piece.x_right_cm for piece in component),
                 y_top_cm=y_top,
                 y_bottom_cm=y_bottom,
-                raw_length_cm=raw_length,
-                final_length_cm=final_length,
-                split_reason=split_reason,
+                raw_length_cm=y_bottom - y_top,
+                coverage_polygons=coverage_polygons,
             )
         )
+
+    return band_segments
+
+
+def _band_pieces_for_range(plane: RoofPlane, x_left: float, x_right: float) -> list[_BandPiece]:
+    x_positions = _critical_x_positions(plane, x_left, x_right)
+    pieces: list[_BandPiece] = []
+    piece_index = 0
+
+    for slab_index, (slab_left, slab_right) in enumerate(zip(x_positions, x_positions[1:])):
+        slab_width = slab_right - slab_left
+        if slab_width <= EPSILON:
+            continue
+
+        x_mid = slab_left + slab_width / 2.0
+        mid_segments = vertical_segments_for_band(plane.outline, plane.holes, x_mid, x_mid)
+        if not mid_segments:
+            continue
+
+        left_segments = vertical_segments_for_band(plane.outline, plane.holes, slab_left, x_mid)
+        right_segments = vertical_segments_for_band(plane.outline, plane.holes, x_mid, slab_right)
+
+        if len(left_segments) != len(mid_segments):
+            left_segments = mid_segments
+        if len(right_segments) != len(mid_segments):
+            right_segments = mid_segments
+
+        for segment_index, (mid_top, mid_bottom) in enumerate(mid_segments):
+            left_top, left_bottom = left_segments[segment_index]
+            right_top, right_bottom = right_segments[segment_index]
+            polygon = Polygon2D(
+                [
+                    Point2D(slab_left, left_top),
+                    Point2D(slab_right, right_top),
+                    Point2D(slab_right, right_bottom),
+                    Point2D(slab_left, left_bottom),
+                ]
+            )
+            pieces.append(
+                _BandPiece(
+                    piece_index=piece_index,
+                    slab_index=slab_index,
+                    x_left_cm=slab_left,
+                    x_right_cm=slab_right,
+                    y_top_cm=min(left_top, right_top, mid_top),
+                    y_bottom_cm=max(left_bottom, right_bottom, mid_bottom),
+                    left_interval=(left_top, left_bottom),
+                    right_interval=(right_top, right_bottom),
+                    polygon=polygon,
+                )
+            )
+            piece_index += 1
+
+    return pieces
+
+
+def _critical_x_positions(plane: RoofPlane, x_left: float, x_right: float) -> list[float]:
+    xs = [x_left, x_right]
+    polygons = [plane.outline, *plane.holes] if plane.outline is not None else []
+    for polygon in polygons:
+        if polygon is None:
+            continue
+        for point in polygon.points:
+            if x_left + EPSILON < point.x < x_right - EPSILON:
+                xs.append(point.x)
+    return _unique_sorted(xs)
+
+
+def _unique_sorted(values: list[float]) -> list[float]:
+    ordered = sorted(values)
+    unique: list[float] = []
+    for value in ordered:
+        if not unique or abs(value - unique[-1]) > EPSILON:
+            unique.append(value)
+    return unique
+
+
+def _intervals_touch_or_overlap(left: tuple[float, float], right: tuple[float, float]) -> bool:
+    left_top, left_bottom = left
+    right_top, right_bottom = right
+    return min(left_bottom, right_bottom) >= max(left_top, right_top) - EPSILON
+
+
+def _polygon_to_dict(polygon: Polygon2D) -> list[dict[str, float]]:
+    return [{"x": point.x, "y": point.y} for point in polygon.points]
