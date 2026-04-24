@@ -1,8 +1,8 @@
 # This Python file uses the following encoding: utf-8
 import sys
 
-from PySide6.QtCore import QPointF, QRectF, QSize, Qt, QUrl, Signal
-from PySide6.QtGui import QAction, QColor, QFont, QKeyEvent, QKeySequence, QMouseEvent, QPainter, QPalette, QPen, QPolygonF
+from PySide6.QtCore import QPointF, QRectF, QSize, Qt, QUrl
+from PySide6.QtGui import QAction, QColor, QFont, QKeySequence, QMouseEvent, QPainter, QPalette, QPen, QPolygonF
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -49,30 +49,19 @@ class DrawingCanvas(QWidget):
     MODE_VIEW = "view"
     MODE_DRAW_OUTLINE = "draw_outline"
     MODE_SELECT_SHEET = "select_sheet"
-    MODE_MOVE_VERTEX = "move_vertex"
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, show_demo=True):
         super().__init__(parent)
-        self.user_points: list[QPointF] = []
-        self.preview_point: QPointF | None = None
+        self.show_demo = show_demo
+        self.user_points = []
+        self.preview_point = None
         self.roof_plane = None
         self._mode = self.MODE_VIEW
         self._selected_sheet_id: str | None = None
         self._show_grid = False
         self._show_module_count = False
-        self._material = None
-        # Zoom / pan
-        self._zoom = 1.0
-        self._pan_x = 0.0
-        self._pan_y = 0.0
-        self._dragging_vertex_index: int | None = None
-        self._drag_start_point: QPointF | None = None
-        # Undo/redo for user_points
-        self._user_points_history: list[list[QPointF]] = []
-        self._user_points_redo: list[list[QPointF]] = []
         self.setMouseTracking(True)
         self.setAutoFillBackground(True)
-        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setMinimumSize(640, 420)
 
     def toggle_grid(self, enabled: bool | None = None):
@@ -89,8 +78,6 @@ class DrawingCanvas(QWidget):
             self.setCursor(Qt.CursorShape.CrossCursor)
         elif mode == self.MODE_SELECT_SHEET:
             self.setCursor(Qt.CursorShape.PointingHandCursor)
-        elif mode == self.MODE_MOVE_VERTEX:
-            self.setCursor(Qt.CursorShape.OpenHandCursor)
         else:
             self.setCursor(Qt.CursorShape.ArrowCursor)
         self.update()
@@ -103,57 +90,11 @@ class DrawingCanvas(QWidget):
         self._material = material
         self.update()
 
-    def _save_user_points_undo(self):
-        self._user_points_history.append([QPointF(p.x(), p.y()) for p in self.user_points])
-        self._user_points_redo.clear()
-
-    def undo_user_points(self) -> bool:
-        if not self._user_points_history:
-            return False
-        self._user_points_redo.append([QPointF(p.x(), p.y()) for p in self.user_points])
-        self.user_points = self._user_points_history.pop()
-        self.update()
-        return True
-
-    def redo_user_points(self) -> bool:
-        if not self._user_points_redo:
-            return False
-        self._user_points_history.append([QPointF(p.x(), p.y()) for p in self.user_points])
-        self.user_points = self._user_points_redo.pop()
-        self.update()
-        return True
-
-    def zoom_in(self):
-        self._zoom = min(self._zoom * 1.2, 10.0)
-        self.update()
-
-    def zoom_out(self):
-        self._zoom = max(self._zoom / 1.2, 0.1)
-        self.update()
-
-    def fit_view(self):
-        self._zoom = 1.0
-        self._pan_x = 0.0
-        self._pan_y = 0.0
-        self.update()
-
-    def _effective_mapper(self) -> CanvasMapper | None:
-        if self.roof_plane is None:
-            return None
-        bounds = self.roof_plane.outline.bounds()
-        rect = QRectF(self.rect())
-        mapper = CanvasMapper(bounds, rect)
-        mapper.scale *= self._zoom
-        mapper.offset_x += self._pan_x
-        mapper.offset_y += self._pan_y
-        return mapper
-
     def _hit_test_sheet(self, pos) -> str | None:
         if self.roof_plane is None:
             return None
-        mapper = self._effective_mapper()
-        if mapper is None:
-            return None
+        bounds = self.roof_plane.outline.bounds()
+        mapper = CanvasMapper(bounds, QRectF(self.rect()))
         px = pos.x()
         py = pos.y()
         for sheet in self.roof_plane.manual_sheet_placements + self.roof_plane.auto_sheet_placements:
@@ -162,22 +103,9 @@ class DrawingCanvas(QWidget):
                 return sheet.id
         return None
 
-    def _hit_test_vertex(self, pos) -> int | None:
-        if self.roof_plane is None:
-            return None
-        mapper = self._effective_mapper()
-        if mapper is None:
-            return None
-        for index, point in enumerate(self.roof_plane.outline.points):
-            mp = mapper.map_point(point)
-            if abs(mp.x() - pos.x()) <= 8 and abs(mp.y() - pos.y()) <= 8:
-                return index
-        return None
-
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.MouseButton.LeftButton:
             if self._mode == self.MODE_DRAW_OUTLINE:
-                self._save_user_points_undo()
                 self.user_points.append(event.position())
                 self.update()
                 return
@@ -187,17 +115,9 @@ class DrawingCanvas(QWidget):
                     self._selected_sheet_id = sheet_id
                     self.update()
                 return
-            if self._mode == self.MODE_MOVE_VERTEX:
-                vertex_index = self._hit_test_vertex(event.position())
-                if vertex_index is not None:
-                    self._dragging_vertex_index = vertex_index
-                    self._drag_start_point = event.position()
-                    self.setCursor(Qt.CursorShape.ClosedHandCursor)
-                return
 
         if event.button() == Qt.MouseButton.RightButton:
             if self._mode == self.MODE_DRAW_OUTLINE:
-                self._save_user_points_undo()
                 self.user_points.clear()
                 self.preview_point = None
                 self.update()
@@ -213,44 +133,13 @@ class DrawingCanvas(QWidget):
         if self._mode == self.MODE_DRAW_OUTLINE:
             self.preview_point = event.position()
             self.update()
-        elif self._mode == self.MODE_MOVE_VERTEX and self._dragging_vertex_index is not None and self._drag_start_point is not None and self.roof_plane is not None:
-            mapper = self._effective_mapper()
-            if mapper is not None:
-                delta_px = event.position() - self._drag_start_point
-                # Live preview not implemented for simplicity; just redraw
-                pass
-            self.update()
         super().mouseMoveEvent(event)
-
-    def mouseReleaseEvent(self, event: QMouseEvent):
-        if self._mode == self.MODE_MOVE_VERTEX and self._dragging_vertex_index is not None and self._drag_start_point is not None and self.roof_plane is not None:
-            mapper = self._effective_mapper()
-            if mapper is not None:
-                delta_px = event.position() - self._drag_start_point
-                delta_cm = Point2D(
-                    mapper.unmap_length(delta_px.x()),
-                    mapper.unmap_length(delta_px.y()),
-                )
-                self.vertex_moved.emit(self._dragging_vertex_index, delta_cm.x, delta_cm.y)
-            self._dragging_vertex_index = None
-            self._drag_start_point = None
-            self.setCursor(Qt.CursorShape.OpenHandCursor)
-            return
-        super().mouseReleaseEvent(event)
 
     def leaveEvent(self, event):
         if self._mode == self.MODE_DRAW_OUTLINE:
             self.preview_point = None
             self.update()
         super().leaveEvent(event)
-
-    def wheelEvent(self, event):
-        delta = event.angleDelta().y()
-        if delta > 0:
-            self.zoom_in()
-        else:
-            self.zoom_out()
-        event.accept()
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -265,6 +154,10 @@ class DrawingCanvas(QWidget):
             if self._show_grid:
                 self._draw_grid(painter)
             self._draw_roof_plane(painter)
+        elif self.show_demo:
+            if self._show_grid:
+                self._draw_grid(painter)
+            self._draw_demo_shape(painter)
 
         if self._mode == self.MODE_DRAW_OUTLINE:
             self._draw_user_path(painter)
@@ -287,6 +180,37 @@ class DrawingCanvas(QWidget):
         for y in range(0, h, step):
             painter.drawLine(0, y, w, y)
 
+    def _draw_demo_shape(self, painter: QPainter):
+        line_color = self.palette().color(QPalette.ColorRole.Text)
+        accent_color = QColor("#a84d42") if self.palette().color(QPalette.ColorRole.Base).lightness() > 128 else QColor("#ff9d7a")
+
+        area = self.rect().adjusted(60, 50, -50, -60)
+        points = [
+            QPointF(area.left() + area.width() * 0.02, area.top() + area.height() * 0.15),
+            QPointF(area.left() + area.width() * 0.02, area.top() + area.height() * 0.72),
+            QPointF(area.left() + area.width() * 0.92, area.top() + area.height() * 0.93),
+            QPointF(area.left() + area.width() * 0.40, area.top() + area.height() * 0.45),
+        ]
+
+        painter.setPen(QPen(line_color, 1.4))
+        painter.drawLine(points[0], points[1])
+        painter.drawLine(points[0], points[2])
+        painter.drawLine(points[1], points[2])
+
+        painter.setBrush(line_color)
+        for point in points[:3]:
+            painter.drawRect(int(point.x()) - 2, int(point.y()) - 2, 4, 4)
+
+        painter.setPen(QPen(accent_color, 1.4))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawEllipse(int(points[1].x()) - 7, int(points[1].y()) - 7, 14, 14)
+
+        painter.setPen(QPen(line_color, 1))
+        painter.drawText(int(points[0].x()) + 2, int((points[0].y() + points[1].y()) / 2), "300")
+        painter.drawText(int((points[0].x() + points[3].x()) / 2), int((points[0].y() + points[3].y()) / 2) - 8, "43°")
+        painter.drawText(int((points[3].x() + points[2].x()) / 2), int((points[3].y() + points[2].y()) / 2), "67°")
+        painter.drawText(int((points[1].x() + points[2].x()) / 2), int((points[1].y() + points[2].y()) / 2) + 12, "1057")
+
     def _draw_user_path(self, painter: QPainter):
         if not self.user_points:
             return
@@ -304,50 +228,13 @@ class DrawingCanvas(QWidget):
         for point in self.user_points:
             painter.drawEllipse(int(point.x()) - 3, int(point.y()) - 3, 6, 6)
 
-    vertex_moved = Signal(int, float, float)
-    outline_finalized = Signal(object)
-
-    def mouseDoubleClickEvent(self, event: QMouseEvent):
-        if self._mode == self.MODE_DRAW_OUTLINE and len(self.user_points) >= 3:
-            self._finalize_outline()
-            return
-        super().mouseDoubleClickEvent(event)
-
-    def keyPressEvent(self, event):
-        if isinstance(event, QKeyEvent) and self._mode == self.MODE_DRAW_OUTLINE:
-            if event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter:
-                if len(self.user_points) >= 3:
-                    self._finalize_outline()
-                event.accept()
-                return
-            if event.key() == Qt.Key.Key_Escape:
-                self._save_user_points_undo()
-                self.user_points.clear()
-                self.preview_point = None
-                self.update()
-                event.accept()
-                return
-        super().keyPressEvent(event)
-
-    def _finalize_outline(self):
-        if len(self.user_points) < 3:
-            return
-        points = [Point2D(p.x(), p.y()) for p in self.user_points]
-        self.user_points.clear()
-        self.preview_point = None
-        self._user_points_history.clear()
-        self._user_points_redo.clear()
-        self.outline_finalized.emit(points)
-        self.update()
-
     def _draw_roof_plane(self, painter: QPainter):
         plane = self.roof_plane
         if plane is None:
             return
 
-        mapper = self._effective_mapper()
-        if mapper is None:
-            return
+        bounds = plane.outline.bounds()
+        mapper = CanvasMapper(bounds, QRectF(self.rect()))
 
         outline_polygon = QPolygonF([mapper.map_point(point) for point in plane.outline.points])
         fill_color = self.palette().color(QPalette.ColorRole.AlternateBase)
@@ -432,9 +319,8 @@ class DrawingCanvas(QWidget):
     def _draw_selected_sheet_highlight(self, painter: QPainter):
         if self.roof_plane is None or self._selected_sheet_id is None:
             return
-        mapper = self._effective_mapper()
-        if mapper is None:
-            return
+        bounds = self.roof_plane.outline.bounds()
+        mapper = CanvasMapper(bounds, QRectF(self.rect()))
         all_sheets = list(self.roof_plane.auto_sheet_placements) + list(self.roof_plane.manual_sheet_placements)
         for sheet in all_sheets:
             if sheet.id == self._selected_sheet_id:
@@ -514,9 +400,7 @@ class MainWindow(QMainWindow):
                     ("Prostokąt...", None, self._open_prostokat_dialog),
                     ("Trójkąt...", None, self._open_trojkat_dialog),
                     ("Trapez...", None, self._open_trapez_dialog),
-                    ("Dowolny", None, self._on_draw_freeform_outline),
-                None,
-                ("Przesuń punkty obrysu", None, self._on_toggle_move_vertex),
+                    ("Dowolny", None, None),
                 ],
             ),
             (
@@ -613,20 +497,19 @@ class MainWindow(QMainWindow):
             ("new_document", "Nowy projekt", None),
             ("open_folder", "Otwórz projekt", None),
             ("save_floppy", "Zapisz projekt", None),
-            ("roof_outline", "Rysowanie krawędzi połaci", self._on_toggle_draw_outline),
+            ("roof_outline", "Rysowanie krawędzi połaci", None),
             ("base_point_toggle", "Pokaż/ukryj punkt bazowy", None),
-            ("undo", "Cofnij", self._on_undo_canvas),
-            ("plus", "Dodaj / Plus", self._on_zoom_in),
-            ("minus", "Odejmij / Minus", self._on_zoom_out),
+            ("undo", "Cofnij", None),
+            ("plus", "Dodaj / Plus", None),
+            ("minus", "Odejmij / Minus", None),
             ("module_count", "Włącz/wyłącz pokazywanie ilości modułów", self._on_module_count_toggled),
-            ("zoom_out", "Oddal / Pomniejsz", self._on_zoom_out),
-            ("fit_view", "Pokaż wszystko / Dopasuj do ekranu", self._on_fit_view),
+            ("zoom_out", "Oddal / Pomniejsz", None),
+            ("fit_view", "Pokaż wszystko / Dopasuj do ekranu", None),
             ("broom", "Wyczyść / Usuń wszystko", None),
         ]
 
         for index, (icon_kind, text, callback) in enumerate(icon_actions):
-            checkable = icon_kind == "roof_outline"
-            action = self._add_toolbar_action(toolbar, icon_kind, text, checkable=checkable)
+            action = self._add_toolbar_action(toolbar, icon_kind, text)
             if callback:
                 action.triggered.connect(callback)
             if index in {2, 4, 7, 11}:
@@ -726,9 +609,8 @@ class MainWindow(QMainWindow):
         self.workspace_tabs.setTabsClosable(False)
         self.workspace_tabs.currentChanged.connect(self._on_workspace_tab_changed)
 
-        self.secondary_canvas = DrawingCanvas(self.workspace_tabs)
+        self.secondary_canvas = DrawingCanvas(self.workspace_tabs, show_demo=False)
         self.secondary_canvas.hide()
-        self._connect_canvas_signals(self.secondary_canvas)
 
         self.report_tab = QWidget(self.workspace_tabs)
         second_layout = QVBoxLayout(self.report_tab)
@@ -738,8 +620,7 @@ class MainWindow(QMainWindow):
         self.report_view.setOpenExternalLinks(False)
         second_layout.addWidget(self.report_view)
 
-        self.primary_canvas = DrawingCanvas(self.workspace_tabs)
-        self._connect_canvas_signals(self.primary_canvas)
+        self.primary_canvas = DrawingCanvas(self.workspace_tabs, show_demo=True)
         self._plane_tab_canvases = {}
         self.workspace_tabs.addTab(self.report_tab, "Raport")
         layout.addWidget(self.workspace_tabs)
@@ -897,14 +778,13 @@ class MainWindow(QMainWindow):
         tab = QWidget(self.workspace_tabs)
         layout = QVBoxLayout(tab)
         layout.setContentsMargins(0, 0, 0, 0)
-        canvas = DrawingCanvas(tab)
+        canvas = DrawingCanvas(tab, show_demo=False)
         canvas.set_roof_plane(plane)
         material = self.project_state.material_by_id(plane.selected_material_id) if plane else None
         canvas.set_material(material)
         layout.addWidget(canvas)
         tab.setProperty("plane_id", plane.id)
         self._plane_tab_canvases[plane.id] = canvas
-        self._connect_canvas_signals(canvas)
         return tab, canvas
 
     def _sync_workspace_tabs_with_state(self):
@@ -927,7 +807,7 @@ class MainWindow(QMainWindow):
             placeholder_tab = QWidget(self.workspace_tabs)
             placeholder_layout = QVBoxLayout(placeholder_tab)
             placeholder_layout.setContentsMargins(0, 0, 0, 0)
-            self.primary_canvas = DrawingCanvas(placeholder_tab)
+            self.primary_canvas = DrawingCanvas(placeholder_tab, show_demo=True)
             placeholder_layout.addWidget(self.primary_canvas)
             self.workspace_tabs.addTab(placeholder_tab, "1")
 
@@ -1424,79 +1304,6 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Aktywna połać wyczyszczona", 3000)
         else:
             self.statusBar().showMessage("Anulowano czyszczenie", 3000)
-
-    def _on_draw_freeform_outline(self):
-        self.primary_canvas.set_mode(DrawingCanvas.MODE_DRAW_OUTLINE)
-        self.statusBar().showMessage("Rysowanie obrysu: LPM dodaje punkt, Enter zamyka, PPM czyści, Cofnij usuwa ostatni punkt", 5000)
-
-    def _on_toggle_draw_outline(self, checked: bool):
-        mode = DrawingCanvas.MODE_DRAW_OUTLINE if checked else DrawingCanvas.MODE_VIEW
-        self.primary_canvas.set_mode(mode)
-        for canvas in self._plane_tab_canvases.values():
-            canvas.set_mode(mode)
-        self.statusBar().showMessage("Rysowanie obrysu" if checked else "Widok", 3000)
-
-    def _on_toggle_move_vertex(self):
-        self.primary_canvas.set_mode(DrawingCanvas.MODE_MOVE_VERTEX)
-        for canvas in self._plane_tab_canvases.values():
-            canvas.set_mode(DrawingCanvas.MODE_MOVE_VERTEX)
-        self.statusBar().showMessage("Przesuwanie punktów obrysu: przeciągnij punkt", 4000)
-
-    def _on_undo_canvas(self):
-        if self.primary_canvas._mode == DrawingCanvas.MODE_DRAW_OUTLINE:
-            if self.primary_canvas.undo_user_points():
-                self.statusBar().showMessage("Cofnięto ostatni punkt", 2000)
-            else:
-                self.statusBar().showMessage("Brak punktów do cofnięcia", 2000)
-        else:
-            self.statusBar().showMessage("Cofnij działa tylko w trybie rysowania", 2000)
-
-    def _on_zoom_in(self):
-        self.primary_canvas.zoom_in()
-        self.statusBar().showMessage("Przybliżenie", 1500)
-
-    def _on_zoom_out(self):
-        self.primary_canvas.zoom_out()
-        self.statusBar().showMessage("Oddalenie", 1500)
-
-    def _on_fit_view(self):
-        self.primary_canvas.fit_view()
-        for canvas in self._plane_tab_canvases.values():
-            canvas.fit_view()
-        self.statusBar().showMessage("Dopasowano widok", 1500)
-
-    def _on_canvas_vertex_moved(self, canvas: DrawingCanvas, vertex_index: int, dx_cm: float, dy_cm: float):
-        plane_id = canvas.roof_plane.id if canvas.roof_plane else None
-        if plane_id is None:
-            return
-        try:
-            self.project_state.move_roof_plane_point(vertex_index, dx_cm, dy_cm, plane_id)
-            self._clear_generated_report()
-            self._persist_project_state()
-            self._refresh_canvas_from_state()
-            self.statusBar().showMessage(f"Przesunięto punkt {vertex_index}", 3000)
-        except (ValueError, IndexError) as error:
-            QMessageBox.warning(self, "Błąd edycji", str(error))
-            self.statusBar().showMessage(str(error), 4000)
-
-    def _connect_canvas_signals(self, canvas: DrawingCanvas):
-        canvas.vertex_moved.connect(lambda index, dx, dy: self._on_canvas_vertex_moved(canvas, index, dx, dy))
-        canvas.outline_finalized.connect(self._on_canvas_outline_finalized)
-
-    def _on_canvas_outline_finalized(self, points: list):
-        try:
-            outline = Polygon2D(points)
-            self._add_roof_plane(outline, "Dowolny", f"{len(points)} punktów")
-            self.primary_canvas.set_mode(DrawingCanvas.MODE_VIEW)
-            for canvas in self._plane_tab_canvases.values():
-                canvas.set_mode(DrawingCanvas.MODE_VIEW)
-            for action, _ in self._toolbar_actions:
-                if action.toolTip() == "Rysowanie krawędzi połaci":
-                    action.setChecked(False)
-            self.statusBar().showMessage("Dodano połać z rysowanego obrysu", 4000)
-        except ValueError as error:
-            QMessageBox.warning(self, "Błąd obrysu", str(error))
-            self.statusBar().showMessage(str(error), 4000)
 
 
 if __name__ == "__main__":
