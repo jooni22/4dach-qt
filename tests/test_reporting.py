@@ -65,10 +65,11 @@ def test_build_report_includes_layout_warnings_and_rejected_segments():
     layout_result = generate_layout(plane, material)
     report = build_report(state, layout_result, material.id, plane.id)
 
-    assert len(layout_result.placements) == 4
-    assert report.total_cost == 4 * 99.0
-    assert [(row.sheet_length_cm, row.quantity) for row in report.bom_rows] == [(30, 3), (120, 1)]
-    assert report.warnings == []
+    assert len(layout_result.placements) == 1
+    assert report.total_cost == 1 * 99.0
+    assert [(row.sheet_length_cm, row.quantity) for row in report.bom_rows] == [(120, 1)]
+    assert len(report.warnings) == 1
+    assert "Pominięto 3" in report.warnings[0]
 
 
 def test_build_report_html_contains_summary_bom_and_warnings():

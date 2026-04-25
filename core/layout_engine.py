@@ -184,20 +184,33 @@ def generate_layout(plane: RoofPlane, material: Material) -> LayoutResult:
                 sheet_top = y_cursor - sheet_height
                 sheet_bottom = y_cursor
                 
-                placement_id = f"{plane.id}-b{band_index}-s{segment_index}-r{row_index}"
-                result.placements.append(
-                    SheetPlacement(
-                        id=placement_id,
-                        band_index=band_index,
-                        x_left_cm=band_segment.x_left_cm,
-                        x_right_cm=band_segment.x_right_cm,
-                        y_top_cm=sheet_top,
-                        y_bottom_cm=sheet_bottom,
-                        raw_length_cm=sheet_height,
-                        final_length_cm=sheet_height,
-                        split_reason=None,
+                if sheet_height >= material.min_sheet_length_cm - EPSILON:
+                    placement_id = f"{plane.id}-b{band_index}-s{segment_index}-r{row_index}"
+                    result.placements.append(
+                        SheetPlacement(
+                            id=placement_id,
+                            band_index=band_index,
+                            x_left_cm=band_segment.x_left_cm,
+                            x_right_cm=band_segment.x_right_cm,
+                            y_top_cm=sheet_top,
+                            y_bottom_cm=sheet_bottom,
+                            raw_length_cm=sheet_height,
+                            final_length_cm=sheet_height,
+                            split_reason=None,
+                        )
                     )
-                )
+                else:
+                    result.rejected_segments.append(
+                        RejectedSegment(
+                            band_index=band_index,
+                            x_left_cm=band_segment.x_left_cm,
+                            x_right_cm=band_segment.x_right_cm,
+                            y_top_cm=sheet_top,
+                            y_bottom_cm=sheet_bottom,
+                            raw_length_cm=sheet_height,
+                            reason=f"Arkusz za krótki: {sheet_height:.1f} cm (min. {material.min_sheet_length_cm:.1f} cm)",
+                        )
+                    )
                 
                 y_cursor -= sheet_height
                 row_index += 1

@@ -129,7 +129,7 @@ def test_layout_engine_uses_single_cross_section_for_skewed_band_lengths():
         ),
     )
 
-    result = generate_layout(plane, _material(max_sheet_length_cm=100))
+    result = generate_layout(plane, _material(max_sheet_length_cm=100, min_sheet_length_cm=0))
 
     expected_lengths = [100.0, 8.333333333333334, 100.0, 8.33333333333334, 100.0, 1.6666666666666607]
     assert len(result.placements) == len(expected_lengths)
@@ -189,9 +189,6 @@ def test_layout_engine_validates_min_and_max_sheet_length_edges():
     result = generate_layout(plane, material)
 
     assert [(placement.band_index, placement.final_length_cm, placement.split_reason) for placement in result.placements] == [
-        (0, 30.0, None),
-        (0, 30.0, None),
         (1, 120.0, None),
-        (1, 30.0, None),
     ]
-    assert len(result.rejected_segments) == 0
+    assert len(result.rejected_segments) == 3
