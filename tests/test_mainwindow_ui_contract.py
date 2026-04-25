@@ -260,7 +260,8 @@ def test_mainwindow_commits_canvas_outline_edits_to_project_state(qtbot):
     canvas.outline_edit_committed.emit(updated_outline)
 
     assert plane.outline == updated_outline
-    assert plane.layout_dirty_reason == "geometry_changed"
+    assert plane.layout_dirty_reason is None
+    assert len(plane.layout_bands) > 0
 
 
 def test_mainwindow_rolls_back_invalid_canvas_outline_edit(qtbot, monkeypatch):
@@ -310,7 +311,8 @@ def test_mainwindow_commits_canvas_cutout_edits_to_project_state(qtbot):
     canvas.hole_edit_committed.emit(0, updated_hole)
 
     assert plane.holes[0] == updated_hole
-    assert plane.layout_dirty_reason == "geometry_changed"
+    assert plane.layout_dirty_reason is None
+    assert len(plane.layout_bands) > 0
 
 
 def test_mainwindow_material_catalog_edit_updates_project_state_and_dependent_workspace(qtbot, monkeypatch):
@@ -379,7 +381,7 @@ def test_mainwindow_material_catalog_edit_updates_project_state_and_dependent_wo
 
     active_canvas = window._workspace.canvas_for_plane(dependent_plane.id)
     assert window.project_state.material_by_id("PD510").nazwa == "PD510 Plus"
-    assert dependent_plane.layout_dirty_reason == "material_changed"
+    assert dependent_plane.layout_dirty_reason is None
     assert other_plane.layout_dirty_reason is None
     assert active_canvas is not None
     assert active_canvas._material is not None

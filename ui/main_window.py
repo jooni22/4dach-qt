@@ -344,6 +344,14 @@ class MainWindow(QMainWindow):
         except (ValueError, IndexError) as e:
             QMessageBox.warning(self, failure_title, str(e))
             return False
+
+        for plane in self.project_state.roof_planes:
+            if plane.layout_dirty_reason:
+                try:
+                    self.project_state.generate_layout_for_plane(plane.id)
+                except Exception:
+                    pass
+
         after_snapshot = self._serialize_current_config()
         self._push_history(label, before_snapshot, after_snapshot)
         self._latest_report_html = ""
