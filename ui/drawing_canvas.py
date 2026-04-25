@@ -208,13 +208,7 @@ class DrawingCanvas(QWidget):
                 placement = placements_by_id.get(placement_id)
                 if placement is None:
                     continue
-                coverage_polygons = [
-                    Polygon2D([Point2D(point["x"], point["y"]) for point in polygon])
-                    for polygon in segment.get("coverage_polygons", [])
-                    if len(polygon) >= 3
-                ]
-                if not coverage_polygons:
-                    coverage_polygons = [self._placement_polygon(placement)]
+                coverage_polygons = [self._placement_polygon(placement)]
                 render_items.append(
                     _SheetRenderItem(
                         placement_id=placement.id,
