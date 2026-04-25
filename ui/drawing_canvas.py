@@ -680,6 +680,12 @@ class DrawingCanvas(QWidget):
         label = f"Połać {plane.name}"
         if plane.selected_material_id:
             label += f" | Blacha: {plane.selected_material_id}"
+            
+        if plane.generation_settings.layout_origin == "right":
+            label += " | Układ: <--- od prawej"
+        else:
+            label += " | Układ: od lewej --->"
+            
         r = self.rect().adjusted(40, 30, -40, -30)
         painter.drawText(r.left(), r.top() - 8, label)
 
@@ -780,7 +786,7 @@ class DrawingCanvas(QWidget):
 
             self._draw_sheet_label(painter, mapped_polygons, item, text_color)
 
-        self._draw_layout_direction_hint(painter, plane, mapper, text_color)
+        # Hint has been moved to the main label
 
     def _draw_module_guides(
         self,
@@ -882,37 +888,6 @@ class DrawingCanvas(QWidget):
         if min_dimension < 48:
             return 9
         return 10
-
-    def _draw_layout_direction_hint(self, painter: QPainter, plane, mapper: CanvasMapper, text_color: QColor) -> None:
-        outline = self.display_outline()
-        if outline is None:
-            return
-
-        bounds = outline.bounds()
-        y_cm = bounds.min_y + max(bounds.height * 0.08, 6.0)
-        left_point = mapper.map_point(Point2D(bounds.min_x, y_cm))
-        right_point = mapper.map_point(Point2D(bounds.max_x, y_cm))
-        if plane.generation_settings.layout_origin == "right":
-            start, end = right_point, left_point
-            caption = "układ od prawej"
-        else:
-            start, end = left_point, right_point
-            caption = "układ od lewej"
-
-        hint_color = QColor(text_color)
-        hint_color.setAlpha(180)
-        painter.setPen(QPen(hint_color, 1.4))
-        painter.drawLine(start, end)
-        arrow_size = 7.0
-        direction = 1.0 if end.x() >= start.x() else -1.0
-        painter.drawLine(end, QPointF(end.x() - direction * arrow_size, end.y() - arrow_size / 2.0))
-        painter.drawLine(end, QPointF(end.x() - direction * arrow_size, end.y() + arrow_size / 2.0))
-
-        font = painter.font()
-        font.setPointSize(8)
-        painter.setFont(font)
-        caption_rect = QRectF(min(start.x(), end.x()), min(start.y(), end.y()) - 18.0, abs(end.x() - start.x()), 14.0)
-        painter.drawText(caption_rect, Qt.AlignmentFlag.AlignCenter, caption)
 
     def _draw_selected_sheet_highlight(self, painter: QPainter) -> None:
         if self.roof_plane is None or self._selected_sheet_id is None:
