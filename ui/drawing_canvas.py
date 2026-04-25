@@ -409,6 +409,55 @@ class DrawingCanvas(QWidget):
                 return hole_index, vertex_index
         return None
 
+    def _hit_test_edge_label(self, pos: QPointF, mapper: CanvasMapper, outline: Polygon2D) -> int | None:
+        polygon_f = QPolygonF([mapper.map_point(point) for point in outline.points])
+        for index, (start, end) in enumerate(polygon_edges(outline)):
+            start_point = mapper.map_point(start)
+            end_point = mapper.map_point(end)
+            dx = end_point.x() - start_point.x()
+            dy = end_point.y() - start_point.y()
+            length_px = hypot(dx, dy)
+            if length_px < 1.0:
+                continue
+
+            normal_x = -dy / length_px
+            normal_y = dx / length_px
+            mid_x = (start_point.x() + end_point.x()) / 2.0
+            mid_y = (start_point.y() + end_point.y()) / 2.0
+            
+            test_point = QPointF(mid_x + normal_x * 5.0, mid_y + normal_y * 5.0)
+            if polygon_f.containsPoint(test_point, Qt.FillRule.OddEvenFill):
+                normal_x = -normal_x
+                normal_y = -normal_y
+
+            label_anchor = QPointF(mid_x + normal_x * EDGE_LABEL_OFFSET_PX, mid_y + normal_y * EDGE_LABEL_OFFSET_PX)
+            label_rect = QRectF(label_anchor.x() - 30.0, label_anchor.y() - 11.0, 60.0, 22.0)
+            if label_rect.contains(pos):
+                return index
+        return None
+
+    def _prompt_scale_polygon(self, edge_index: int, outline: Polygon2D) -> None:
+        from PySide6.QtWidgets import QInputDialog
+        edges = list(polygon_edges(outline))
+        if edge_index >= len(edges):
+            return
+        start, end = edges[edge_index]
+        current_len = segment_length(start, end)
+        new_len, ok = QInputDialog.getDouble(
+            self,
+            "Zmień długość krawędzi",
+            "Nowa długość (cm):",
+            current_len,
+            0.1,
+            10000.0,
+            1,
+        )
+        if ok and new_len > 0 and abs(new_len - current_len) > 0.1:
+            scale = new_len / current_len
+            new_points = [Point2D(p.x * scale, p.y * scale) for p in outline.points]
+            new_outline = Polygon2D(new_points)
+            self.outline_edit_committed.emit(new_outline)
+
     def _reset_selection(self, *, select_plane: bool = False) -> None:
         self._plane_selected = select_plane
         self._selected_hole_index = None
@@ -464,6 +513,11 @@ class DrawingCanvas(QWidget):
                     if vertex_index is not None:
                         self._start_outline_drag(vertex_index, mapper, outline)
                         self.update()
+                        return
+
+                    edge_label_index = self._hit_test_edge_label(pos, mapper, outline)
+                    if edge_label_index is not None:
+                        self._prompt_scale_polygon(edge_label_index, outline)
                         return
 
                     if self._select_hole_at(pos, mapper):
@@ -657,7 +711,6 @@ class DrawingCanvas(QWidget):
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawPolygon(hole_polygon)
 
-        self._draw_edge_measurements(painter, mapper, outline, text_color, outline_color)
         if self._plane_selected:
             self._draw_vertex_handles(
                 painter,
@@ -676,18 +729,7 @@ class DrawingCanvas(QWidget):
                 active_vertex_index=self._active_hole_vertex_index,
             )
 
-        painter.setPen(text_color)
-        label = f"Połać {plane.name}"
-        if plane.selected_material_id:
-            label += f" | Blacha: {plane.selected_material_id}"
-            
-        if plane.generation_settings.layout_origin == "right":
-            label += " | Układ: <--- od prawej"
-        else:
-            label += " | Układ: od lewej --->"
-            
-        r = self.rect().adjusted(40, 30, -40, -30)
-        painter.drawText(r.left(), r.top() - 8, label)
+        self._draw_edge_measurements(painter, mapper, outline, text_color, outline_color)
 
     def _draw_vertex_handles(
         self,
@@ -724,11 +766,15 @@ class DrawingCanvas(QWidget):
         text_color: QColor,
         outline_color: QColor,
     ) -> None:
-        label_pen = QPen(text_color)
+        is_light = self.palette().color(QPalette.ColorRole.Base).lightness() > 128
+        label_pen = QPen(outline_color if is_light else text_color)
         guide_pen = QPen(outline_color)
         guide_pen.setStyle(Qt.PenStyle.DotLine)
         guide_pen.setWidthF(1.0)
         painter.setFont(painter.font())
+        
+        polygon_f = QPolygonF([mapper.map_point(point) for point in outline.points])
+        
         for start, end in polygon_edges(outline):
             start_point = mapper.map_point(start)
             end_point = mapper.map_point(end)
@@ -742,6 +788,12 @@ class DrawingCanvas(QWidget):
             normal_y = dx / length_px
             mid_x = (start_point.x() + end_point.x()) / 2.0
             mid_y = (start_point.y() + end_point.y()) / 2.0
+            
+            test_point = QPointF(mid_x + normal_x * 5.0, mid_y + normal_y * 5.0)
+            if polygon_f.containsPoint(test_point, Qt.FillRule.OddEvenFill):
+                normal_x = -normal_x
+                normal_y = -normal_y
+
             label_anchor = QPointF(mid_x + normal_x * EDGE_LABEL_OFFSET_PX, mid_y + normal_y * EDGE_LABEL_OFFSET_PX)
 
             painter.setPen(guide_pen)
@@ -750,12 +802,13 @@ class DrawingCanvas(QWidget):
             label_rect = QRectF(label_anchor.x() - 30.0, label_anchor.y() - 11.0, 60.0, 22.0)
             background = self.palette().color(QPalette.ColorRole.Base)
             background.setAlpha(220)
-            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setPen(label_pen)
             painter.setBrush(background)
             painter.drawRoundedRect(label_rect, 4.0, 4.0)
 
-            painter.setPen(label_pen)
-            painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, self._format_length(segment_length(start, end)))
+            length_cm = segment_length(start, end)
+            length_int = int(round(length_cm))
+            painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, str(length_int))
 
     def _draw_sheet_placements(self, painter: QPainter, plane, mapper: CanvasMapper, text_color: QColor) -> None:
         render_items = self._sheet_render_items()

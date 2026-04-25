@@ -12,7 +12,7 @@ from PySide6.QtCore import QSettings, QRectF, QSize, Qt, QUrl
 from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QDialog, QInputDialog, QMainWindow,
-    QMenu, QMessageBox, QSizePolicy, QToolButton, QVBoxLayout, QWidget,
+    QMenu, QMessageBox, QSizePolicy, QToolButton, QVBoxLayout, QWidget, QLabel,
 )
 from PySide6.QtGui import QDesktopServices
 
@@ -58,6 +58,9 @@ class MainWindow(QMainWindow):
         self._unsaved_plane_ids: set[str] = set()
         self._has_unsaved_changes = False
         self._base_window_title = ""
+
+        self._status_label = QLabel("")
+        self.statusBar().addPermanentWidget(self._status_label)
 
         self._build_chrome()
         self._workspace = WorkspaceController(
@@ -395,6 +398,23 @@ class MainWindow(QMainWindow):
             canvas.set_material(self.project_state.material_by_id(plane.selected_material_id))
         self._refresh_tab_titles()
         self._refresh_report()
+        self._refresh_status_bar_info()
+
+    def _refresh_status_bar_info(self) -> None:
+        plane = self.project_state.active_roof_plane()
+        if not plane:
+            self._status_label.setText("")
+            return
+            
+        label = f"Połać {plane.name}"
+        if plane.selected_material_id:
+            label += f" | Blacha: {plane.selected_material_id}"
+            
+        if plane.generation_settings.layout_origin == "right":
+            label += " | Układ: <--- od prawej"
+        else:
+            label += " | Układ: od lewej --->"
+        self._status_label.setText(label)
 
     def _refresh_canvas_from_state(self) -> None:
         self._refresh_canvas()
