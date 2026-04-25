@@ -423,8 +423,8 @@ class DrawingCanvas(QWidget):
     @staticmethod
     def _format_length(length_cm: float) -> str:
         if abs(length_cm - round(length_cm)) < 0.05:
-            return f"{round(length_cm):.0f} cm"
-        return f"{length_cm:.1f} cm"
+            return f"{round(length_cm):.0f}"
+        return f"{length_cm:.1f}"
 
     # ------------------------------------------------------------------
     # Qt event overrides
@@ -853,12 +853,18 @@ class DrawingCanvas(QWidget):
         if label_rect.width() <= 1 or label_rect.height() <= 1:
             return
 
-        background = self.palette().color(QPalette.ColorRole.Base)
-        background.setAlpha(220)
+        background = self.palette().color(QPalette.ColorRole.Highlight)
+        background.setAlpha(230)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(background)
         painter.drawRoundedRect(label_rect, 4.0, 4.0)
-        painter.setPen(text_color)
+        
+        highlight_text = self.palette().color(QPalette.ColorRole.HighlightedText)
+        painter.setPen(highlight_text)
+        font = painter.font()
+        font.setBold(True)
+        painter.setFont(font)
+        
         painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, label_text)
 
     def _sheet_label_text(self, item: _SheetRenderItem) -> str:
@@ -866,7 +872,7 @@ class DrawingCanvas(QWidget):
         if self._show_module_count and module_length_cm and module_length_cm > 0:
             modules = max(1, int(round(item.final_length_cm / module_length_cm)))
             return f"{modules}"
-        return f"{item.final_length_cm:.0f} cm"
+        return f"{item.final_length_cm:.0f}"
 
     def _label_anchor_rect(self, mapped_polygons: list[QPolygonF]) -> QRectF:
         polygon_bounds = [polygon.boundingRect() for polygon in mapped_polygons]

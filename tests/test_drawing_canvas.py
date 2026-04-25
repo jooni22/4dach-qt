@@ -205,7 +205,7 @@ def test_canvas_builds_sheet_render_items_for_simple_rectangle(qtbot):
         (1, 100.0, 1),
         (2, 100.0, 1),
     ]
-    assert canvas._sheet_label_text(items[0]) == "100 cm"
+    assert canvas._sheet_label_text(items[0]) == "100"
 
 
 def test_canvas_render_items_preserve_cutout_exclusions(qtbot):
