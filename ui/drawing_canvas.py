@@ -771,7 +771,9 @@ class DrawingCanvas(QWidget):
         painter.setPen(QPen(hole_color, 1.5, Qt.PenStyle.DashLine))
         for hole_index, hole in enumerate(holes):
             hole_polygon = QPolygonF([mapper.map_point(point) for point in hole.points])
-            painter.setBrush(background_color)
+            hole_bg = QColor(background_color)
+            hole_bg.setAlpha(150)
+            painter.setBrush(hole_bg)
             painter.drawPolygon(hole_polygon)
             if hole_index == self._selected_hole_index:
                 painter.setPen(QPen(selected_hole_color, 2.0, Qt.PenStyle.DashLine))

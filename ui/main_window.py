@@ -898,6 +898,9 @@ class MainWindow(QMainWindow):
                 center_y = sum(p.y for p in pts) / len(pts)
                 ox = center_x - w / 2.0
                 oy = center_y - h / 2.0
+                if plane.holes:
+                    max_x = max(hole.bounds().max_x for hole in plane.holes)
+                    ox = max_x + 10.0
             else:
                 ox = 0.0
                 oy = 0.0

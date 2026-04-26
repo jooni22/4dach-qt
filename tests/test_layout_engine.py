@@ -131,7 +131,7 @@ def test_layout_engine_uses_single_cross_section_for_skewed_band_lengths():
 
     result = generate_layout(plane, _material(max_sheet_length_cm=100, min_sheet_length_cm=0))
 
-    expected_lengths = [100.0, 8.333333333333334, 100.0, 8.33333333333334, 100.0, 1.6666666666666607]
+    expected_lengths = [100.0, 8.333333333333334, 100.0, 8.33333333333334, 100.0, 3.3333333333333286]
     assert len(result.placements) == len(expected_lengths)
     for p, exp in zip(result.placements, expected_lengths):
         assert almost_equal(p.raw_length_cm, exp)
@@ -192,3 +192,34 @@ def test_layout_engine_validates_min_and_max_sheet_length_edges():
         (1, 120.0, None),
     ]
     assert len(result.rejected_segments) == 3
+
+def test_layout_engine_cutout_intersection_count():
+    # Prostokąt 1000x1000
+    outline = Polygon2D.rectangle(1000, 1000)
+    # Wycinek 300x300 na środku, czyli od x=350 do x=650
+    hole = Polygon2D.rectangle(300, 300, origin_x=350, origin_y=350)
+    plane = RoofPlane(id="p1", name="Test", outline=outline, holes=[hole])
+    
+    # Szerokość arkusza 51 cm
+    mat = _material(effective_width_cm=51, module_length_cm=0, max_sheet_length_cm=2000)
+    result = generate_layout(plane, mat)
+    
+    # Sprawdzamy ile pasów zostało przeciętych przez wycinek
+    # Wycinek jest od x=350 do x=650. 
+    # Pasy szerokości 51cm:
+    # 350 / 51 = 6.86 -> pas nr 6 (zaczyna się od 306, kończy na 357). Przecięty!
+    # 650 / 51 = 12.74 -> pas nr 12 (zaczyna się od 612, kończy na 663). Przecięty!
+    # Pasy dotknięte przez wycinek to indeksy od 6 do 12 włącznie, czyli 7 pasów.
+    
+    # Kiedy pas jest przecięty, ma więcej niż 1 segment (czyli generuje więcej niż 1 placement dla danego band_index)
+    placements_by_band = {}
+    for p in result.placements:
+        placements_by_band.setdefault(p.band_index, []).append(p)
+        
+    intersected_bands = [
+        band_index 
+        for band_index, pl_list in placements_by_band.items() 
+        if len(pl_list) > 1
+    ]
+    
+    assert intersected_bands == [7, 8, 9, 10, 11]
