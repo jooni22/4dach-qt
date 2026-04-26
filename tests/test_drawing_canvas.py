@@ -225,7 +225,7 @@ def test_canvas_render_items_preserve_cutout_exclusions(qtbot):
         (2, 100.0),
     ]
     image = canvas.grab().toImage()
-    hole_color = image.pixelColor(_point_on_canvas(canvas, Point2D(45, 50)))
+    hole_color = image.pixelColor(_point_on_canvas(canvas, Point2D(40, 45)))
     covered_color = image.pixelColor(_point_on_canvas(canvas, Point2D(15, 50)))
     assert hole_color == canvas.palette().color(QPalette.ColorRole.Base)
     assert covered_color != hole_color

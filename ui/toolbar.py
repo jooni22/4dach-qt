@@ -93,6 +93,7 @@ class ToolbarController:
             ("undo",           "Cofnij",                                       False, None),
             ("plus",           "Dodaj / Plus",                                False, None),
             ("minus",          "Odejmij / Minus",                             False, None),
+            ("trash",          "Usuń zaznaczone (Del)",                       False, None),
             ("module_count",   "Włącz/wyłącz pokazywanie ilości modułów",     False, None),
             ("zoom_out",       "Oddal / Pomniejsz",                           False, None),
             ("fit_view",       "Pokaż wszystko / Dopasuj do ekranu",          False, None),
@@ -110,7 +111,8 @@ class ToolbarController:
         self.action_save_project = self._toolbar_actions[2][0]
         self.action_draw_outline = self._toolbar_actions[3][0]
         self.action_undo = self._toolbar_actions[5][0]
-        self.action_module_count = self._toolbar_actions[8][0]
+        self.action_trash = self._toolbar_actions[8][0]
+        self.action_module_count = self._toolbar_actions[9][0]
 
         # Material selector button + combo
         self.material_button = QToolButton(self._win)

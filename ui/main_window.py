@@ -154,10 +154,10 @@ class MainWindow(QMainWindow):
         kat.addAction(act("Dane firmy...", None, self._dlg_firma))
 
         ark = mb.addMenu("Arkusze")
-        ark.addAction(act("Dodaj arkusz", "Insert", self._dlg_add_sheet))
-        ark.addAction(act("Usuń arkusz", "Delete", self._dlg_del_sheet))
-        ark.addAction(act("Podgląd arkuszy", "Ctrl+A", self._dlg_sheet_preview))
-        ark.addAction(act("Aktywne arkusze", None, self._dlg_active_sheets))
+        # ark.addAction(act("Dodaj arkusz", "Insert", self._dlg_add_sheet))
+        # ark.addAction(act("Usuń arkusz", "Delete", self._dlg_del_sheet))
+        # ark.addAction(act("Podgląd arkuszy", "Ctrl+A", self._dlg_sheet_preview))
+        # ark.addAction(act("Aktywne arkusze", None, self._dlg_active_sheets))
         ark.addAction(act("Przelicz aktywną połać", "F5", self._recalculate))
         ark.addSeparator()
         ark.addAction(act("Zmień rodzaj blachy", None, self._dlg_change_material))
@@ -168,6 +168,8 @@ class MainWindow(QMainWindow):
         self._tb_ctrl.variant_combo.currentTextChanged.connect(self._on_material_changed)
         self._tb_ctrl.action_save_project.triggered.connect(self._save_project)
         self._tb_ctrl.action_undo.triggered.connect(self._undo)
+        self._tb_ctrl.action_trash.triggered.connect(self._delete_selected_geometry)
+        self._tb_ctrl.action_trash.setEnabled(False)
         self._tb_ctrl.action_grid.triggered.connect(self._on_grid_toggled)
         self._tb_ctrl.action_module_count.triggered.connect(self._on_module_count_toggled)
         self._tb_ctrl.action_from_right.triggered.connect(self._on_from_right_toggled)
@@ -392,10 +394,29 @@ class MainWindow(QMainWindow):
                 )
             except TypeError:
                 pass
+            try:
+                candidate.selection_changed.connect(
+                    self._on_selection_changed,
+                    Qt.ConnectionType.UniqueConnection,
+                )
+            except TypeError:
+                pass
+            try:
+                candidate.delete_requested.connect(
+                    self._delete_selected_geometry,
+                    Qt.ConnectionType.UniqueConnection,
+                )
+            except TypeError:
+                pass
         if plane:
             canvas = self._workspace.canvas_for_plane(plane.id) or self._workspace.primary_canvas
             canvas.set_roof_plane(plane)
             canvas.set_material(self.project_state.material_by_id(plane.selected_material_id))
+            
+        if self.primary_canvas:
+            is_selected = self.primary_canvas._plane_selected or self.primary_canvas._selected_hole_index is not None
+            self._on_selection_changed(is_selected)
+
         self._refresh_tab_titles()
         self._refresh_report()
         self._refresh_status_bar_info()
@@ -558,7 +579,36 @@ class MainWindow(QMainWindow):
             self.primary_canvas = self._workspace.primary_canvas
             self._refresh_material_combo()
             self._refresh_report()
+            
+            if self.primary_canvas:
+                is_selected = self.primary_canvas._plane_selected or self.primary_canvas._selected_hole_index is not None
+                self._on_selection_changed(is_selected)
+                
             self.statusBar().showMessage(f"Aktywna połać: {plane.name}", 2500)
+
+    def _on_selection_changed(self, is_selected: bool) -> None:
+        if hasattr(self, '_tb_ctrl') and hasattr(self._tb_ctrl, 'action_trash'):
+            self._tb_ctrl.action_trash.setEnabled(is_selected)
+
+    def _delete_selected_geometry(self) -> None:
+        canvas = self.primary_canvas
+        if canvas is None:
+            return
+        kind = canvas.selected_geometry_kind()
+        if kind in {"cutout_polygon", "cutout_vertex"}:
+            idx = canvas.selected_cutout_index()
+            if idx is not None:
+                self._dlg_del_hole()
+        elif kind in {"main_polygon", "main_polygon_vertex"}:
+            answer = QMessageBox.question(
+                self,
+                "Usuń połać",
+                "Czy na pewno usunąć wybraną połać?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer == QMessageBox.StandardButton.Yes:
+                self._delete_active_roof_plane()
 
     def _on_tab_close_requested(self, index: int) -> None:
         if self._workspace.is_report_tab_index(index):
@@ -835,20 +885,25 @@ class MainWindow(QMainWindow):
         plane = self._active_or_warn()
         if plane is None:
             return
-        w, ok = QInputDialog.getDouble(self, "Dodaj wycinek", "Szerokość [cm]:", 50.0, 1.0)
-        if not ok:
-            return
-        h, ok = QInputDialog.getDouble(self, "Dodaj wycinek", "Wysokość [cm]:", 50.0, 1.0)
-        if not ok:
-            return
-        ox, ok = QInputDialog.getDouble(self, "Dodaj wycinek", "Lewy górny X [cm]:", 0.0)
-        if not ok:
-            return
-        oy, ok = QInputDialog.getDouble(self, "Dodaj wycinek", "Lewy górny Y [cm]:", 0.0)
-        if not ok:
-            return
-        hole = Polygon2D.rectangle(w, h, ox, oy)
-        self._edit(lambda: self.project_state.add_hole_to_plane(hole, plane.id), f"Dodano wycinek do {plane.name}")
+        from ui.dialogs.shape_dialogs import ProstokatDialog
+        dlg = ProstokatDialog(self._config, self)
+        dlg.setWindowTitle("Prostokątny wycinek")
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            v = dlg.get_values()
+            w = v["szerokosc"]
+            h = v["wysokosc"]
+            if plane.outline:
+                pts = plane.outline.points
+                center_x = sum(p.x for p in pts) / len(pts)
+                center_y = sum(p.y for p in pts) / len(pts)
+                ox = center_x - w / 2.0
+                oy = center_y - h / 2.0
+            else:
+                ox = 0.0
+                oy = 0.0
+
+            hole = Polygon2D.rectangle(w, h, ox, oy)
+            self._edit(lambda: self.project_state.add_hole_to_plane(hole, plane.id), f"Dodano wycinek do {plane.name}")
 
     def _dlg_del_hole(self) -> None:
         plane = self._active_or_warn()
@@ -861,7 +916,15 @@ class MainWindow(QMainWindow):
             idx, ok = QInputDialog.getInt(self, "Usuń wycinek", f"Indeks 0-{len(plane.holes)-1}:", 0, 0, len(plane.holes)-1)
             if not ok:
                 return
-        self._edit(lambda: self.project_state.delete_hole_from_plane(idx, plane.id), f"Usunięto wycinek {idx}")
+        answer = QMessageBox.question(
+            self,
+            "Usuń wycinek",
+            "Czy na pewno usunąć wybrany wycinek?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer == QMessageBox.StandardButton.Yes:
+            self._edit(lambda: self.project_state.delete_hole_from_plane(idx, plane.id), f"Usunięto wycinek {idx}")
 
     def _dlg_move_hole(self) -> None:
         plane = self._active_or_warn()

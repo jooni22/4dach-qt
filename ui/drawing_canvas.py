@@ -66,6 +66,8 @@ class DrawingCanvas(QWidget):
     outline_edit_committed = Signal(object)
     hole_edit_committed = Signal(int, object)
     outline_edit_rejected = Signal(str)
+    selection_changed = Signal(bool)
+    delete_requested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -89,11 +91,14 @@ class DrawingCanvas(QWidget):
         self._active_hole_vertex_index: int | None = None
         self._dragging_vertex_index: int | None = None
         self._dragging_hole_index: int | None = None
+        self._dragging_hole_center_index: int | None = None
         self._drag_start_outline: Polygon2D | None = None
         self._drag_start_hole: Polygon2D | None = None
+        self._drag_start_pos: Point2D | None = None
         self._preview_outline: Polygon2D | None = None
         self._preview_hole: Polygon2D | None = None
         self._drag_mapper: CanvasMapper | None = None
+        self._last_emitted_selection_state: bool = False
 
         self.setMouseTracking(True)
         self.setAutoFillBackground(True)
@@ -103,6 +108,12 @@ class DrawingCanvas(QWidget):
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    def _check_selection_changed(self) -> None:
+        current_state = self._plane_selected or self._selected_hole_index is not None
+        if current_state != self._last_emitted_selection_state:
+            self._last_emitted_selection_state = current_state
+            self.selection_changed.emit(current_state)
 
     def toggle_grid(self, enabled: bool | None = None) -> None:
         self._show_grid = not self._show_grid if enabled is None else enabled
@@ -130,6 +141,7 @@ class DrawingCanvas(QWidget):
         self.roof_plane = roof_plane
         self._cancel_geometry_drag()
         self._reset_selection(select_plane=bool(roof_plane is not None and roof_plane.outline is not None))
+        self._check_selection_changed()
         self.update()
 
     def set_material(self, material) -> None:
@@ -328,10 +340,34 @@ class DrawingCanvas(QWidget):
         self._drag_mapper = mapper
         self.setCursor(Qt.CursorShape.ClosedHandCursor)
 
+    def _start_hole_center_drag(self, hole_index: int, pos: QPointF, mapper: CanvasMapper, hole: Polygon2D) -> None:
+        self._reset_selection()
+        self._selected_hole_index = hole_index
+        self._dragging_hole_center_index = hole_index
+        self._dragging_hole_index = hole_index
+        self._drag_start_pos = mapper.unmap_point(pos)
+        self._drag_start_hole = hole
+        self._preview_hole = hole
+        self._drag_mapper = mapper
+        self.setCursor(Qt.CursorShape.ClosedHandCursor)
+
     def _update_geometry_drag(self, pos: QPointF) -> None:
-        if self._dragging_vertex_index is None or self._drag_mapper is None:
+        if self._drag_mapper is None:
             return
         domain_point = self._drag_mapper.unmap_point(pos)
+        
+        if self._dragging_hole_center_index is not None and self._drag_start_pos is not None:
+            dx = domain_point.x - self._drag_start_pos.x
+            dy = domain_point.y - self._drag_start_pos.y
+            if self._drag_start_hole is not None:
+                new_points = [Point2D(p.x + dx, p.y + dy) for p in self._drag_start_hole.points]
+                self._preview_hole = Polygon2D(new_points)
+            self.update()
+            return
+
+        if self._dragging_vertex_index is None:
+            return
+        
         if self._drag_start_outline is not None:
             self._preview_outline = replace_polygon_point(self._drag_start_outline, self._dragging_vertex_index, domain_point)
         elif self._drag_start_hole is not None:
@@ -339,7 +375,7 @@ class DrawingCanvas(QWidget):
         self.update()
 
     def _commit_geometry_drag(self) -> None:
-        if self._dragging_vertex_index is None:
+        if self._dragging_vertex_index is None and self._dragging_hole_center_index is None:
             self._cancel_geometry_drag()
             return
 
@@ -379,6 +415,8 @@ class DrawingCanvas(QWidget):
     def _cancel_geometry_drag(self) -> None:
         self._dragging_vertex_index = None
         self._dragging_hole_index = None
+        self._dragging_hole_center_index = None
+        self._drag_start_pos = None
         self._drag_start_outline = None
         self._drag_start_hole = None
         self._preview_outline = None
@@ -407,6 +445,16 @@ class DrawingCanvas(QWidget):
             vertex_index = self._hit_test_vertex(pos, mapper, hole)
             if vertex_index is not None:
                 return hole_index, vertex_index
+        return None
+
+    def _hit_test_hole_center(self, pos: QPointF, mapper: CanvasMapper) -> int | None:
+        for hole_index, hole in enumerate(self.display_holes()):
+            bounds = hole.bounds()
+            center_x = (bounds.min_x + bounds.max_x) / 2.0
+            center_y = (bounds.min_y + bounds.max_y) / 2.0
+            mapped_center = mapper.map_point(Point2D(center_x, center_y))
+            if self._distance(pos, mapped_center) <= MIDPOINT_HANDLE_RADIUS + 4:
+                return hole_index
         return None
 
     def _hit_test_edge_label(self, pos: QPointF, mapper: CanvasMapper, outline: Polygon2D) -> int | None:
@@ -502,16 +550,25 @@ class DrawingCanvas(QWidget):
                 outline = self.display_outline()
                 mapper = self._canvas_mapper()
                 if outline is not None and mapper is not None:
+                    hole_center_index = self._hit_test_hole_center(pos, mapper)
+                    if hole_center_index is not None:
+                        self._start_hole_center_drag(hole_center_index, pos, mapper, self.display_holes()[hole_center_index])
+                        self._check_selection_changed()
+                        self.update()
+                        return
+
                     hole_vertex = self._hit_test_hole_vertex(pos, mapper)
                     if hole_vertex is not None:
                         hole_index, vertex_index = hole_vertex
                         self._start_hole_drag(hole_index, vertex_index, mapper, self.display_holes()[hole_index])
+                        self._check_selection_changed()
                         self.update()
                         return
 
                     vertex_index = self._hit_test_vertex(pos, mapper, outline)
                     if vertex_index is not None:
                         self._start_outline_drag(vertex_index, mapper, outline)
+                        self._check_selection_changed()
                         self.update()
                         return
 
@@ -521,10 +578,12 @@ class DrawingCanvas(QWidget):
                         return
 
                     if self._select_hole_at(pos, mapper):
+                        self._check_selection_changed()
                         self.update()
                         return
 
                     self._select_plane_at(pos, outline, mapper)
+                    self._check_selection_changed()
                     self.update()
                     return
 
@@ -537,6 +596,11 @@ class DrawingCanvas(QWidget):
                 return
             if self._mode == self.MODE_SELECT_SHEET:
                 self._selected_sheet_id = None
+                self.update()
+                return
+            if self._mode == self.MODE_VIEW:
+                self._reset_selection()
+                self._check_selection_changed()
                 self.update()
                 return
 
@@ -552,13 +616,13 @@ class DrawingCanvas(QWidget):
                 cursor = Qt.CursorShape.PointingHandCursor if near else Qt.CursorShape.CrossCursor
                 self.setCursor(cursor)
             self.update()
-        elif self._mode == self.MODE_VIEW and self._dragging_vertex_index is not None:
+        elif self._mode == self.MODE_VIEW and (self._dragging_vertex_index is not None or self._dragging_hole_center_index is not None):
             self._update_geometry_drag(event.position())
             return
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
-        if self._mode == self.MODE_VIEW and event.button() == Qt.MouseButton.LeftButton and self._dragging_vertex_index is not None:
+        if self._mode == self.MODE_VIEW and event.button() == Qt.MouseButton.LeftButton and (self._dragging_vertex_index is not None or self._dragging_hole_center_index is not None):
             self._commit_geometry_drag()
             return
         super().mouseReleaseEvent(event)
@@ -581,10 +645,15 @@ class DrawingCanvas(QWidget):
                 self._snap_active = False
                 self.update()
                 return
-        elif self._mode == self.MODE_VIEW and event.key() == Qt.Key.Key_Escape and self._dragging_vertex_index is not None:
-            self._cancel_geometry_drag()
-            self.update()
-            return
+        elif self._mode == self.MODE_VIEW:
+            if event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
+                if self._plane_selected or self._selected_hole_index is not None:
+                    self.delete_requested.emit()
+                    return
+            if event.key() == Qt.Key.Key_Escape and (self._dragging_vertex_index is not None or self._dragging_hole_center_index is not None):
+                self._cancel_geometry_drag()
+                self.update()
+                return
         super().keyPressEvent(event)
 
     # ------------------------------------------------------------------
@@ -728,6 +797,17 @@ class DrawingCanvas(QWidget):
                 selected_hole_color,
                 active_vertex_index=self._active_hole_vertex_index,
             )
+
+        painter.setPen(QPen(hole_color, 1))
+        for hole_index, hole in enumerate(holes):
+            bounds = hole.bounds()
+            center_x = (bounds.min_x + bounds.max_x) / 2.0
+            center_y = (bounds.min_y + bounds.max_y) / 2.0
+            mapped_center = mapper.map_point(Point2D(center_x, center_y))
+            is_active = hole_index == self._selected_hole_index
+            painter.setBrush(selected_hole_color.lighter(140) if is_active else hole_color)
+            radius = MIDPOINT_HANDLE_RADIUS + (2 if is_active else 0)
+            painter.drawEllipse(mapped_center, radius, radius)
 
         self._draw_edge_measurements(painter, mapper, outline, text_color, outline_color)
 
