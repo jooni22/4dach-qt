@@ -1,4 +1,4 @@
-.PHONY: test test-ui run lint clean install help
+.PHONY: test test-ui test-unit test-review test-expectations run lint clean install help
 
 # Domyślny target
 .DEFAULT_GOAL := help
@@ -11,14 +11,16 @@ PYTEST := uv run pytest
 # Target: help - wyświetla dostępne targety
 help:
 	@echo "Dostępne targety:"
-	@echo "  make test       - uruchamia wszystkie testy"
-	@echo "  make test-ui    - uruchamia tylko testy UI (wymaga PySide6)"
-	@echo "  make test-unit  - uruchamia tylko testy jednostkowe (bez UI)"
-	@echo "  make run        - uruchamia aplikację"
-	@echo "  make lint       - uruchamia lintowanie (jeśli dostępne)"
-	@echo "  make clean      - czyści pliki tymczasowe i cache"
-	@echo "  make install    - instaluje zależności"
-	@echo "  make help       - wyświetla tę pomoc"
+	@echo "  make test              - uruchamia wszystkie testy"
+	@echo "  make test-ui          - uruchamia tylko testy UI (wymaga PySide6)"
+	@echo "  make test-unit        - uruchamia tylko testy jednostkowe (bez UI)"
+	@echo "  make test-review      - pokazuje oczekiwania testów i uruchamia wszystkie testy"
+	@echo "  make test-expectations - pokazuje tylko oczekiwane dane/wyniki wszystkich testów"
+	@echo "  make run              - uruchamia aplikację"
+	@echo "  make lint             - uruchamia lintowanie (jeśli dostępne)"
+	@echo "  make clean            - czyści pliki tymczasowe i cache"
+	@echo "  make install          - instaluje zależności"
+	@echo "  make help             - wyświetla tę pomoc"
 
 # Target: test - uruchamia wszystkie testy
 test:
@@ -34,6 +36,16 @@ test-ui:
 test-unit:
 	@echo "Uruchamianie testów jednostkowych (bez UI)..."
 	$(PYTHON) -m pytest tests/test_models_and_state.py tests/test_geometry.py tests/test_reporting.py tests/test_layout.py -v
+
+# Target: test-review - pokazuje oczekiwania testów i uruchamia wszystkie testy
+test-review:
+	@echo "=== Przeglad oczekiwan testow + uruchomienie ==="
+	$(PYTHON) scripts/review_and_run_tests.py -q
+
+# Target: test-expectations - pokazuje tylko oczekiwane dane/wyniki wszystkich testów
+test-expectations:
+	@echo "=== Oczekiwane dane i wyniki wszystkich testow ==="
+	$(PYTHON) scripts/print_test_expectations.py
 
 # Target: run - uruchamia aplikację
 run:
