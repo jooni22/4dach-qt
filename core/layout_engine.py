@@ -187,71 +187,132 @@ def generate_layout(
         layout_band = LayoutBand(band_index=band_index, x_left_cm=x_left, x_right_cm=x_right)
 
         for band_segment in band_segments:
-            _detect_cutout_interaction(plane, x_left, x_right, band_segment)
+            _detect_cutout_interaction(plane, band_segment, _settings)
+
+        for segment_index, band_segment in enumerate(band_segments):
+            y_bottom = band_segment.y_bottom_cm
+            y_top = band_segment.y_top_cm
+            max_len = material.max_sheet_length_cm
+            row_index = 0
 
             if (
                 band_segment.cutout_interaction == "partial"
                 and band_segment.partial_cut_line_y_cm is not None
             ):
-                raw_extra = _settings.partial_cutout_top_extra_cm
-                max_extra = band_segment.partial_cut_line_y_cm - band_segment.y_top_cm
-                band_segment.top_extra_cm = max(0.0, min(raw_extra, max_extra))
+                cut_y = band_segment.partial_cut_line_y_cm
+                extra = band_segment.top_extra_cm
 
-        for segment_index, band_segment in enumerate(band_segments):
-            y_cursor = band_segment.y_bottom_cm
-            y_top = band_segment.y_top_cm
-            max_len = material.max_sheet_length_cm
-            row_index = 0
-
-            while y_cursor > y_top + EPSILON:
-                sheet_height = min(max_len, y_cursor - y_top)
-                sheet_top = y_cursor - sheet_height
-                sheet_bottom = y_cursor
-
-                # Determine if this sheet contains the partial cut line
-                extra = 0.0
-                split_reason = None
-                if (
-                    band_segment.cutout_interaction == "partial"
-                    and band_segment.partial_cut_line_y_cm is not None
-                    and band_segment.top_extra_cm > 0
-                    and sheet_top - EPSILON <= band_segment.partial_cut_line_y_cm <= sheet_bottom + EPSILON
-                ):
-                    extra = band_segment.top_extra_cm
-                    split_reason = "partial_cutout"
-
-                final_length = sheet_height + extra
-
-                if sheet_height >= material.min_sheet_length_cm - EPSILON:
-                    placement_id = f"{plane.id}-b{band_index}-s{segment_index}-r{row_index}"
-                    result.placements.append(
-                        SheetPlacement(
-                            id=placement_id,
-                            band_index=band_index,
-                            x_left_cm=band_segment.x_left_cm,
-                            x_right_cm=band_segment.x_right_cm,
-                            y_top_cm=sheet_top,
-                            y_bottom_cm=sheet_bottom,
-                            raw_length_cm=sheet_height,
-                            final_length_cm=final_length,
-                            split_reason=split_reason,
+                # Phase A — BOTTOM: from y_bottom down to cut_y (below the cutout)
+                y_cursor = y_bottom
+                while y_cursor > cut_y + EPSILON:
+                    sheet_height = min(max_len, y_cursor - cut_y)
+                    sheet_top = y_cursor - sheet_height
+                    sheet_bottom = y_cursor
+                    if sheet_height >= material.min_sheet_length_cm - EPSILON:
+                        placement_id = f"{plane.id}-b{band_index}-s{segment_index}-r{row_index}"
+                        result.placements.append(
+                            SheetPlacement(
+                                id=placement_id,
+                                band_index=band_index,
+                                x_left_cm=band_segment.x_left_cm,
+                                x_right_cm=band_segment.x_right_cm,
+                                y_top_cm=sheet_top,
+                                y_bottom_cm=sheet_bottom,
+                                raw_length_cm=sheet_height,
+                                final_length_cm=sheet_height,
+                                split_reason=None,
+                            )
                         )
-                    )
-                else:
-                    result.rejected_segments.append(
-                        RejectedSegment(
-                            band_index=band_index,
-                            x_left_cm=band_segment.x_left_cm,
-                            x_right_cm=band_segment.x_right_cm,
-                            y_top_cm=sheet_top,
-                            y_bottom_cm=sheet_bottom,
-                            raw_length_cm=sheet_height,
-                            reason=f"Arkusz za krótki: {sheet_height:.1f} cm (min. {material.min_sheet_length_cm:.1f} cm)",
+                    else:
+                        result.rejected_segments.append(
+                            RejectedSegment(
+                                band_index=band_index,
+                                x_left_cm=band_segment.x_left_cm,
+                                x_right_cm=band_segment.x_right_cm,
+                                y_top_cm=sheet_top,
+                                y_bottom_cm=sheet_bottom,
+                                raw_length_cm=sheet_height,
+                                reason=f"Arkusz za krótki: {sheet_height:.1f} cm (min. {material.min_sheet_length_cm:.1f} cm)",
+                            )
                         )
-                    )
+                    y_cursor -= sheet_height
+                    row_index += 1
 
-                y_cursor -= sheet_height
-                row_index += 1
+                # Phase B — TOP: from cut_y down to y_top (above the cutout)
+                y_cursor = cut_y
+                while y_cursor > y_top + EPSILON:
+                    sheet_height = min(max_len, y_cursor - y_top)
+                    sheet_top = y_cursor - sheet_height
+                    sheet_bottom = y_cursor
+                    is_top_sheet = sheet_top <= y_top + EPSILON
+                    actual_length = sheet_height + (extra if is_top_sheet else 0.0)
+                    placement_split = "partial_cutout_top" if is_top_sheet else None
+                    if sheet_height >= material.min_sheet_length_cm - EPSILON:
+                        placement_id = f"{plane.id}-b{band_index}-s{segment_index}-r{row_index}"
+                        result.placements.append(
+                            SheetPlacement(
+                                id=placement_id,
+                                band_index=band_index,
+                                x_left_cm=band_segment.x_left_cm,
+                                x_right_cm=band_segment.x_right_cm,
+                                y_top_cm=sheet_top,
+                                y_bottom_cm=sheet_bottom,
+                                raw_length_cm=sheet_height,
+                                final_length_cm=actual_length,
+                                split_reason=placement_split,
+                            )
+                        )
+                    else:
+                        result.rejected_segments.append(
+                            RejectedSegment(
+                                band_index=band_index,
+                                x_left_cm=band_segment.x_left_cm,
+                                x_right_cm=band_segment.x_right_cm,
+                                y_top_cm=sheet_top,
+                                y_bottom_cm=sheet_bottom,
+                                raw_length_cm=sheet_height,
+                                reason=f"Arkusz za krótki: {sheet_height:.1f} cm (min. {material.min_sheet_length_cm:.1f} cm)",
+                            )
+                        )
+                    y_cursor -= sheet_height
+                    row_index += 1
+
+            else:
+                # Standard single-phase loop (no partial cutout)
+                y_cursor = y_bottom
+                while y_cursor > y_top + EPSILON:
+                    sheet_height = min(max_len, y_cursor - y_top)
+                    sheet_top = y_cursor - sheet_height
+                    sheet_bottom = y_cursor
+                    if sheet_height >= material.min_sheet_length_cm - EPSILON:
+                        placement_id = f"{plane.id}-b{band_index}-s{segment_index}-r{row_index}"
+                        result.placements.append(
+                            SheetPlacement(
+                                id=placement_id,
+                                band_index=band_index,
+                                x_left_cm=band_segment.x_left_cm,
+                                x_right_cm=band_segment.x_right_cm,
+                                y_top_cm=sheet_top,
+                                y_bottom_cm=sheet_bottom,
+                                raw_length_cm=sheet_height,
+                                final_length_cm=sheet_height,
+                                split_reason=None,
+                            )
+                        )
+                    else:
+                        result.rejected_segments.append(
+                            RejectedSegment(
+                                band_index=band_index,
+                                x_left_cm=band_segment.x_left_cm,
+                                x_right_cm=band_segment.x_right_cm,
+                                y_top_cm=sheet_top,
+                                y_bottom_cm=sheet_bottom,
+                                raw_length_cm=sheet_height,
+                                reason=f"Arkusz za krótki: {sheet_height:.1f} cm (min. {material.min_sheet_length_cm:.1f} cm)",
+                            )
+                        )
+                    y_cursor -= sheet_height
+                    row_index += 1
 
             band_segment.segment_index = segment_index
             band_segment.placement_id = f"{plane.id}-b{band_index}-s{segment_index}-r0"
@@ -260,6 +321,7 @@ def generate_layout(
         result.bands.append(layout_band)
 
     return result
+
 
 
 def _iter_band_ranges(plane: RoofPlane, band_width_cm: float) -> list[tuple[float, float]]:
@@ -424,50 +486,39 @@ def _intervals_touch_or_overlap(left: tuple[float, float], right: tuple[float, f
 
 def _detect_cutout_interaction(
     plane: RoofPlane,
-    band_x_left: float,
-    band_x_right: float,
     segment: LayoutBandSegment,
+    settings,
 ) -> None:
-    """Inspect holes of *plane* against the band x-range and annotate
-    *segment* in-place with ``cutout_interaction`` and
-    ``partial_cut_line_y_cm``.
-
-    Does NOT apply ``top_extra_cm`` — that is done by the caller so the
-    caller controls the settings value.
+    """Inspect holes of *plane* against the segment x/y range and annotate
+    *segment* in-place with ``cutout_interaction``, ``partial_cut_line_y_cm``,
+    and ``top_extra_cm``.
     """
     for hole in plane.holes:
         bounds = hole.bounds()
-        hole_min_x = bounds.min_x
-        hole_max_x = bounds.max_x
-        hole_min_y = bounds.min_y
-        hole_max_y = bounds.max_y
 
-        # Skip holes that don't touch this band's x-range
-        if hole_max_x <= band_x_left + EPSILON or hole_min_x >= band_x_right - EPSILON:
+        # Skip holes that don't touch this segment's y-range
+        if bounds.max_y <= segment.y_top_cm or bounds.min_y >= segment.y_bottom_cm:
             continue
 
-        # Full-width coverage?
-        full = hole_min_x <= band_x_left + EPSILON and hole_max_x >= band_x_right - EPSILON
-        if full:
+        # Skip holes that don't touch this segment's x-range
+        if bounds.max_x <= segment.x_left_cm or bounds.min_x >= segment.x_right_cm:
+            continue
+
+        # FULL: hole covers the entire band width
+        if bounds.min_x <= segment.x_left_cm and bounds.max_x >= segment.x_right_cm:
             segment.cutout_interaction = "full"
-            continue
+            continue  # keep inspecting — another hole might be partial
 
-        # Partial coverage — check y-overlap with segment
-        overlap = (
-            hole_max_y > segment.y_top_cm - EPSILON
-            and hole_min_y < segment.y_bottom_cm + EPSILON
-        )
-        if not overlap:
-            continue
-
-        # The cut line is the top edge of the hole (where material must be cut)
-        cut_y = hole_min_y
-        if not (segment.y_top_cm - EPSILON < cut_y < segment.y_bottom_cm + EPSILON):
-            continue
+        # PARTIAL: hole partially overlaps this segment in x
+        cut_y = bounds.min_y  # top edge of the hole = where the cut must happen
+        extra_raw = getattr(settings, "partial_cutout_top_extra_cm", 15.0)
+        max_possible_extra = cut_y - segment.y_top_cm
+        extra_clamped = max(0.0, min(extra_raw, max_possible_extra))
 
         segment.cutout_interaction = "partial"
         segment.partial_cut_line_y_cm = cut_y
-        break  # one partial match per segment is sufficient
+        segment.top_extra_cm = extra_clamped
+        break  # first valid partial hole is sufficient
 
 
 def _polygon_to_dict(polygon: Polygon2D) -> list[dict[str, float]]:

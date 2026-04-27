@@ -54,7 +54,7 @@
   },
   "project_state": {
     "version": 1,
-    "active_plane_id": "plane-3",
+    "active_plane_id": "plane-5",
     "roof_planes": [
       {
         "id": "plane-1",
@@ -2881,22 +2881,22 @@
             "band_index": 5,
             "x_left_cm": 255.0,
             "x_right_cm": 306.0,
-            "y_top_cm": 0.0,
-            "y_bottom_cm": 327.24484375033825,
-            "raw_length_cm": 327.24484375033825,
-            "final_length_cm": 327.24484375033825,
+            "y_top_cm": 100.0,
+            "y_bottom_cm": 1000.0,
+            "raw_length_cm": 900.0,
+            "final_length_cm": 900.0,
             "source": "auto",
             "split_reason": null
           },
           {
-            "id": "plane-2-b5-s1-r0",
+            "id": "plane-2-b5-s0-r1",
             "band_index": 5,
             "x_left_cm": 255.0,
             "x_right_cm": 306.0,
-            "y_top_cm": 336.8728273503168,
-            "y_bottom_cm": 1000.0,
-            "raw_length_cm": 663.1271726496832,
-            "final_length_cm": 663.1271726496832,
+            "y_top_cm": 0.0,
+            "y_bottom_cm": 100.0,
+            "raw_length_cm": 100.0,
+            "final_length_cm": 100.0,
             "source": "auto",
             "split_reason": null
           },
@@ -2905,22 +2905,22 @@
             "band_index": 6,
             "x_left_cm": 306.0,
             "x_right_cm": 357.0,
-            "y_top_cm": 0.0,
-            "y_bottom_cm": 324.3777085975355,
-            "raw_length_cm": 324.3777085975355,
-            "final_length_cm": 324.3777085975355,
+            "y_top_cm": 100.0,
+            "y_bottom_cm": 1000.0,
+            "raw_length_cm": 900.0,
+            "final_length_cm": 915.0,
             "source": "auto",
-            "split_reason": null
+            "split_reason": "partial_cutout"
           },
           {
-            "id": "plane-2-b6-s1-r0",
+            "id": "plane-2-b6-s0-r1",
             "band_index": 6,
             "x_left_cm": 306.0,
             "x_right_cm": 357.0,
-            "y_top_cm": 376.01982747592206,
-            "y_bottom_cm": 1000.0,
-            "raw_length_cm": 623.980172524078,
-            "final_length_cm": 623.980172524078,
+            "y_top_cm": 0.0,
+            "y_bottom_cm": 100.0,
+            "raw_length_cm": 100.0,
+            "final_length_cm": 100.0,
             "source": "auto",
             "split_reason": null
           },
@@ -2930,9 +2930,9 @@
             "x_left_cm": 357.0,
             "x_right_cm": 408.0,
             "y_top_cm": 0.0,
-            "y_bottom_cm": 321.51057344473276,
-            "raw_length_cm": 321.51057344473276,
-            "final_length_cm": 321.51057344473276,
+            "y_bottom_cm": 361.1497058994864,
+            "raw_length_cm": 361.1497058994864,
+            "final_length_cm": 361.1497058994864,
             "source": "auto",
             "split_reason": null
           },
@@ -2941,10 +2941,10 @@
             "band_index": 7,
             "x_left_cm": 357.0,
             "x_right_cm": 408.0,
-            "y_top_cm": 415.1668276015274,
+            "y_top_cm": 391.33408568745426,
             "y_bottom_cm": 1000.0,
-            "raw_length_cm": 584.8331723984726,
-            "final_length_cm": 584.8331723984726,
+            "raw_length_cm": 608.6659143125457,
+            "final_length_cm": 608.6659143125457,
             "source": "auto",
             "split_reason": null
           },
@@ -2954,9 +2954,9 @@
             "x_left_cm": 408.0,
             "x_right_cm": 459.0,
             "y_top_cm": 0.0,
-            "y_bottom_cm": 318.64343829193,
-            "raw_length_cm": 318.64343829193,
-            "final_length_cm": 318.64343829193,
+            "y_bottom_cm": 358.28257074668363,
+            "raw_length_cm": 358.28257074668363,
+            "final_length_cm": 358.28257074668363,
             "source": "auto",
             "split_reason": null
           },
@@ -2965,12 +2965,12 @@
             "band_index": 8,
             "x_left_cm": 408.0,
             "x_right_cm": 459.0,
-            "y_top_cm": 454.3138277271328,
+            "y_top_cm": 430.4810858130596,
             "y_bottom_cm": 1000.0,
-            "raw_length_cm": 545.6861722728672,
-            "final_length_cm": 545.6861722728672,
+            "raw_length_cm": 569.5189141869404,
+            "final_length_cm": 584.5189141869404,
             "source": "auto",
-            "split_reason": null
+            "split_reason": "partial_cutout"
           },
           {
             "id": "plane-2-b9-s0-r0",
@@ -2978,9 +2978,9 @@
             "x_left_cm": 459.0,
             "x_right_cm": 510.0,
             "y_top_cm": 0.0,
-            "y_bottom_cm": 315.77630313912726,
-            "raw_length_cm": 315.77630313912726,
-            "final_length_cm": 315.77630313912726,
+            "y_bottom_cm": 355.4154355938809,
+            "raw_length_cm": 355.4154355938809,
+            "final_length_cm": 355.4154355938809,
             "source": "auto",
             "split_reason": null
           },
@@ -2989,10 +2989,10 @@
             "band_index": 9,
             "x_left_cm": 459.0,
             "x_right_cm": 510.0,
-            "y_top_cm": 493.4608278527381,
+            "y_top_cm": 469.628085938665,
             "y_bottom_cm": 599.7169268945712,
-            "raw_length_cm": 106.25609904183312,
-            "final_length_cm": 106.25609904183312,
+            "raw_length_cm": 130.08884095590622,
+            "final_length_cm": 130.08884095590622,
             "source": "auto",
             "split_reason": null
           },
@@ -3014,9 +3014,9 @@
             "x_left_cm": 510.0,
             "x_right_cm": 561.0,
             "y_top_cm": 0.0,
-            "y_bottom_cm": 312.9091679863245,
-            "raw_length_cm": 312.9091679863245,
-            "final_length_cm": 312.9091679863245,
+            "y_bottom_cm": 352.54830044107814,
+            "raw_length_cm": 352.54830044107814,
+            "final_length_cm": 352.54830044107814,
             "source": "auto",
             "split_reason": null
           },
@@ -3025,10 +3025,10 @@
             "band_index": 10,
             "x_left_cm": 510.0,
             "x_right_cm": 561.0,
-            "y_top_cm": 505.06398101435167,
+            "y_top_cm": 508.7750860642703,
             "y_bottom_cm": 593.0325616166839,
-            "raw_length_cm": 87.96858060233222,
-            "final_length_cm": 87.96858060233222,
+            "raw_length_cm": 84.25747555241361,
+            "final_length_cm": 84.25747555241361,
             "source": "auto",
             "split_reason": null
           },
@@ -3050,9 +3050,9 @@
             "x_left_cm": 561.0,
             "x_right_cm": 612.0,
             "y_top_cm": 0.0,
-            "y_bottom_cm": 310.0420328335217,
-            "raw_length_cm": 310.0420328335217,
-            "final_length_cm": 310.0420328335217,
+            "y_bottom_cm": 349.68116528827534,
+            "raw_length_cm": 349.68116528827534,
+            "final_length_cm": 349.68116528827534,
             "source": "auto",
             "split_reason": null
           },
@@ -3061,12 +3061,12 @@
             "band_index": 11,
             "x_left_cm": 561.0,
             "x_right_cm": 612.0,
-            "y_top_cm": 504.6555111682074,
+            "y_top_cm": 540.5802723899199,
             "y_bottom_cm": 1000.0,
-            "raw_length_cm": 495.3444888317926,
-            "final_length_cm": 495.3444888317926,
+            "raw_length_cm": 459.41972761008014,
+            "final_length_cm": 474.41972761008014,
             "source": "auto",
-            "split_reason": null
+            "split_reason": "partial_cutout"
           },
           {
             "id": "plane-2-b12-s0-r0",
@@ -3074,9 +3074,9 @@
             "x_left_cm": 612.0,
             "x_right_cm": 663.0,
             "y_top_cm": 0.0,
-            "y_bottom_cm": 307.17489768071897,
-            "raw_length_cm": 307.17489768071897,
-            "final_length_cm": 307.17489768071897,
+            "y_bottom_cm": 346.8140301354726,
+            "raw_length_cm": 346.8140301354726,
+            "final_length_cm": 346.8140301354726,
             "source": "auto",
             "split_reason": null
           },
@@ -3085,10 +3085,10 @@
             "band_index": 12,
             "x_left_cm": 612.0,
             "x_right_cm": 663.0,
-            "y_top_cm": 504.2470413220631,
+            "y_top_cm": 540.1718025437756,
             "y_bottom_cm": 1000.0,
-            "raw_length_cm": 495.7529586779369,
-            "final_length_cm": 495.7529586779369,
+            "raw_length_cm": 459.8281974562244,
+            "final_length_cm": 459.8281974562244,
             "source": "auto",
             "split_reason": null
           },
@@ -3098,9 +3098,9 @@
             "x_left_cm": 663.0,
             "x_right_cm": 714.0,
             "y_top_cm": 0.0,
-            "y_bottom_cm": 304.3077625279162,
-            "raw_length_cm": 304.3077625279162,
-            "final_length_cm": 304.3077625279162,
+            "y_bottom_cm": 343.94689498266985,
+            "raw_length_cm": 343.94689498266985,
+            "final_length_cm": 343.94689498266985,
             "source": "auto",
             "split_reason": null
           },
@@ -3109,10 +3109,10 @@
             "band_index": 13,
             "x_left_cm": 663.0,
             "x_right_cm": 714.0,
-            "y_top_cm": 503.8385714759188,
+            "y_top_cm": 539.7633326976313,
             "y_bottom_cm": 1000.0,
-            "raw_length_cm": 496.1614285240812,
-            "final_length_cm": 496.1614285240812,
+            "raw_length_cm": 460.2366673023687,
+            "final_length_cm": 460.2366673023687,
             "source": "auto",
             "split_reason": null
           },
@@ -3122,9 +3122,9 @@
             "x_left_cm": 714.0,
             "x_right_cm": 765.0,
             "y_top_cm": 0.0,
-            "y_bottom_cm": 301.4406273751135,
-            "raw_length_cm": 301.4406273751135,
-            "final_length_cm": 301.4406273751135,
+            "y_bottom_cm": 341.0797598298671,
+            "raw_length_cm": 341.0797598298671,
+            "final_length_cm": 341.0797598298671,
             "source": "auto",
             "split_reason": null
           },
@@ -3133,10 +3133,10 @@
             "band_index": 14,
             "x_left_cm": 714.0,
             "x_right_cm": 765.0,
-            "y_top_cm": 503.4301016297745,
+            "y_top_cm": 539.3548628514869,
             "y_bottom_cm": 1000.0,
-            "raw_length_cm": 496.5698983702255,
-            "final_length_cm": 496.5698983702255,
+            "raw_length_cm": 460.6451371485131,
+            "final_length_cm": 460.6451371485131,
             "source": "auto",
             "split_reason": null
           },
@@ -3146,9 +3146,9 @@
             "x_left_cm": 765.0,
             "x_right_cm": 816.0,
             "y_top_cm": 0.0,
-            "y_bottom_cm": 298.57349222231073,
-            "raw_length_cm": 298.57349222231073,
-            "final_length_cm": 298.57349222231073,
+            "y_bottom_cm": 338.21262467706435,
+            "raw_length_cm": 338.21262467706435,
+            "final_length_cm": 338.21262467706435,
             "source": "auto",
             "split_reason": null
           },
@@ -3157,10 +3157,10 @@
             "band_index": 15,
             "x_left_cm": 765.0,
             "x_right_cm": 816.0,
-            "y_top_cm": 303.33568209349323,
+            "y_top_cm": 538.9463930053427,
             "y_bottom_cm": 1000.0,
-            "raw_length_cm": 696.6643179065068,
-            "final_length_cm": 696.6643179065068,
+            "raw_length_cm": 461.05360699465734,
+            "final_length_cm": 461.05360699465734,
             "source": "auto",
             "split_reason": null
           },
@@ -3169,22 +3169,22 @@
             "band_index": 16,
             "x_left_cm": 816.0,
             "x_right_cm": 867.0,
-            "y_top_cm": 100.0,
-            "y_bottom_cm": 1000.0,
-            "raw_length_cm": 900.0,
-            "final_length_cm": 900.0,
+            "y_top_cm": 0.0,
+            "y_bottom_cm": 335.3454895242616,
+            "raw_length_cm": 335.3454895242616,
+            "final_length_cm": 335.3454895242616,
             "source": "auto",
             "split_reason": null
           },
           {
-            "id": "plane-2-b16-s0-r1",
+            "id": "plane-2-b16-s1-r0",
             "band_index": 16,
             "x_left_cm": 816.0,
             "x_right_cm": 867.0,
-            "y_top_cm": 0.0,
-            "y_bottom_cm": 100.0,
-            "raw_length_cm": 100.0,
-            "final_length_cm": 100.0,
+            "y_top_cm": 516.3801438001487,
+            "y_bottom_cm": 1000.0,
+            "raw_length_cm": 483.61985619985126,
+            "final_length_cm": 483.61985619985126,
             "source": "auto",
             "split_reason": null
           },
@@ -3196,9 +3196,9 @@
             "y_top_cm": 100.0,
             "y_bottom_cm": 1000.0,
             "raw_length_cm": 900.0,
-            "final_length_cm": 900.0,
+            "final_length_cm": 915.0,
             "source": "auto",
-            "split_reason": null
+            "split_reason": "partial_cutout"
           },
           {
             "id": "plane-2-b17-s0-r1",
@@ -3295,7 +3295,10 @@
                   ]
                 ],
                 "placement_id": "plane-2-b0-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
@@ -3332,7 +3335,10 @@
                   ]
                 ],
                 "placement_id": "plane-2-b1-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
@@ -3369,7 +3375,10 @@
                   ]
                 ],
                 "placement_id": "plane-2-b2-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
@@ -3406,7 +3415,10 @@
                   ]
                 ],
                 "placement_id": "plane-2-b3-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
@@ -3429,57 +3441,24 @@
                       "y": 0.0
                     },
                     {
-                      "x": 243.31281043046357,
+                      "x": 255.0,
                       "y": 0.0
                     },
                     {
-                      "x": 243.31281043046357,
+                      "x": 255.0,
                       "y": 1000.0
                     },
                     {
                       "x": 204.0,
                       "y": 1000.0
                     }
-                  ],
-                  [
-                    {
-                      "x": 243.31281043046357,
-                      "y": 0.0
-                    },
-                    {
-                      "x": 255.0,
-                      "y": 0.0
-                    },
-                    {
-                      "x": 255.0,
-                      "y": 327.24484375033825
-                    },
-                    {
-                      "x": 243.31281043046357,
-                      "y": 327.57336092732146
-                    }
-                  ],
-                  [
-                    {
-                      "x": 243.31281043046357,
-                      "y": 332.3873527273107
-                    },
-                    {
-                      "x": 255.0,
-                      "y": 336.87282735031675
-                    },
-                    {
-                      "x": 255.0,
-                      "y": 1000.0
-                    },
-                    {
-                      "x": 243.31281043046357,
-                      "y": 1000.0
-                    }
                   ]
                 ],
                 "placement_id": "plane-2-b4-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
@@ -3493,8 +3472,8 @@
                 "x_left_cm": 255.0,
                 "x_right_cm": 306.0,
                 "y_top_cm": 0.0,
-                "y_bottom_cm": 327.24484375033825,
-                "raw_length_cm": 327.24484375033825,
+                "y_bottom_cm": 1000.0,
+                "raw_length_cm": 1000.0,
                 "coverage_polygons": [
                   [
                     {
@@ -3507,46 +3486,19 @@
                     },
                     {
                       "x": 306.0,
-                      "y": 324.3777085975355
+                      "y": 1000.0
                     },
                     {
                       "x": 255.0,
-                      "y": 327.24484375033825
+                      "y": 1000.0
                     }
                   ]
                 ],
                 "placement_id": "plane-2-b5-s0-r0",
-                "split_reason": null
-              },
-              {
-                "segment_index": 1,
-                "x_left_cm": 255.0,
-                "x_right_cm": 306.0,
-                "y_top_cm": 336.87282735031675,
-                "y_bottom_cm": 1000.0,
-                "raw_length_cm": 663.1271726496832,
-                "coverage_polygons": [
-                  [
-                    {
-                      "x": 255.0,
-                      "y": 336.87282735031675
-                    },
-                    {
-                      "x": 306.0,
-                      "y": 376.01982747592206
-                    },
-                    {
-                      "x": 306.0,
-                      "y": 1000.0
-                    },
-                    {
-                      "x": 255.0,
-                      "y": 1000.0
-                    }
-                  ]
-                ],
-                "placement_id": "plane-2-b5-s1-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
@@ -3560,8 +3512,8 @@
                 "x_left_cm": 306.0,
                 "x_right_cm": 357.0,
                 "y_top_cm": 0.0,
-                "y_bottom_cm": 324.3777085975355,
-                "raw_length_cm": 324.3777085975355,
+                "y_bottom_cm": 1000.0,
+                "raw_length_cm": 1000.0,
                 "coverage_polygons": [
                   [
                     {
@@ -3569,51 +3521,60 @@
                       "y": 0.0
                     },
                     {
+                      "x": 320.35987022021385,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 320.35987022021385,
+                      "y": 1000.0
+                    },
+                    {
+                      "x": 306.0,
+                      "y": 1000.0
+                    }
+                  ],
+                  [
+                    {
+                      "x": 320.35987022021385,
+                      "y": 0.0
+                    },
+                    {
                       "x": 357.0,
                       "y": 0.0
                     },
                     {
                       "x": 357.0,
-                      "y": 321.51057344473276
+                      "y": 361.1497058994864
                     },
                     {
-                      "x": 306.0,
-                      "y": 324.3777085975355
+                      "x": 320.35987022021385,
+                      "y": 362.179629469044
+                    }
+                  ],
+                  [
+                    {
+                      "x": 320.35987022021385,
+                      "y": 377.271819363028
+                    },
+                    {
+                      "x": 357.0,
+                      "y": 391.33408568745426
+                    },
+                    {
+                      "x": 357.0,
+                      "y": 1000.0
+                    },
+                    {
+                      "x": 320.35987022021385,
+                      "y": 1000.0
                     }
                   ]
                 ],
                 "placement_id": "plane-2-b6-s0-r0",
-                "split_reason": null
-              },
-              {
-                "segment_index": 1,
-                "x_left_cm": 306.0,
-                "x_right_cm": 357.0,
-                "y_top_cm": 376.01982747592206,
-                "y_bottom_cm": 1000.0,
-                "raw_length_cm": 623.980172524078,
-                "coverage_polygons": [
-                  [
-                    {
-                      "x": 306.0,
-                      "y": 376.01982747592206
-                    },
-                    {
-                      "x": 357.0,
-                      "y": 415.1668276015274
-                    },
-                    {
-                      "x": 357.0,
-                      "y": 1000.0
-                    },
-                    {
-                      "x": 306.0,
-                      "y": 1000.0
-                    }
-                  ]
-                ],
-                "placement_id": "plane-2-b6-s1-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "partial",
+                "partial_cut_line_y_cm": 330.95065403197907,
+                "top_extra_cm": 15.0
               }
             ]
           },
@@ -3627,8 +3588,8 @@
                 "x_left_cm": 357.0,
                 "x_right_cm": 408.0,
                 "y_top_cm": 0.0,
-                "y_bottom_cm": 321.51057344473276,
-                "raw_length_cm": 321.51057344473276,
+                "y_bottom_cm": 361.1497058994864,
+                "raw_length_cm": 361.1497058994864,
                 "coverage_polygons": [
                   [
                     {
@@ -3641,33 +3602,36 @@
                     },
                     {
                       "x": 408.0,
-                      "y": 318.64343829193
+                      "y": 358.28257074668363
                     },
                     {
                       "x": 357.0,
-                      "y": 321.51057344473276
+                      "y": 361.1497058994864
                     }
                   ]
                 ],
                 "placement_id": "plane-2-b7-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               },
               {
                 "segment_index": 1,
                 "x_left_cm": 357.0,
                 "x_right_cm": 408.0,
-                "y_top_cm": 415.1668276015274,
+                "y_top_cm": 391.33408568745426,
                 "y_bottom_cm": 1000.0,
-                "raw_length_cm": 584.8331723984726,
+                "raw_length_cm": 608.6659143125457,
                 "coverage_polygons": [
                   [
                     {
                       "x": 357.0,
-                      "y": 415.1668276015274
+                      "y": 391.33408568745426
                     },
                     {
                       "x": 408.0,
-                      "y": 454.3138277271327
+                      "y": 430.4810858130596
                     },
                     {
                       "x": 408.0,
@@ -3680,7 +3644,10 @@
                   ]
                 ],
                 "placement_id": "plane-2-b7-s1-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
@@ -3694,8 +3661,8 @@
                 "x_left_cm": 408.0,
                 "x_right_cm": 459.0,
                 "y_top_cm": 0.0,
-                "y_bottom_cm": 318.64343829193,
-                "raw_length_cm": 318.64343829193,
+                "y_bottom_cm": 358.28257074668363,
+                "raw_length_cm": 358.28257074668363,
                 "coverage_polygons": [
                   [
                     {
@@ -3708,11 +3675,11 @@
                     },
                     {
                       "x": 419.3704728890729,
-                      "y": 318.32382375737853
+                      "y": 357.9629562121321
                     },
                     {
                       "x": 408.0,
-                      "y": 318.64343829193
+                      "y": 358.28257074668363
                     }
                   ],
                   [
@@ -3726,33 +3693,36 @@
                     },
                     {
                       "x": 459.0,
-                      "y": 315.77630313912726
+                      "y": 355.4154355938809
                     },
                     {
                       "x": 419.3704728890729,
-                      "y": 318.004209222827
+                      "y": 357.6433416775806
                     }
                   ]
                 ],
                 "placement_id": "plane-2-b8-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               },
               {
                 "segment_index": 1,
                 "x_left_cm": 408.0,
                 "x_right_cm": 459.0,
-                "y_top_cm": 454.3138277271327,
+                "y_top_cm": 430.4810858130596,
                 "y_bottom_cm": 1000.0,
-                "raw_length_cm": 545.6861722728672,
+                "raw_length_cm": 569.5189141869404,
                 "coverage_polygons": [
                   [
                     {
                       "x": 408.0,
-                      "y": 454.3138277271327
+                      "y": 430.4810858130596
                     },
                     {
                       "x": 419.3704728890729,
-                      "y": 458.67774835082616
+                      "y": 434.84500643675307
                     },
                     {
                       "x": 419.3704728890729,
@@ -3766,11 +3736,11 @@
                   [
                     {
                       "x": 419.3704728890729,
-                      "y": 463.04166897451955
+                      "y": 439.20892706044646
                     },
                     {
                       "x": 459.0,
-                      "y": 493.4608278527381
+                      "y": 469.628085938665
                     },
                     {
                       "x": 459.0,
@@ -3801,7 +3771,10 @@
                   ]
                 ],
                 "placement_id": "plane-2-b8-s1-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "partial",
+                "partial_cut_line_y_cm": 579.9972837334437,
+                "top_extra_cm": 15.0
               }
             ]
           },
@@ -3815,8 +3788,8 @@
                 "x_left_cm": 459.0,
                 "x_right_cm": 510.0,
                 "y_top_cm": 0.0,
-                "y_bottom_cm": 315.77630313912726,
-                "raw_length_cm": 315.77630313912726,
+                "y_bottom_cm": 355.4154355938809,
+                "raw_length_cm": 355.4154355938809,
                 "coverage_polygons": [
                   [
                     {
@@ -3824,87 +3797,57 @@
                       "y": 0.0
                     },
                     {
-                      "x": 475.01358133278154,
+                      "x": 510.0,
                       "y": 0.0
                     },
                     {
-                      "x": 475.01358133278154,
-                      "y": 314.8760462379217
+                      "x": 510.0,
+                      "y": 352.54830044107814
                     },
                     {
                       "x": 459.0,
-                      "y": 315.77630313912726
-                    }
-                  ],
-                  [
-                    {
-                      "x": 475.01358133278154,
-                      "y": 0.0
-                    },
-                    {
-                      "x": 510.0,
-                      "y": 0.0
-                    },
-                    {
-                      "x": 510.0,
-                      "y": 312.9091679863245
-                    },
-                    {
-                      "x": 475.01358133278154,
-                      "y": 314.8760462379217
+                      "y": 355.4154355938809
                     }
                   ]
                 ],
                 "placement_id": "plane-2-b9-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               },
               {
                 "segment_index": 1,
                 "x_left_cm": 459.0,
                 "x_right_cm": 510.0,
-                "y_top_cm": 493.4608278527381,
+                "y_top_cm": 469.628085938665,
                 "y_bottom_cm": 599.7169268945712,
-                "raw_length_cm": 106.25609904183312,
+                "raw_length_cm": 130.08884095590622,
                 "coverage_polygons": [
                   [
                     {
                       "x": 459.0,
-                      "y": 493.4608278527381
-                    },
-                    {
-                      "x": 475.01358133278154,
-                      "y": 505.7526645281457
-                    },
-                    {
-                      "x": 475.01358133278154,
-                      "y": 597.6180910703463
-                    },
-                    {
-                      "x": 459.0,
-                      "y": 599.7169268945712
-                    }
-                  ],
-                  [
-                    {
-                      "x": 475.01358133278154,
-                      "y": 505.7526645281457
+                      "y": 469.628085938665
                     },
                     {
                       "x": 510.0,
-                      "y": 505.47245086049594
+                      "y": 508.7750860642703
                     },
                     {
                       "x": 510.0,
                       "y": 593.0325616166839
                     },
                     {
-                      "x": 475.01358133278154,
-                      "y": 597.6180910703463
+                      "x": 459.0,
+                      "y": 599.7169268945712
                     }
                   ]
                 ],
                 "placement_id": "plane-2-b9-s1-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               },
               {
                 "segment_index": 2,
@@ -3920,24 +3863,6 @@
                       "y": 634.3206587991477
                     },
                     {
-                      "x": 475.01358133278154,
-                      "y": 638.1229291870026
-                    },
-                    {
-                      "x": 475.01358133278154,
-                      "y": 1000.0
-                    },
-                    {
-                      "x": 459.0,
-                      "y": 1000.0
-                    }
-                  ],
-                  [
-                    {
-                      "x": 475.01358133278154,
-                      "y": 638.1229291870026
-                    },
-                    {
                       "x": 510.0,
                       "y": 646.4301167492958
                     },
@@ -3946,13 +3871,16 @@
                       "y": 1000.0
                     },
                     {
-                      "x": 475.01358133278154,
+                      "x": 459.0,
                       "y": 1000.0
                     }
                   ]
                 ],
                 "placement_id": "plane-2-b9-s2-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
@@ -3966,8 +3894,8 @@
                 "x_left_cm": 510.0,
                 "x_right_cm": 561.0,
                 "y_top_cm": 0.0,
-                "y_bottom_cm": 312.9091679863245,
-                "raw_length_cm": 312.9091679863245,
+                "y_bottom_cm": 352.54830044107814,
+                "raw_length_cm": 352.54830044107814,
                 "coverage_polygons": [
                   [
                     {
@@ -3975,51 +3903,93 @@
                       "y": 0.0
                     },
                     {
+                      "x": 552.0606411225318,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 552.0606411225318,
+                      "y": 350.18372117221867
+                    },
+                    {
+                      "x": 510.0,
+                      "y": 352.54830044107814
+                    }
+                  ],
+                  [
+                    {
+                      "x": 552.0606411225318,
+                      "y": 0.0
+                    },
+                    {
                       "x": 561.0,
                       "y": 0.0
                     },
                     {
                       "x": 561.0,
-                      "y": 310.0420328335217
+                      "y": 349.68116528827534
                     },
                     {
-                      "x": 510.0,
-                      "y": 312.9091679863245
+                      "x": 552.0606411225318,
+                      "y": 350.18372117221867
                     }
                   ]
                 ],
                 "placement_id": "plane-2-b10-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               },
               {
                 "segment_index": 1,
                 "x_left_cm": 510.0,
                 "x_right_cm": 561.0,
-                "y_top_cm": 505.06398101435167,
+                "y_top_cm": 508.7750860642703,
                 "y_bottom_cm": 593.0325616166839,
-                "raw_length_cm": 87.96858060233222,
+                "raw_length_cm": 84.25747555241361,
                 "coverage_polygons": [
                   [
                     {
                       "x": 510.0,
-                      "y": 505.47245086049594
+                      "y": 508.7750860642703
+                    },
+                    {
+                      "x": 552.0606411225318,
+                      "y": 541.0603394624427
+                    },
+                    {
+                      "x": 552.0606411225318,
+                      "y": 587.5198422228577
+                    },
+                    {
+                      "x": 510.0,
+                      "y": 593.0325616166839
+                    }
+                  ],
+                  [
+                    {
+                      "x": 552.0606411225318,
+                      "y": 541.0603394624427
                     },
                     {
                       "x": 561.0,
-                      "y": 505.06398101435167
+                      "y": 540.9887422360641
                     },
                     {
                       "x": 561.0,
                       "y": 586.3481963387965
                     },
                     {
-                      "x": 510.0,
-                      "y": 593.0325616166839
+                      "x": 552.0606411225318,
+                      "y": 587.5198422228577
                     }
                   ]
                 ],
                 "placement_id": "plane-2-b10-s1-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               },
               {
                 "segment_index": 2,
@@ -4035,6 +4005,24 @@
                       "y": 646.4301167492958
                     },
                     {
+                      "x": 552.0606411225318,
+                      "y": 656.4170101812482
+                    },
+                    {
+                      "x": 552.0606411225318,
+                      "y": 1000.0
+                    },
+                    {
+                      "x": 510.0,
+                      "y": 1000.0
+                    }
+                  ],
+                  [
+                    {
+                      "x": 552.0606411225318,
+                      "y": 656.4170101812482
+                    },
+                    {
                       "x": 561.0,
                       "y": 658.539574699444
                     },
@@ -4043,13 +4031,16 @@
                       "y": 1000.0
                     },
                     {
-                      "x": 510.0,
+                      "x": 552.0606411225318,
                       "y": 1000.0
                     }
                   ]
                 ],
                 "placement_id": "plane-2-b10-s2-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
@@ -4063,8 +4054,8 @@
                 "x_left_cm": 561.0,
                 "x_right_cm": 612.0,
                 "y_top_cm": 0.0,
-                "y_bottom_cm": 310.0420328335217,
-                "raw_length_cm": 310.0420328335217,
+                "y_bottom_cm": 349.68116528827534,
+                "raw_length_cm": 349.68116528827534,
                 "coverage_polygons": [
                   [
                     {
@@ -4077,11 +4068,11 @@
                     },
                     {
                       "x": 563.900170736755,
-                      "y": 309.87899005963
+                      "y": 349.5181225143836
                     },
                     {
                       "x": 561.0,
-                      "y": 310.0420328335217
+                      "y": 349.68116528827534
                     }
                   ],
                   [
@@ -4095,11 +4086,11 @@
                     },
                     {
                       "x": 609.4558412665563,
-                      "y": 308.59845805585064
+                      "y": 348.23759051060426
                     },
                     {
                       "x": 563.900170736755,
-                      "y": 309.87899005963
+                      "y": 349.5181225143836
                     }
                   ],
                   [
@@ -4113,33 +4104,36 @@
                     },
                     {
                       "x": 612.0,
-                      "y": 307.17489768071897
+                      "y": 346.8140301354726
                     },
                     {
                       "x": 609.4558412665563,
-                      "y": 307.3179260520713
+                      "y": 346.9570585068249
                     }
                   ]
                 ],
                 "placement_id": "plane-2-b11-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               },
               {
                 "segment_index": 1,
                 "x_left_cm": 561.0,
                 "x_right_cm": 612.0,
-                "y_top_cm": 504.6555111682074,
+                "y_top_cm": 540.5802723899199,
                 "y_bottom_cm": 1000.0,
-                "raw_length_cm": 495.3444888317926,
+                "raw_length_cm": 459.41972761008014,
                 "coverage_polygons": [
                   [
                     {
                       "x": 561.0,
-                      "y": 505.06398101435167
+                      "y": 540.9887422360641
                     },
                     {
                       "x": 563.900170736755,
-                      "y": 505.0407529301431
+                      "y": 540.9655141518556
                     },
                     {
                       "x": 563.900170736755,
@@ -4171,11 +4165,11 @@
                   [
                     {
                       "x": 563.900170736755,
-                      "y": 505.0407529301431
+                      "y": 540.9655141518556
                     },
                     {
                       "x": 609.4558412665563,
-                      "y": 504.85832040335583
+                      "y": 540.7830816250682
                     },
                     {
                       "x": 609.4558412665563,
@@ -4207,11 +4201,11 @@
                   [
                     {
                       "x": 609.4558412665563,
-                      "y": 504.6758878765685
+                      "y": 540.6006490982809
                     },
                     {
                       "x": 612.0,
-                      "y": 504.6555111682074
+                      "y": 540.5802723899199
                     },
                     {
                       "x": 612.0,
@@ -4224,7 +4218,10 @@
                   ]
                 ],
                 "placement_id": "plane-2-b11-s1-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "partial",
+                "partial_cut_line_y_cm": 579.9972837334437,
+                "top_extra_cm": 15.0
               }
             ]
           },
@@ -4238,8 +4235,8 @@
                 "x_left_cm": 612.0,
                 "x_right_cm": 663.0,
                 "y_top_cm": 0.0,
-                "y_bottom_cm": 307.17489768071897,
-                "raw_length_cm": 307.17489768071897,
+                "y_bottom_cm": 346.8140301354726,
+                "raw_length_cm": 346.8140301354726,
                 "coverage_polygons": [
                   [
                     {
@@ -4252,33 +4249,36 @@
                     },
                     {
                       "x": 663.0,
-                      "y": 304.3077625279162
+                      "y": 343.94689498266985
                     },
                     {
                       "x": 612.0,
-                      "y": 307.17489768071897
+                      "y": 346.8140301354726
                     }
                   ]
                 ],
                 "placement_id": "plane-2-b12-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               },
               {
                 "segment_index": 1,
                 "x_left_cm": 612.0,
                 "x_right_cm": 663.0,
-                "y_top_cm": 504.2470413220631,
+                "y_top_cm": 540.1718025437756,
                 "y_bottom_cm": 1000.0,
-                "raw_length_cm": 495.7529586779369,
+                "raw_length_cm": 459.8281974562244,
                 "coverage_polygons": [
                   [
                     {
                       "x": 612.0,
-                      "y": 504.6555111682074
+                      "y": 540.5802723899199
                     },
                     {
                       "x": 663.0,
-                      "y": 504.2470413220631
+                      "y": 540.1718025437756
                     },
                     {
                       "x": 663.0,
@@ -4291,7 +4291,10 @@
                   ]
                 ],
                 "placement_id": "plane-2-b12-s1-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
@@ -4305,8 +4308,8 @@
                 "x_left_cm": 663.0,
                 "x_right_cm": 714.0,
                 "y_top_cm": 0.0,
-                "y_bottom_cm": 304.3077625279162,
-                "raw_length_cm": 304.3077625279162,
+                "y_bottom_cm": 343.94689498266985,
+                "raw_length_cm": 343.94689498266985,
                 "coverage_polygons": [
                   [
                     {
@@ -4319,33 +4322,36 @@
                     },
                     {
                       "x": 714.0,
-                      "y": 301.4406273751135
+                      "y": 341.0797598298671
                     },
                     {
                       "x": 663.0,
-                      "y": 304.3077625279162
+                      "y": 343.94689498266985
                     }
                   ]
                 ],
                 "placement_id": "plane-2-b13-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               },
               {
                 "segment_index": 1,
                 "x_left_cm": 663.0,
                 "x_right_cm": 714.0,
-                "y_top_cm": 503.8385714759188,
+                "y_top_cm": 539.7633326976313,
                 "y_bottom_cm": 1000.0,
-                "raw_length_cm": 496.1614285240812,
+                "raw_length_cm": 460.2366673023687,
                 "coverage_polygons": [
                   [
                     {
                       "x": 663.0,
-                      "y": 504.2470413220631
+                      "y": 540.1718025437756
                     },
                     {
                       "x": 714.0,
-                      "y": 503.8385714759188
+                      "y": 539.7633326976313
                     },
                     {
                       "x": 714.0,
@@ -4358,7 +4364,10 @@
                   ]
                 ],
                 "placement_id": "plane-2-b13-s1-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
@@ -4372,8 +4381,8 @@
                 "x_left_cm": 714.0,
                 "x_right_cm": 765.0,
                 "y_top_cm": 0.0,
-                "y_bottom_cm": 301.4406273751135,
-                "raw_length_cm": 301.4406273751135,
+                "y_bottom_cm": 341.0797598298671,
+                "raw_length_cm": 341.0797598298671,
                 "coverage_polygons": [
                   [
                     {
@@ -4386,33 +4395,36 @@
                     },
                     {
                       "x": 765.0,
-                      "y": 298.57349222231073
+                      "y": 338.21262467706435
                     },
                     {
                       "x": 714.0,
-                      "y": 301.4406273751135
+                      "y": 341.0797598298671
                     }
                   ]
                 ],
                 "placement_id": "plane-2-b14-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               },
               {
                 "segment_index": 1,
                 "x_left_cm": 714.0,
                 "x_right_cm": 765.0,
-                "y_top_cm": 503.4301016297745,
+                "y_top_cm": 539.3548628514869,
                 "y_bottom_cm": 1000.0,
-                "raw_length_cm": 496.5698983702255,
+                "raw_length_cm": 460.6451371485131,
                 "coverage_polygons": [
                   [
                     {
                       "x": 714.0,
-                      "y": 503.8385714759188
+                      "y": 539.7633326976313
                     },
                     {
                       "x": 765.0,
-                      "y": 503.4301016297745
+                      "y": 539.3548628514869
                     },
                     {
                       "x": 765.0,
@@ -4425,7 +4437,10 @@
                   ]
                 ],
                 "placement_id": "plane-2-b14-s1-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
@@ -4439,8 +4454,8 @@
                 "x_left_cm": 765.0,
                 "x_right_cm": 816.0,
                 "y_top_cm": 0.0,
-                "y_bottom_cm": 298.57349222231073,
-                "raw_length_cm": 298.57349222231073,
+                "y_bottom_cm": 338.21262467706435,
+                "raw_length_cm": 338.21262467706435,
                 "coverage_polygons": [
                   [
                     {
@@ -4448,87 +4463,57 @@
                       "y": 0.0
                     },
                     {
-                      "x": 786.7019350165563,
+                      "x": 816.0,
                       "y": 0.0
                     },
                     {
-                      "x": 786.7019350165563,
-                      "y": 297.3534455405498
+                      "x": 816.0,
+                      "y": 335.3454895242616
                     },
                     {
                       "x": 765.0,
-                      "y": 298.57349222231073
-                    }
-                  ],
-                  [
-                    {
-                      "x": 786.7019350165563,
-                      "y": 0.0
-                    },
-                    {
-                      "x": 816.0,
-                      "y": 0.0
-                    },
-                    {
-                      "x": 816.0,
-                      "y": 295.706357069508
-                    },
-                    {
-                      "x": 786.7019350165563,
-                      "y": 297.3534455405498
+                      "y": 338.21262467706435
                     }
                   ]
                 ],
                 "placement_id": "plane-2-b15-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               },
               {
                 "segment_index": 1,
                 "x_left_cm": 765.0,
                 "x_right_cm": 816.0,
-                "y_top_cm": 303.3356820934933,
+                "y_top_cm": 538.9463930053427,
                 "y_bottom_cm": 1000.0,
-                "raw_length_cm": 696.6643179065068,
+                "raw_length_cm": 461.05360699465734,
                 "coverage_polygons": [
                   [
                     {
                       "x": 765.0,
-                      "y": 503.4301016297745
+                      "y": 539.3548628514869
                     },
                     {
-                      "x": 786.7019350165563,
-                      "y": 503.25628621688736
+                      "x": 816.0,
+                      "y": 538.9463930053427
                     },
                     {
-                      "x": 786.7019350165563,
+                      "x": 816.0,
                       "y": 1000.0
                     },
                     {
                       "x": 765.0,
-                      "y": 1000.0
-                    }
-                  ],
-                  [
-                    {
-                      "x": 786.7019350165563,
-                      "y": 503.25628621688736
-                    },
-                    {
-                      "x": 816.0,
-                      "y": 303.3356820934933
-                    },
-                    {
-                      "x": 816.0,
-                      "y": 1000.0
-                    },
-                    {
-                      "x": 786.7019350165563,
                       "y": 1000.0
                     }
                   ]
                 ],
                 "placement_id": "plane-2-b15-s1-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
@@ -4542,8 +4527,8 @@
                 "x_left_cm": 816.0,
                 "x_right_cm": 867.0,
                 "y_top_cm": 0.0,
-                "y_bottom_cm": 1000.0,
-                "raw_length_cm": 1000.0,
+                "y_bottom_cm": 335.3454895242616,
+                "raw_length_cm": 335.3454895242616,
                 "coverage_polygons": [
                   [
                     {
@@ -4551,39 +4536,21 @@
                       "y": 0.0
                     },
                     {
-                      "x": 817.1273540976822,
+                      "x": 863.7489948063065,
                       "y": 0.0
                     },
                     {
-                      "x": 817.1273540976822,
-                      "y": 295.67466808359507
+                      "x": 863.7489948063065,
+                      "y": 332.66112047484677
                     },
                     {
                       "x": 816.0,
-                      "y": 295.706357069508
+                      "y": 335.3454895242616
                     }
                   ],
                   [
                     {
-                      "x": 816.0,
-                      "y": 303.3356820934933
-                    },
-                    {
-                      "x": 817.1273540976822,
-                      "y": 299.4893305955877
-                    },
-                    {
-                      "x": 817.1273540976822,
-                      "y": 1000.0
-                    },
-                    {
-                      "x": 816.0,
-                      "y": 1000.0
-                    }
-                  ],
-                  [
-                    {
-                      "x": 817.1273540976822,
+                      "x": 863.7489948063065,
                       "y": 0.0
                     },
                     {
@@ -4592,16 +4559,70 @@
                     },
                     {
                       "x": 867.0,
-                      "y": 1000.0
+                      "y": 332.47835437145886
                     },
                     {
-                      "x": 817.1273540976822,
-                      "y": 1000.0
+                      "x": 863.7489948063065,
+                      "y": 332.66112047484677
                     }
                   ]
                 ],
                 "placement_id": "plane-2-b16-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
+              },
+              {
+                "segment_index": 1,
+                "x_left_cm": 816.0,
+                "x_right_cm": 867.0,
+                "y_top_cm": 516.3801438001487,
+                "y_bottom_cm": 1000.0,
+                "raw_length_cm": 483.61985619985126,
+                "coverage_polygons": [
+                  [
+                    {
+                      "x": 816.0,
+                      "y": 538.9463930053427
+                    },
+                    {
+                      "x": 863.7489948063065,
+                      "y": 538.5639611511843
+                    },
+                    {
+                      "x": 863.7489948063065,
+                      "y": 1000.0
+                    },
+                    {
+                      "x": 816.0,
+                      "y": 1000.0
+                    }
+                  ],
+                  [
+                    {
+                      "x": 863.7489948063065,
+                      "y": 538.5639611511843
+                    },
+                    {
+                      "x": 867.0,
+                      "y": 516.3801438001487
+                    },
+                    {
+                      "x": 867.0,
+                      "y": 1000.0
+                    },
+                    {
+                      "x": 863.7489948063065,
+                      "y": 1000.0
+                    }
+                  ]
+                ],
+                "placement_id": "plane-2-b16-s1-r0",
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
@@ -4624,6 +4645,42 @@
                       "y": 0.0
                     },
                     {
+                      "x": 894.1744138874325,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 894.1744138874325,
+                      "y": 331.71450420171897
+                    },
+                    {
+                      "x": 867.0,
+                      "y": 332.47835437145886
+                    }
+                  ],
+                  [
+                    {
+                      "x": 867.0,
+                      "y": 516.3801438001487
+                    },
+                    {
+                      "x": 894.1744138874325,
+                      "y": 423.6653989160643
+                    },
+                    {
+                      "x": 894.1744138874325,
+                      "y": 1000.0
+                    },
+                    {
+                      "x": 867.0,
+                      "y": 1000.0
+                    }
+                  ],
+                  [
+                    {
+                      "x": 894.1744138874325,
+                      "y": 0.0
+                    },
+                    {
                       "x": 918.0,
                       "y": 0.0
                     },
@@ -4632,13 +4689,16 @@
                       "y": 1000.0
                     },
                     {
-                      "x": 867.0,
+                      "x": 894.1744138874325,
                       "y": 1000.0
                     }
                   ]
                 ],
                 "placement_id": "plane-2-b17-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "partial",
+                "partial_cut_line_y_cm": 330.95065403197907,
+                "top_extra_cm": 15.0
               }
             ]
           },
@@ -4675,7 +4735,10 @@
                   ]
                 ],
                 "placement_id": "plane-2-b18-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
@@ -4712,14 +4775,17 @@
                   ]
                 ],
                 "placement_id": "plane-2-b19-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           }
         ],
         "manual_sheet_placements": [],
         "manually_removed_auto_sheet_ids": [],
-        "layout_revision": 43,
+        "layout_revision": 47,
         "layout_dirty_reason": null,
         "outline": [
           {
@@ -4742,20 +4808,20 @@
         "holes": [
           [
             {
-              "x": 243.31281043046357,
-              "y": 327.90187810430467
+              "x": 320.35987022021385,
+              "y": 363.20955303860165
             },
             {
-              "x": 817.1273540976822,
-              "y": 295.6429790976821
+              "x": 894.1744138874325,
+              "y": 330.95065403197907
             },
             {
-              "x": 786.7019350165563,
-              "y": 503.25628621688736
+              "x": 863.7489948063065,
+              "y": 538.5639611511843
             },
             {
-              "x": 475.01358133278154,
-              "y": 505.7526645281457
+              "x": 552.0606411225318,
+              "y": 541.0603394624427
             }
           ],
           [
@@ -4783,15 +4849,15 @@
         "name": "3",
         "selected_material_id": "PD510",
         "generation_settings": {
-          "layout_origin": "left",
+          "layout_origin": "right",
           "base_line_y_cm": 300.0
         },
         "auto_sheet_placements": [
           {
             "id": "plane-3-b0-s0-r0",
             "band_index": 0,
-            "x_left_cm": 0.0,
-            "x_right_cm": 51.0,
+            "x_left_cm": 949.0,
+            "x_right_cm": 1000.0,
             "y_top_cm": 0.0,
             "y_bottom_cm": 300.0,
             "raw_length_cm": 300.0,
@@ -4802,8 +4868,8 @@
           {
             "id": "plane-3-b1-s0-r0",
             "band_index": 1,
-            "x_left_cm": 51.0,
-            "x_right_cm": 102.0,
+            "x_left_cm": 898.0,
+            "x_right_cm": 949.0,
             "y_top_cm": 0.0,
             "y_bottom_cm": 300.0,
             "raw_length_cm": 300.0,
@@ -4814,8 +4880,8 @@
           {
             "id": "plane-3-b2-s0-r0",
             "band_index": 2,
-            "x_left_cm": 102.0,
-            "x_right_cm": 153.0,
+            "x_left_cm": 847.0,
+            "x_right_cm": 898.0,
             "y_top_cm": 0.0,
             "y_bottom_cm": 300.0,
             "raw_length_cm": 300.0,
@@ -4826,32 +4892,20 @@
           {
             "id": "plane-3-b3-s0-r0",
             "band_index": 3,
-            "x_left_cm": 153.0,
-            "x_right_cm": 204.0,
+            "x_left_cm": 796.0,
+            "x_right_cm": 847.0,
             "y_top_cm": 0.0,
-            "y_bottom_cm": 101.08828605723183,
-            "raw_length_cm": 101.08828605723183,
-            "final_length_cm": 101.08828605723183,
-            "source": "auto",
-            "split_reason": null
-          },
-          {
-            "id": "plane-3-b3-s1-r0",
-            "band_index": 3,
-            "x_left_cm": 153.0,
-            "x_right_cm": 204.0,
-            "y_top_cm": 200.16732379283488,
             "y_bottom_cm": 300.0,
-            "raw_length_cm": 99.83267620716512,
-            "final_length_cm": 99.83267620716512,
+            "raw_length_cm": 300.0,
+            "final_length_cm": 300.0,
             "source": "auto",
             "split_reason": null
           },
           {
             "id": "plane-3-b4-s0-r0",
             "band_index": 4,
-            "x_left_cm": 204.0,
-            "x_right_cm": 255.0,
+            "x_left_cm": 745.0,
+            "x_right_cm": 796.0,
             "y_top_cm": 0.0,
             "y_bottom_cm": 300.0,
             "raw_length_cm": 300.0,
@@ -4862,8 +4916,8 @@
           {
             "id": "plane-3-b5-s0-r0",
             "band_index": 5,
-            "x_left_cm": 255.0,
-            "x_right_cm": 306.0,
+            "x_left_cm": 694.0,
+            "x_right_cm": 745.0,
             "y_top_cm": 0.0,
             "y_bottom_cm": 300.0,
             "raw_length_cm": 300.0,
@@ -4874,8 +4928,8 @@
           {
             "id": "plane-3-b6-s0-r0",
             "band_index": 6,
-            "x_left_cm": 306.0,
-            "x_right_cm": 357.0,
+            "x_left_cm": 643.0,
+            "x_right_cm": 694.0,
             "y_top_cm": 0.0,
             "y_bottom_cm": 300.0,
             "raw_length_cm": 300.0,
@@ -4886,8 +4940,8 @@
           {
             "id": "plane-3-b7-s0-r0",
             "band_index": 7,
-            "x_left_cm": 357.0,
-            "x_right_cm": 408.0,
+            "x_left_cm": 592.0,
+            "x_right_cm": 643.0,
             "y_top_cm": 0.0,
             "y_bottom_cm": 300.0,
             "raw_length_cm": 300.0,
@@ -4898,8 +4952,8 @@
           {
             "id": "plane-3-b8-s0-r0",
             "band_index": 8,
-            "x_left_cm": 408.0,
-            "x_right_cm": 459.0,
+            "x_left_cm": 541.0,
+            "x_right_cm": 592.0,
             "y_top_cm": 0.0,
             "y_bottom_cm": 300.0,
             "raw_length_cm": 300.0,
@@ -4910,8 +4964,8 @@
           {
             "id": "plane-3-b9-s0-r0",
             "band_index": 9,
-            "x_left_cm": 459.0,
-            "x_right_cm": 510.0,
+            "x_left_cm": 490.0,
+            "x_right_cm": 541.0,
             "y_top_cm": 0.0,
             "y_bottom_cm": 300.0,
             "raw_length_cm": 300.0,
@@ -4922,8 +4976,8 @@
           {
             "id": "plane-3-b10-s0-r0",
             "band_index": 10,
-            "x_left_cm": 510.0,
-            "x_right_cm": 561.0,
+            "x_left_cm": 439.0,
+            "x_right_cm": 490.0,
             "y_top_cm": 0.0,
             "y_bottom_cm": 300.0,
             "raw_length_cm": 300.0,
@@ -4934,8 +4988,8 @@
           {
             "id": "plane-3-b11-s0-r0",
             "band_index": 11,
-            "x_left_cm": 561.0,
-            "x_right_cm": 612.0,
+            "x_left_cm": 388.0,
+            "x_right_cm": 439.0,
             "y_top_cm": 0.0,
             "y_bottom_cm": 300.0,
             "raw_length_cm": 300.0,
@@ -4946,8 +5000,8 @@
           {
             "id": "plane-3-b12-s0-r0",
             "band_index": 12,
-            "x_left_cm": 612.0,
-            "x_right_cm": 663.0,
+            "x_left_cm": 337.0,
+            "x_right_cm": 388.0,
             "y_top_cm": 0.0,
             "y_bottom_cm": 300.0,
             "raw_length_cm": 300.0,
@@ -4958,8 +5012,8 @@
           {
             "id": "plane-3-b13-s0-r0",
             "band_index": 13,
-            "x_left_cm": 663.0,
-            "x_right_cm": 714.0,
+            "x_left_cm": 286.0,
+            "x_right_cm": 337.0,
             "y_top_cm": 0.0,
             "y_bottom_cm": 300.0,
             "raw_length_cm": 300.0,
@@ -4970,8 +5024,8 @@
           {
             "id": "plane-3-b14-s0-r0",
             "band_index": 14,
-            "x_left_cm": 714.0,
-            "x_right_cm": 765.0,
+            "x_left_cm": 235.0,
+            "x_right_cm": 286.0,
             "y_top_cm": 0.0,
             "y_bottom_cm": 300.0,
             "raw_length_cm": 300.0,
@@ -4982,44 +5036,56 @@
           {
             "id": "plane-3-b15-s0-r0",
             "band_index": 15,
-            "x_left_cm": 765.0,
-            "x_right_cm": 816.0,
+            "x_left_cm": 184.0,
+            "x_right_cm": 235.0,
             "y_top_cm": 0.0,
             "y_bottom_cm": 300.0,
             "raw_length_cm": 300.0,
-            "final_length_cm": 300.0,
+            "final_length_cm": 315.0,
             "source": "auto",
-            "split_reason": null
+            "split_reason": "partial_cutout"
           },
           {
             "id": "plane-3-b16-s0-r0",
             "band_index": 16,
-            "x_left_cm": 816.0,
-            "x_right_cm": 867.0,
+            "x_left_cm": 133.0,
+            "x_right_cm": 184.0,
             "y_top_cm": 0.0,
+            "y_bottom_cm": 100.87212041895009,
+            "raw_length_cm": 100.87212041895009,
+            "final_length_cm": 100.87212041895009,
+            "source": "auto",
+            "split_reason": null
+          },
+          {
+            "id": "plane-3-b16-s1-r0",
+            "band_index": 16,
+            "x_left_cm": 133.0,
+            "x_right_cm": 184.0,
+            "y_top_cm": 200.16732379283488,
             "y_bottom_cm": 300.0,
-            "raw_length_cm": 300.0,
-            "final_length_cm": 300.0,
+            "raw_length_cm": 99.83267620716512,
+            "final_length_cm": 99.83267620716512,
             "source": "auto",
             "split_reason": null
           },
           {
             "id": "plane-3-b17-s0-r0",
             "band_index": 17,
-            "x_left_cm": 867.0,
-            "x_right_cm": 918.0,
+            "x_left_cm": 82.0,
+            "x_right_cm": 133.0,
             "y_top_cm": 0.0,
             "y_bottom_cm": 300.0,
             "raw_length_cm": 300.0,
-            "final_length_cm": 300.0,
+            "final_length_cm": 315.0,
             "source": "auto",
-            "split_reason": null
+            "split_reason": "partial_cutout"
           },
           {
             "id": "plane-3-b18-s0-r0",
             "band_index": 18,
-            "x_left_cm": 918.0,
-            "x_right_cm": 969.0,
+            "x_left_cm": 31.0,
+            "x_right_cm": 82.0,
             "y_top_cm": 0.0,
             "y_bottom_cm": 300.0,
             "raw_length_cm": 300.0,
@@ -5030,8 +5096,8 @@
           {
             "id": "plane-3-b19-s0-r0",
             "band_index": 19,
-            "x_left_cm": 969.0,
-            "x_right_cm": 1000.0,
+            "x_left_cm": 0.0,
+            "x_right_cm": 31.0,
             "y_top_cm": 0.0,
             "y_bottom_cm": 300.0,
             "raw_length_cm": 300.0,
@@ -5043,234 +5109,620 @@
         "layout_bands": [
           {
             "band_index": 0,
-            "x_left_cm": 0.0,
-            "x_right_cm": 51.0,
+            "x_left_cm": 949.0,
+            "x_right_cm": 1000.0,
             "segments": [
               {
                 "segment_index": 0,
-                "x_left_cm": 0.0,
-                "x_right_cm": 51.0,
+                "x_left_cm": 949.0,
+                "x_right_cm": 1000.0,
                 "y_top_cm": 0.0,
                 "y_bottom_cm": 300.0,
                 "raw_length_cm": 300.0,
                 "coverage_polygons": [
                   [
                     {
-                      "x": 0.0,
+                      "x": 949.0,
                       "y": 0.0
                     },
                     {
-                      "x": 51.0,
+                      "x": 1000.0,
                       "y": 0.0
                     },
                     {
-                      "x": 51.0,
+                      "x": 1000.0,
                       "y": 300.0
                     },
                     {
-                      "x": 0.0,
+                      "x": 949.0,
                       "y": 300.0
                     }
                   ]
                 ],
                 "placement_id": "plane-3-b0-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
           {
             "band_index": 1,
-            "x_left_cm": 51.0,
-            "x_right_cm": 102.0,
+            "x_left_cm": 898.0,
+            "x_right_cm": 949.0,
             "segments": [
               {
                 "segment_index": 0,
-                "x_left_cm": 51.0,
-                "x_right_cm": 102.0,
+                "x_left_cm": 898.0,
+                "x_right_cm": 949.0,
                 "y_top_cm": 0.0,
                 "y_bottom_cm": 300.0,
                 "raw_length_cm": 300.0,
                 "coverage_polygons": [
                   [
                     {
-                      "x": 51.0,
+                      "x": 898.0,
                       "y": 0.0
                     },
                     {
-                      "x": 102.0,
+                      "x": 949.0,
                       "y": 0.0
                     },
                     {
-                      "x": 102.0,
+                      "x": 949.0,
                       "y": 300.0
                     },
                     {
-                      "x": 51.0,
+                      "x": 898.0,
                       "y": 300.0
                     }
                   ]
                 ],
                 "placement_id": "plane-3-b1-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
           {
             "band_index": 2,
-            "x_left_cm": 102.0,
-            "x_right_cm": 153.0,
+            "x_left_cm": 847.0,
+            "x_right_cm": 898.0,
             "segments": [
               {
                 "segment_index": 0,
-                "x_left_cm": 102.0,
-                "x_right_cm": 153.0,
+                "x_left_cm": 847.0,
+                "x_right_cm": 898.0,
                 "y_top_cm": 0.0,
                 "y_bottom_cm": 300.0,
                 "raw_length_cm": 300.0,
                 "coverage_polygons": [
                   [
                     {
-                      "x": 102.0,
+                      "x": 847.0,
                       "y": 0.0
                     },
                     {
-                      "x": 118.79105821651095,
+                      "x": 898.0,
                       "y": 0.0
                     },
                     {
-                      "x": 118.79105821651095,
+                      "x": 898.0,
                       "y": 300.0
                     },
                     {
-                      "x": 102.0,
-                      "y": 300.0
-                    }
-                  ],
-                  [
-                    {
-                      "x": 118.79105821651095,
-                      "y": 0.0
-                    },
-                    {
-                      "x": 153.0,
-                      "y": 0.0
-                    },
-                    {
-                      "x": 153.0,
-                      "y": 100.53706367961341
-                    },
-                    {
-                      "x": 118.79105821651095,
-                      "y": 100.16732379283488
-                    }
-                  ],
-                  [
-                    {
-                      "x": 118.79105821651095,
-                      "y": 200.16732379283488
-                    },
-                    {
-                      "x": 153.0,
-                      "y": 200.16732379283488
-                    },
-                    {
-                      "x": 153.0,
-                      "y": 300.0
-                    },
-                    {
-                      "x": 118.79105821651095,
+                      "x": 847.0,
                       "y": 300.0
                     }
                   ]
                 ],
                 "placement_id": "plane-3-b2-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
           {
             "band_index": 3,
-            "x_left_cm": 153.0,
-            "x_right_cm": 204.0,
+            "x_left_cm": 796.0,
+            "x_right_cm": 847.0,
             "segments": [
               {
                 "segment_index": 0,
-                "x_left_cm": 153.0,
-                "x_right_cm": 204.0,
-                "y_top_cm": 0.0,
-                "y_bottom_cm": 101.08828605723183,
-                "raw_length_cm": 101.08828605723183,
-                "coverage_polygons": [
-                  [
-                    {
-                      "x": 153.0,
-                      "y": 0.0
-                    },
-                    {
-                      "x": 204.0,
-                      "y": 0.0
-                    },
-                    {
-                      "x": 204.0,
-                      "y": 101.08828605723183
-                    },
-                    {
-                      "x": 153.0,
-                      "y": 100.53706367961341
-                    }
-                  ]
-                ],
-                "placement_id": "plane-3-b3-s0-r0",
-                "split_reason": null
-              },
-              {
-                "segment_index": 1,
-                "x_left_cm": 153.0,
-                "x_right_cm": 204.0,
-                "y_top_cm": 200.16732379283488,
-                "y_bottom_cm": 300.0,
-                "raw_length_cm": 99.83267620716512,
-                "coverage_polygons": [
-                  [
-                    {
-                      "x": 153.0,
-                      "y": 200.16732379283488
-                    },
-                    {
-                      "x": 204.0,
-                      "y": 200.16732379283488
-                    },
-                    {
-                      "x": 204.0,
-                      "y": 300.0
-                    },
-                    {
-                      "x": 153.0,
-                      "y": 300.0
-                    }
-                  ]
-                ],
-                "placement_id": "plane-3-b3-s1-r0",
-                "split_reason": null
-              }
-            ]
-          },
-          {
-            "band_index": 4,
-            "x_left_cm": 204.0,
-            "x_right_cm": 255.0,
-            "segments": [
-              {
-                "segment_index": 0,
-                "x_left_cm": 204.0,
-                "x_right_cm": 255.0,
+                "x_left_cm": 796.0,
+                "x_right_cm": 847.0,
                 "y_top_cm": 0.0,
                 "y_bottom_cm": 300.0,
                 "raw_length_cm": 300.0,
                 "coverage_polygons": [
                   [
                     {
-                      "x": 204.0,
+                      "x": 796.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 847.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 847.0,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 796.0,
+                      "y": 300.0
+                    }
+                  ]
+                ],
+                "placement_id": "plane-3-b3-s0-r0",
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
+              }
+            ]
+          },
+          {
+            "band_index": 4,
+            "x_left_cm": 745.0,
+            "x_right_cm": 796.0,
+            "segments": [
+              {
+                "segment_index": 0,
+                "x_left_cm": 745.0,
+                "x_right_cm": 796.0,
+                "y_top_cm": 0.0,
+                "y_bottom_cm": 300.0,
+                "raw_length_cm": 300.0,
+                "coverage_polygons": [
+                  [
+                    {
+                      "x": 745.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 796.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 796.0,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 745.0,
+                      "y": 300.0
+                    }
+                  ]
+                ],
+                "placement_id": "plane-3-b4-s0-r0",
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
+              }
+            ]
+          },
+          {
+            "band_index": 5,
+            "x_left_cm": 694.0,
+            "x_right_cm": 745.0,
+            "segments": [
+              {
+                "segment_index": 0,
+                "x_left_cm": 694.0,
+                "x_right_cm": 745.0,
+                "y_top_cm": 0.0,
+                "y_bottom_cm": 300.0,
+                "raw_length_cm": 300.0,
+                "coverage_polygons": [
+                  [
+                    {
+                      "x": 694.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 745.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 745.0,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 694.0,
+                      "y": 300.0
+                    }
+                  ]
+                ],
+                "placement_id": "plane-3-b5-s0-r0",
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
+              }
+            ]
+          },
+          {
+            "band_index": 6,
+            "x_left_cm": 643.0,
+            "x_right_cm": 694.0,
+            "segments": [
+              {
+                "segment_index": 0,
+                "x_left_cm": 643.0,
+                "x_right_cm": 694.0,
+                "y_top_cm": 0.0,
+                "y_bottom_cm": 300.0,
+                "raw_length_cm": 300.0,
+                "coverage_polygons": [
+                  [
+                    {
+                      "x": 643.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 694.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 694.0,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 643.0,
+                      "y": 300.0
+                    }
+                  ]
+                ],
+                "placement_id": "plane-3-b6-s0-r0",
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
+              }
+            ]
+          },
+          {
+            "band_index": 7,
+            "x_left_cm": 592.0,
+            "x_right_cm": 643.0,
+            "segments": [
+              {
+                "segment_index": 0,
+                "x_left_cm": 592.0,
+                "x_right_cm": 643.0,
+                "y_top_cm": 0.0,
+                "y_bottom_cm": 300.0,
+                "raw_length_cm": 300.0,
+                "coverage_polygons": [
+                  [
+                    {
+                      "x": 592.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 643.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 643.0,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 592.0,
+                      "y": 300.0
+                    }
+                  ]
+                ],
+                "placement_id": "plane-3-b7-s0-r0",
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
+              }
+            ]
+          },
+          {
+            "band_index": 8,
+            "x_left_cm": 541.0,
+            "x_right_cm": 592.0,
+            "segments": [
+              {
+                "segment_index": 0,
+                "x_left_cm": 541.0,
+                "x_right_cm": 592.0,
+                "y_top_cm": 0.0,
+                "y_bottom_cm": 300.0,
+                "raw_length_cm": 300.0,
+                "coverage_polygons": [
+                  [
+                    {
+                      "x": 541.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 592.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 592.0,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 541.0,
+                      "y": 300.0
+                    }
+                  ]
+                ],
+                "placement_id": "plane-3-b8-s0-r0",
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
+              }
+            ]
+          },
+          {
+            "band_index": 9,
+            "x_left_cm": 490.0,
+            "x_right_cm": 541.0,
+            "segments": [
+              {
+                "segment_index": 0,
+                "x_left_cm": 490.0,
+                "x_right_cm": 541.0,
+                "y_top_cm": 0.0,
+                "y_bottom_cm": 300.0,
+                "raw_length_cm": 300.0,
+                "coverage_polygons": [
+                  [
+                    {
+                      "x": 490.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 541.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 541.0,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 490.0,
+                      "y": 300.0
+                    }
+                  ]
+                ],
+                "placement_id": "plane-3-b9-s0-r0",
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
+              }
+            ]
+          },
+          {
+            "band_index": 10,
+            "x_left_cm": 439.0,
+            "x_right_cm": 490.0,
+            "segments": [
+              {
+                "segment_index": 0,
+                "x_left_cm": 439.0,
+                "x_right_cm": 490.0,
+                "y_top_cm": 0.0,
+                "y_bottom_cm": 300.0,
+                "raw_length_cm": 300.0,
+                "coverage_polygons": [
+                  [
+                    {
+                      "x": 439.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 490.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 490.0,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 439.0,
+                      "y": 300.0
+                    }
+                  ]
+                ],
+                "placement_id": "plane-3-b10-s0-r0",
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
+              }
+            ]
+          },
+          {
+            "band_index": 11,
+            "x_left_cm": 388.0,
+            "x_right_cm": 439.0,
+            "segments": [
+              {
+                "segment_index": 0,
+                "x_left_cm": 388.0,
+                "x_right_cm": 439.0,
+                "y_top_cm": 0.0,
+                "y_bottom_cm": 300.0,
+                "raw_length_cm": 300.0,
+                "coverage_polygons": [
+                  [
+                    {
+                      "x": 388.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 439.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 439.0,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 388.0,
+                      "y": 300.0
+                    }
+                  ]
+                ],
+                "placement_id": "plane-3-b11-s0-r0",
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
+              }
+            ]
+          },
+          {
+            "band_index": 12,
+            "x_left_cm": 337.0,
+            "x_right_cm": 388.0,
+            "segments": [
+              {
+                "segment_index": 0,
+                "x_left_cm": 337.0,
+                "x_right_cm": 388.0,
+                "y_top_cm": 0.0,
+                "y_bottom_cm": 300.0,
+                "raw_length_cm": 300.0,
+                "coverage_polygons": [
+                  [
+                    {
+                      "x": 337.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 388.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 388.0,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 337.0,
+                      "y": 300.0
+                    }
+                  ]
+                ],
+                "placement_id": "plane-3-b12-s0-r0",
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
+              }
+            ]
+          },
+          {
+            "band_index": 13,
+            "x_left_cm": 286.0,
+            "x_right_cm": 337.0,
+            "segments": [
+              {
+                "segment_index": 0,
+                "x_left_cm": 286.0,
+                "x_right_cm": 337.0,
+                "y_top_cm": 0.0,
+                "y_bottom_cm": 300.0,
+                "raw_length_cm": 300.0,
+                "coverage_polygons": [
+                  [
+                    {
+                      "x": 286.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 337.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 337.0,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 286.0,
+                      "y": 300.0
+                    }
+                  ]
+                ],
+                "placement_id": "plane-3-b13-s0-r0",
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
+              }
+            ]
+          },
+          {
+            "band_index": 14,
+            "x_left_cm": 235.0,
+            "x_right_cm": 286.0,
+            "segments": [
+              {
+                "segment_index": 0,
+                "x_left_cm": 235.0,
+                "x_right_cm": 286.0,
+                "y_top_cm": 0.0,
+                "y_bottom_cm": 300.0,
+                "raw_length_cm": 300.0,
+                "coverage_polygons": [
+                  [
+                    {
+                      "x": 235.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 286.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 286.0,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 235.0,
+                      "y": 300.0
+                    }
+                  ]
+                ],
+                "placement_id": "plane-3-b14-s0-r0",
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
+              }
+            ]
+          },
+          {
+            "band_index": 15,
+            "x_left_cm": 184.0,
+            "x_right_cm": 235.0,
+            "segments": [
+              {
+                "segment_index": 0,
+                "x_left_cm": 184.0,
+                "x_right_cm": 235.0,
+                "y_top_cm": 0.0,
+                "y_bottom_cm": 300.0,
+                "raw_length_cm": 300.0,
+                "coverage_polygons": [
+                  [
+                    {
+                      "x": 184.0,
                       "y": 0.0
                     },
                     {
@@ -5282,13 +5734,13 @@
                       "y": 101.26976854807172
                     },
                     {
-                      "x": 204.0,
-                      "y": 101.08828605723183
+                      "x": 184.0,
+                      "y": 100.87212041895009
                     }
                   ],
                   [
                     {
-                      "x": 204.0,
+                      "x": 184.0,
                       "y": 200.16732379283488
                     },
                     {
@@ -5300,7 +5752,7 @@
                       "y": 300.0
                     },
                     {
-                      "x": 204.0,
+                      "x": 184.0,
                       "y": 300.0
                     }
                   ],
@@ -5346,11 +5798,11 @@
                       "y": 0.0
                     },
                     {
-                      "x": 255.0,
+                      "x": 235.0,
                       "y": 0.0
                     },
                     {
-                      "x": 255.0,
+                      "x": 235.0,
                       "y": 300.0
                     },
                     {
@@ -5359,570 +5811,247 @@
                     }
                   ]
                 ],
-                "placement_id": "plane-3-b4-s0-r0",
-                "split_reason": null
-              }
-            ]
-          },
-          {
-            "band_index": 5,
-            "x_left_cm": 255.0,
-            "x_right_cm": 306.0,
-            "segments": [
-              {
-                "segment_index": 0,
-                "x_left_cm": 255.0,
-                "x_right_cm": 306.0,
-                "y_top_cm": 0.0,
-                "y_bottom_cm": 300.0,
-                "raw_length_cm": 300.0,
-                "coverage_polygons": [
-                  [
-                    {
-                      "x": 255.0,
-                      "y": 0.0
-                    },
-                    {
-                      "x": 306.0,
-                      "y": 0.0
-                    },
-                    {
-                      "x": 306.0,
-                      "y": 300.0
-                    },
-                    {
-                      "x": 255.0,
-                      "y": 300.0
-                    }
-                  ]
-                ],
-                "placement_id": "plane-3-b5-s0-r0",
-                "split_reason": null
-              }
-            ]
-          },
-          {
-            "band_index": 6,
-            "x_left_cm": 306.0,
-            "x_right_cm": 357.0,
-            "segments": [
-              {
-                "segment_index": 0,
-                "x_left_cm": 306.0,
-                "x_right_cm": 357.0,
-                "y_top_cm": 0.0,
-                "y_bottom_cm": 300.0,
-                "raw_length_cm": 300.0,
-                "coverage_polygons": [
-                  [
-                    {
-                      "x": 306.0,
-                      "y": 0.0
-                    },
-                    {
-                      "x": 357.0,
-                      "y": 0.0
-                    },
-                    {
-                      "x": 357.0,
-                      "y": 300.0
-                    },
-                    {
-                      "x": 306.0,
-                      "y": 300.0
-                    }
-                  ]
-                ],
-                "placement_id": "plane-3-b6-s0-r0",
-                "split_reason": null
-              }
-            ]
-          },
-          {
-            "band_index": 7,
-            "x_left_cm": 357.0,
-            "x_right_cm": 408.0,
-            "segments": [
-              {
-                "segment_index": 0,
-                "x_left_cm": 357.0,
-                "x_right_cm": 408.0,
-                "y_top_cm": 0.0,
-                "y_bottom_cm": 300.0,
-                "raw_length_cm": 300.0,
-                "coverage_polygons": [
-                  [
-                    {
-                      "x": 357.0,
-                      "y": 0.0
-                    },
-                    {
-                      "x": 408.0,
-                      "y": 0.0
-                    },
-                    {
-                      "x": 408.0,
-                      "y": 300.0
-                    },
-                    {
-                      "x": 357.0,
-                      "y": 300.0
-                    }
-                  ]
-                ],
-                "placement_id": "plane-3-b7-s0-r0",
-                "split_reason": null
-              }
-            ]
-          },
-          {
-            "band_index": 8,
-            "x_left_cm": 408.0,
-            "x_right_cm": 459.0,
-            "segments": [
-              {
-                "segment_index": 0,
-                "x_left_cm": 408.0,
-                "x_right_cm": 459.0,
-                "y_top_cm": 0.0,
-                "y_bottom_cm": 300.0,
-                "raw_length_cm": 300.0,
-                "coverage_polygons": [
-                  [
-                    {
-                      "x": 408.0,
-                      "y": 0.0
-                    },
-                    {
-                      "x": 459.0,
-                      "y": 0.0
-                    },
-                    {
-                      "x": 459.0,
-                      "y": 300.0
-                    },
-                    {
-                      "x": 408.0,
-                      "y": 300.0
-                    }
-                  ]
-                ],
-                "placement_id": "plane-3-b8-s0-r0",
-                "split_reason": null
-              }
-            ]
-          },
-          {
-            "band_index": 9,
-            "x_left_cm": 459.0,
-            "x_right_cm": 510.0,
-            "segments": [
-              {
-                "segment_index": 0,
-                "x_left_cm": 459.0,
-                "x_right_cm": 510.0,
-                "y_top_cm": 0.0,
-                "y_bottom_cm": 300.0,
-                "raw_length_cm": 300.0,
-                "coverage_polygons": [
-                  [
-                    {
-                      "x": 459.0,
-                      "y": 0.0
-                    },
-                    {
-                      "x": 510.0,
-                      "y": 0.0
-                    },
-                    {
-                      "x": 510.0,
-                      "y": 300.0
-                    },
-                    {
-                      "x": 459.0,
-                      "y": 300.0
-                    }
-                  ]
-                ],
-                "placement_id": "plane-3-b9-s0-r0",
-                "split_reason": null
-              }
-            ]
-          },
-          {
-            "band_index": 10,
-            "x_left_cm": 510.0,
-            "x_right_cm": 561.0,
-            "segments": [
-              {
-                "segment_index": 0,
-                "x_left_cm": 510.0,
-                "x_right_cm": 561.0,
-                "y_top_cm": 0.0,
-                "y_bottom_cm": 300.0,
-                "raw_length_cm": 300.0,
-                "coverage_polygons": [
-                  [
-                    {
-                      "x": 510.0,
-                      "y": 0.0
-                    },
-                    {
-                      "x": 561.0,
-                      "y": 0.0
-                    },
-                    {
-                      "x": 561.0,
-                      "y": 300.0
-                    },
-                    {
-                      "x": 510.0,
-                      "y": 300.0
-                    }
-                  ]
-                ],
-                "placement_id": "plane-3-b10-s0-r0",
-                "split_reason": null
-              }
-            ]
-          },
-          {
-            "band_index": 11,
-            "x_left_cm": 561.0,
-            "x_right_cm": 612.0,
-            "segments": [
-              {
-                "segment_index": 0,
-                "x_left_cm": 561.0,
-                "x_right_cm": 612.0,
-                "y_top_cm": 0.0,
-                "y_bottom_cm": 300.0,
-                "raw_length_cm": 300.0,
-                "coverage_polygons": [
-                  [
-                    {
-                      "x": 561.0,
-                      "y": 0.0
-                    },
-                    {
-                      "x": 612.0,
-                      "y": 0.0
-                    },
-                    {
-                      "x": 612.0,
-                      "y": 300.0
-                    },
-                    {
-                      "x": 561.0,
-                      "y": 300.0
-                    }
-                  ]
-                ],
-                "placement_id": "plane-3-b11-s0-r0",
-                "split_reason": null
-              }
-            ]
-          },
-          {
-            "band_index": 12,
-            "x_left_cm": 612.0,
-            "x_right_cm": 663.0,
-            "segments": [
-              {
-                "segment_index": 0,
-                "x_left_cm": 612.0,
-                "x_right_cm": 663.0,
-                "y_top_cm": 0.0,
-                "y_bottom_cm": 300.0,
-                "raw_length_cm": 300.0,
-                "coverage_polygons": [
-                  [
-                    {
-                      "x": 612.0,
-                      "y": 0.0
-                    },
-                    {
-                      "x": 663.0,
-                      "y": 0.0
-                    },
-                    {
-                      "x": 663.0,
-                      "y": 300.0
-                    },
-                    {
-                      "x": 612.0,
-                      "y": 300.0
-                    }
-                  ]
-                ],
-                "placement_id": "plane-3-b12-s0-r0",
-                "split_reason": null
-              }
-            ]
-          },
-          {
-            "band_index": 13,
-            "x_left_cm": 663.0,
-            "x_right_cm": 714.0,
-            "segments": [
-              {
-                "segment_index": 0,
-                "x_left_cm": 663.0,
-                "x_right_cm": 714.0,
-                "y_top_cm": 0.0,
-                "y_bottom_cm": 300.0,
-                "raw_length_cm": 300.0,
-                "coverage_polygons": [
-                  [
-                    {
-                      "x": 663.0,
-                      "y": 0.0
-                    },
-                    {
-                      "x": 714.0,
-                      "y": 0.0
-                    },
-                    {
-                      "x": 714.0,
-                      "y": 300.0
-                    },
-                    {
-                      "x": 663.0,
-                      "y": 300.0
-                    }
-                  ]
-                ],
-                "placement_id": "plane-3-b13-s0-r0",
-                "split_reason": null
-              }
-            ]
-          },
-          {
-            "band_index": 14,
-            "x_left_cm": 714.0,
-            "x_right_cm": 765.0,
-            "segments": [
-              {
-                "segment_index": 0,
-                "x_left_cm": 714.0,
-                "x_right_cm": 765.0,
-                "y_top_cm": 0.0,
-                "y_bottom_cm": 300.0,
-                "raw_length_cm": 300.0,
-                "coverage_polygons": [
-                  [
-                    {
-                      "x": 714.0,
-                      "y": 0.0
-                    },
-                    {
-                      "x": 765.0,
-                      "y": 0.0
-                    },
-                    {
-                      "x": 765.0,
-                      "y": 300.0
-                    },
-                    {
-                      "x": 714.0,
-                      "y": 300.0
-                    }
-                  ]
-                ],
-                "placement_id": "plane-3-b14-s0-r0",
-                "split_reason": null
-              }
-            ]
-          },
-          {
-            "band_index": 15,
-            "x_left_cm": 765.0,
-            "x_right_cm": 816.0,
-            "segments": [
-              {
-                "segment_index": 0,
-                "x_left_cm": 765.0,
-                "x_right_cm": 816.0,
-                "y_top_cm": 0.0,
-                "y_bottom_cm": 300.0,
-                "raw_length_cm": 300.0,
-                "coverage_polygons": [
-                  [
-                    {
-                      "x": 765.0,
-                      "y": 0.0
-                    },
-                    {
-                      "x": 816.0,
-                      "y": 0.0
-                    },
-                    {
-                      "x": 816.0,
-                      "y": 300.0
-                    },
-                    {
-                      "x": 765.0,
-                      "y": 300.0
-                    }
-                  ]
-                ],
                 "placement_id": "plane-3-b15-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "partial",
+                "partial_cut_line_y_cm": 100.16732379283488,
+                "top_extra_cm": 15.0
               }
             ]
           },
           {
             "band_index": 16,
-            "x_left_cm": 816.0,
-            "x_right_cm": 867.0,
+            "x_left_cm": 133.0,
+            "x_right_cm": 184.0,
             "segments": [
               {
                 "segment_index": 0,
-                "x_left_cm": 816.0,
-                "x_right_cm": 867.0,
+                "x_left_cm": 133.0,
+                "x_right_cm": 184.0,
                 "y_top_cm": 0.0,
-                "y_bottom_cm": 300.0,
-                "raw_length_cm": 300.0,
+                "y_bottom_cm": 100.87212041895009,
+                "raw_length_cm": 100.87212041895009,
                 "coverage_polygons": [
                   [
                     {
-                      "x": 816.0,
+                      "x": 133.0,
                       "y": 0.0
                     },
                     {
-                      "x": 867.0,
+                      "x": 184.0,
                       "y": 0.0
                     },
                     {
-                      "x": 867.0,
-                      "y": 300.0
+                      "x": 184.0,
+                      "y": 100.87212041895009
                     },
                     {
-                      "x": 816.0,
-                      "y": 300.0
+                      "x": 133.0,
+                      "y": 100.32089804133167
                     }
                   ]
                 ],
                 "placement_id": "plane-3-b16-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
+              },
+              {
+                "segment_index": 1,
+                "x_left_cm": 133.0,
+                "x_right_cm": 184.0,
+                "y_top_cm": 200.16732379283488,
+                "y_bottom_cm": 300.0,
+                "raw_length_cm": 99.83267620716512,
+                "coverage_polygons": [
+                  [
+                    {
+                      "x": 133.0,
+                      "y": 200.16732379283488
+                    },
+                    {
+                      "x": 184.0,
+                      "y": 200.16732379283488
+                    },
+                    {
+                      "x": 184.0,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 133.0,
+                      "y": 300.0
+                    }
+                  ]
+                ],
+                "placement_id": "plane-3-b16-s1-r0",
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
           {
             "band_index": 17,
-            "x_left_cm": 867.0,
-            "x_right_cm": 918.0,
+            "x_left_cm": 82.0,
+            "x_right_cm": 133.0,
             "segments": [
               {
                 "segment_index": 0,
-                "x_left_cm": 867.0,
-                "x_right_cm": 918.0,
+                "x_left_cm": 82.0,
+                "x_right_cm": 133.0,
                 "y_top_cm": 0.0,
                 "y_bottom_cm": 300.0,
                 "raw_length_cm": 300.0,
                 "coverage_polygons": [
                   [
                     {
-                      "x": 867.0,
+                      "x": 82.0,
                       "y": 0.0
                     },
                     {
-                      "x": 918.0,
+                      "x": 118.79105821651095,
                       "y": 0.0
                     },
                     {
-                      "x": 918.0,
+                      "x": 118.79105821651095,
                       "y": 300.0
                     },
                     {
-                      "x": 867.0,
+                      "x": 82.0,
+                      "y": 300.0
+                    }
+                  ],
+                  [
+                    {
+                      "x": 118.79105821651095,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 133.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 133.0,
+                      "y": 100.32089804133167
+                    },
+                    {
+                      "x": 118.79105821651095,
+                      "y": 100.16732379283488
+                    }
+                  ],
+                  [
+                    {
+                      "x": 118.79105821651095,
+                      "y": 200.16732379283488
+                    },
+                    {
+                      "x": 133.0,
+                      "y": 200.16732379283488
+                    },
+                    {
+                      "x": 133.0,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 118.79105821651095,
                       "y": 300.0
                     }
                   ]
                 ],
                 "placement_id": "plane-3-b17-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "partial",
+                "partial_cut_line_y_cm": 100.16732379283488,
+                "top_extra_cm": 15.0
               }
             ]
           },
           {
             "band_index": 18,
-            "x_left_cm": 918.0,
-            "x_right_cm": 969.0,
+            "x_left_cm": 31.0,
+            "x_right_cm": 82.0,
             "segments": [
               {
                 "segment_index": 0,
-                "x_left_cm": 918.0,
-                "x_right_cm": 969.0,
+                "x_left_cm": 31.0,
+                "x_right_cm": 82.0,
                 "y_top_cm": 0.0,
                 "y_bottom_cm": 300.0,
                 "raw_length_cm": 300.0,
                 "coverage_polygons": [
                   [
                     {
-                      "x": 918.0,
+                      "x": 31.0,
                       "y": 0.0
                     },
                     {
-                      "x": 969.0,
+                      "x": 82.0,
                       "y": 0.0
                     },
                     {
-                      "x": 969.0,
+                      "x": 82.0,
                       "y": 300.0
                     },
                     {
-                      "x": 918.0,
+                      "x": 31.0,
                       "y": 300.0
                     }
                   ]
                 ],
                 "placement_id": "plane-3-b18-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
           {
             "band_index": 19,
-            "x_left_cm": 969.0,
-            "x_right_cm": 1000.0,
+            "x_left_cm": 0.0,
+            "x_right_cm": 31.0,
             "segments": [
               {
                 "segment_index": 0,
-                "x_left_cm": 969.0,
-                "x_right_cm": 1000.0,
+                "x_left_cm": 0.0,
+                "x_right_cm": 31.0,
                 "y_top_cm": 0.0,
                 "y_bottom_cm": 300.0,
                 "raw_length_cm": 300.0,
                 "coverage_polygons": [
                   [
                     {
-                      "x": 969.0,
+                      "x": 0.0,
                       "y": 0.0
                     },
                     {
-                      "x": 1000.0,
+                      "x": 31.0,
                       "y": 0.0
                     },
                     {
-                      "x": 1000.0,
+                      "x": 31.0,
                       "y": 300.0
                     },
                     {
-                      "x": 969.0,
+                      "x": 0.0,
                       "y": 300.0
                     }
                   ]
                 ],
                 "placement_id": "plane-3-b19-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           }
         ],
         "manual_sheet_placements": [],
         "manually_removed_auto_sheet_ids": [],
-        "layout_revision": 34,
+        "layout_revision": 38,
         "layout_dirty_reason": null,
         "outline": [
           {
@@ -6588,6 +6717,1218 @@
           }
         ],
         "holes": []
+      },
+      {
+        "id": "plane-5",
+        "name": "5",
+        "selected_material_id": "PD510",
+        "generation_settings": {
+          "layout_origin": "left",
+          "base_line_y_cm": 300.0
+        },
+        "auto_sheet_placements": [
+          {
+            "id": "plane-5-b0-s0-r0",
+            "band_index": 0,
+            "x_left_cm": 0.0,
+            "x_right_cm": 51.0,
+            "y_top_cm": 0.0,
+            "y_bottom_cm": 300.0,
+            "raw_length_cm": 300.0,
+            "final_length_cm": 300.0,
+            "source": "auto",
+            "split_reason": null
+          },
+          {
+            "id": "plane-5-b1-s0-r0",
+            "band_index": 1,
+            "x_left_cm": 51.0,
+            "x_right_cm": 102.0,
+            "y_top_cm": 0.0,
+            "y_bottom_cm": 300.0,
+            "raw_length_cm": 300.0,
+            "final_length_cm": 300.0,
+            "source": "auto",
+            "split_reason": null
+          },
+          {
+            "id": "plane-5-b2-s0-r0",
+            "band_index": 2,
+            "x_left_cm": 102.0,
+            "x_right_cm": 153.0,
+            "y_top_cm": 0.0,
+            "y_bottom_cm": 300.0,
+            "raw_length_cm": 300.0,
+            "final_length_cm": 300.0,
+            "source": "auto",
+            "split_reason": null
+          },
+          {
+            "id": "plane-5-b3-s0-r0",
+            "band_index": 3,
+            "x_left_cm": 153.0,
+            "x_right_cm": 204.0,
+            "y_top_cm": 0.0,
+            "y_bottom_cm": 300.0,
+            "raw_length_cm": 300.0,
+            "final_length_cm": 315.0,
+            "source": "auto",
+            "split_reason": "partial_cutout"
+          },
+          {
+            "id": "plane-5-b4-s0-r0",
+            "band_index": 4,
+            "x_left_cm": 204.0,
+            "x_right_cm": 255.0,
+            "y_top_cm": 0.0,
+            "y_bottom_cm": 100.17891221374043,
+            "raw_length_cm": 100.17891221374043,
+            "final_length_cm": 100.17891221374043,
+            "source": "auto",
+            "split_reason": null
+          },
+          {
+            "id": "plane-5-b4-s1-r0",
+            "band_index": 4,
+            "x_left_cm": 204.0,
+            "x_right_cm": 255.0,
+            "y_top_cm": 200.17891221374043,
+            "y_bottom_cm": 300.0,
+            "raw_length_cm": 99.82108778625957,
+            "final_length_cm": 99.82108778625957,
+            "source": "auto",
+            "split_reason": null
+          },
+          {
+            "id": "plane-5-b5-s0-r0",
+            "band_index": 5,
+            "x_left_cm": 255.0,
+            "x_right_cm": 306.0,
+            "y_top_cm": 0.0,
+            "y_bottom_cm": 300.0,
+            "raw_length_cm": 300.0,
+            "final_length_cm": 315.0,
+            "source": "auto",
+            "split_reason": "partial_cutout"
+          },
+          {
+            "id": "plane-5-b6-s0-r0",
+            "band_index": 6,
+            "x_left_cm": 306.0,
+            "x_right_cm": 357.0,
+            "y_top_cm": 0.0,
+            "y_bottom_cm": 300.0,
+            "raw_length_cm": 300.0,
+            "final_length_cm": 300.0,
+            "source": "auto",
+            "split_reason": null
+          },
+          {
+            "id": "plane-5-b7-s0-r0",
+            "band_index": 7,
+            "x_left_cm": 357.0,
+            "x_right_cm": 408.0,
+            "y_top_cm": 0.0,
+            "y_bottom_cm": 300.0,
+            "raw_length_cm": 300.0,
+            "final_length_cm": 300.0,
+            "source": "auto",
+            "split_reason": null
+          },
+          {
+            "id": "plane-5-b8-s0-r0",
+            "band_index": 8,
+            "x_left_cm": 408.0,
+            "x_right_cm": 459.0,
+            "y_top_cm": 0.0,
+            "y_bottom_cm": 300.0,
+            "raw_length_cm": 300.0,
+            "final_length_cm": 300.0,
+            "source": "auto",
+            "split_reason": null
+          },
+          {
+            "id": "plane-5-b9-s0-r0",
+            "band_index": 9,
+            "x_left_cm": 459.0,
+            "x_right_cm": 510.0,
+            "y_top_cm": 0.0,
+            "y_bottom_cm": 300.0,
+            "raw_length_cm": 300.0,
+            "final_length_cm": 300.0,
+            "source": "auto",
+            "split_reason": null
+          },
+          {
+            "id": "plane-5-b10-s0-r0",
+            "band_index": 10,
+            "x_left_cm": 510.0,
+            "x_right_cm": 561.0,
+            "y_top_cm": 0.0,
+            "y_bottom_cm": 300.0,
+            "raw_length_cm": 300.0,
+            "final_length_cm": 300.0,
+            "source": "auto",
+            "split_reason": null
+          },
+          {
+            "id": "plane-5-b11-s0-r0",
+            "band_index": 11,
+            "x_left_cm": 561.0,
+            "x_right_cm": 612.0,
+            "y_top_cm": 0.0,
+            "y_bottom_cm": 300.0,
+            "raw_length_cm": 300.0,
+            "final_length_cm": 300.0,
+            "source": "auto",
+            "split_reason": null
+          },
+          {
+            "id": "plane-5-b12-s0-r0",
+            "band_index": 12,
+            "x_left_cm": 612.0,
+            "x_right_cm": 663.0,
+            "y_top_cm": 0.0,
+            "y_bottom_cm": 300.0,
+            "raw_length_cm": 300.0,
+            "final_length_cm": 300.0,
+            "source": "auto",
+            "split_reason": null
+          },
+          {
+            "id": "plane-5-b13-s0-r0",
+            "band_index": 13,
+            "x_left_cm": 663.0,
+            "x_right_cm": 714.0,
+            "y_top_cm": 0.0,
+            "y_bottom_cm": 300.0,
+            "raw_length_cm": 300.0,
+            "final_length_cm": 300.0,
+            "source": "auto",
+            "split_reason": null
+          },
+          {
+            "id": "plane-5-b14-s0-r0",
+            "band_index": 14,
+            "x_left_cm": 714.0,
+            "x_right_cm": 765.0,
+            "y_top_cm": 0.0,
+            "y_bottom_cm": 300.0,
+            "raw_length_cm": 300.0,
+            "final_length_cm": 300.0,
+            "source": "auto",
+            "split_reason": null
+          },
+          {
+            "id": "plane-5-b15-s0-r0",
+            "band_index": 15,
+            "x_left_cm": 765.0,
+            "x_right_cm": 816.0,
+            "y_top_cm": 0.0,
+            "y_bottom_cm": 300.0,
+            "raw_length_cm": 300.0,
+            "final_length_cm": 300.0,
+            "source": "auto",
+            "split_reason": null
+          },
+          {
+            "id": "plane-5-b16-s0-r0",
+            "band_index": 16,
+            "x_left_cm": 816.0,
+            "x_right_cm": 867.0,
+            "y_top_cm": 0.0,
+            "y_bottom_cm": 300.0,
+            "raw_length_cm": 300.0,
+            "final_length_cm": 300.0,
+            "source": "auto",
+            "split_reason": null
+          },
+          {
+            "id": "plane-5-b17-s0-r0",
+            "band_index": 17,
+            "x_left_cm": 867.0,
+            "x_right_cm": 918.0,
+            "y_top_cm": 0.0,
+            "y_bottom_cm": 300.0,
+            "raw_length_cm": 300.0,
+            "final_length_cm": 300.0,
+            "source": "auto",
+            "split_reason": null
+          },
+          {
+            "id": "plane-5-b18-s0-r0",
+            "band_index": 18,
+            "x_left_cm": 918.0,
+            "x_right_cm": 969.0,
+            "y_top_cm": 0.0,
+            "y_bottom_cm": 300.0,
+            "raw_length_cm": 300.0,
+            "final_length_cm": 300.0,
+            "source": "auto",
+            "split_reason": null
+          },
+          {
+            "id": "plane-5-b19-s0-r0",
+            "band_index": 19,
+            "x_left_cm": 969.0,
+            "x_right_cm": 1000.0,
+            "y_top_cm": 0.0,
+            "y_bottom_cm": 300.0,
+            "raw_length_cm": 300.0,
+            "final_length_cm": 300.0,
+            "source": "auto",
+            "split_reason": null
+          }
+        ],
+        "layout_bands": [
+          {
+            "band_index": 0,
+            "x_left_cm": 0.0,
+            "x_right_cm": 51.0,
+            "segments": [
+              {
+                "segment_index": 0,
+                "x_left_cm": 0.0,
+                "x_right_cm": 51.0,
+                "y_top_cm": 0.0,
+                "y_bottom_cm": 300.0,
+                "raw_length_cm": 300.0,
+                "coverage_polygons": [
+                  [
+                    {
+                      "x": 0.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 51.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 51.0,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 0.0,
+                      "y": 300.0
+                    }
+                  ]
+                ],
+                "placement_id": "plane-5-b0-s0-r0",
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
+              }
+            ]
+          },
+          {
+            "band_index": 1,
+            "x_left_cm": 51.0,
+            "x_right_cm": 102.0,
+            "segments": [
+              {
+                "segment_index": 0,
+                "x_left_cm": 51.0,
+                "x_right_cm": 102.0,
+                "y_top_cm": 0.0,
+                "y_bottom_cm": 300.0,
+                "raw_length_cm": 300.0,
+                "coverage_polygons": [
+                  [
+                    {
+                      "x": 51.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 102.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 102.0,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 51.0,
+                      "y": 300.0
+                    }
+                  ]
+                ],
+                "placement_id": "plane-5-b1-s0-r0",
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
+              }
+            ]
+          },
+          {
+            "band_index": 2,
+            "x_left_cm": 102.0,
+            "x_right_cm": 153.0,
+            "segments": [
+              {
+                "segment_index": 0,
+                "x_left_cm": 102.0,
+                "x_right_cm": 153.0,
+                "y_top_cm": 0.0,
+                "y_bottom_cm": 300.0,
+                "raw_length_cm": 300.0,
+                "coverage_polygons": [
+                  [
+                    {
+                      "x": 102.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 153.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 153.0,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 102.0,
+                      "y": 300.0
+                    }
+                  ]
+                ],
+                "placement_id": "plane-5-b2-s0-r0",
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
+              }
+            ]
+          },
+          {
+            "band_index": 3,
+            "x_left_cm": 153.0,
+            "x_right_cm": 204.0,
+            "segments": [
+              {
+                "segment_index": 0,
+                "x_left_cm": 153.0,
+                "x_right_cm": 204.0,
+                "y_top_cm": 0.0,
+                "y_bottom_cm": 300.0,
+                "raw_length_cm": 300.0,
+                "coverage_polygons": [
+                  [
+                    {
+                      "x": 153.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 179.08218034351142,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 179.08218034351142,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 153.0,
+                      "y": 300.0
+                    }
+                  ],
+                  [
+                    {
+                      "x": 179.08218034351142,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 204.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 204.0,
+                      "y": 100.17891221374043
+                    },
+                    {
+                      "x": 179.08218034351142,
+                      "y": 100.17891221374043
+                    }
+                  ],
+                  [
+                    {
+                      "x": 179.08218034351142,
+                      "y": 200.17891221374043
+                    },
+                    {
+                      "x": 204.0,
+                      "y": 200.17891221374043
+                    },
+                    {
+                      "x": 204.0,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 179.08218034351142,
+                      "y": 300.0
+                    }
+                  ]
+                ],
+                "placement_id": "plane-5-b3-s0-r0",
+                "split_reason": null,
+                "cutout_interaction": "partial",
+                "partial_cut_line_y_cm": 100.17891221374043,
+                "top_extra_cm": 15.0
+              }
+            ]
+          },
+          {
+            "band_index": 4,
+            "x_left_cm": 204.0,
+            "x_right_cm": 255.0,
+            "segments": [
+              {
+                "segment_index": 0,
+                "x_left_cm": 204.0,
+                "x_right_cm": 255.0,
+                "y_top_cm": 0.0,
+                "y_bottom_cm": 100.17891221374043,
+                "raw_length_cm": 100.17891221374043,
+                "coverage_polygons": [
+                  [
+                    {
+                      "x": 204.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 255.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 255.0,
+                      "y": 100.17891221374043
+                    },
+                    {
+                      "x": 204.0,
+                      "y": 100.17891221374043
+                    }
+                  ]
+                ],
+                "placement_id": "plane-5-b4-s0-r0",
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
+              },
+              {
+                "segment_index": 1,
+                "x_left_cm": 204.0,
+                "x_right_cm": 255.0,
+                "y_top_cm": 200.17891221374043,
+                "y_bottom_cm": 300.0,
+                "raw_length_cm": 99.82108778625957,
+                "coverage_polygons": [
+                  [
+                    {
+                      "x": 204.0,
+                      "y": 200.17891221374043
+                    },
+                    {
+                      "x": 255.0,
+                      "y": 200.17891221374043
+                    },
+                    {
+                      "x": 255.0,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 204.0,
+                      "y": 300.0
+                    }
+                  ]
+                ],
+                "placement_id": "plane-5-b4-s1-r0",
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
+              }
+            ]
+          },
+          {
+            "band_index": 5,
+            "x_left_cm": 255.0,
+            "x_right_cm": 306.0,
+            "segments": [
+              {
+                "segment_index": 0,
+                "x_left_cm": 255.0,
+                "x_right_cm": 306.0,
+                "y_top_cm": 0.0,
+                "y_bottom_cm": 300.0,
+                "raw_length_cm": 300.0,
+                "coverage_polygons": [
+                  [
+                    {
+                      "x": 255.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 279.08218034351137,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 279.08218034351137,
+                      "y": 100.17891221374043
+                    },
+                    {
+                      "x": 255.0,
+                      "y": 100.17891221374043
+                    }
+                  ],
+                  [
+                    {
+                      "x": 255.0,
+                      "y": 200.17891221374043
+                    },
+                    {
+                      "x": 279.08218034351137,
+                      "y": 200.17891221374043
+                    },
+                    {
+                      "x": 279.08218034351137,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 255.0,
+                      "y": 300.0
+                    }
+                  ],
+                  [
+                    {
+                      "x": 279.08218034351137,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 306.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 306.0,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 279.08218034351137,
+                      "y": 300.0
+                    }
+                  ]
+                ],
+                "placement_id": "plane-5-b5-s0-r0",
+                "split_reason": null,
+                "cutout_interaction": "partial",
+                "partial_cut_line_y_cm": 100.17891221374043,
+                "top_extra_cm": 15.0
+              }
+            ]
+          },
+          {
+            "band_index": 6,
+            "x_left_cm": 306.0,
+            "x_right_cm": 357.0,
+            "segments": [
+              {
+                "segment_index": 0,
+                "x_left_cm": 306.0,
+                "x_right_cm": 357.0,
+                "y_top_cm": 0.0,
+                "y_bottom_cm": 300.0,
+                "raw_length_cm": 300.0,
+                "coverage_polygons": [
+                  [
+                    {
+                      "x": 306.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 357.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 357.0,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 306.0,
+                      "y": 300.0
+                    }
+                  ]
+                ],
+                "placement_id": "plane-5-b6-s0-r0",
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
+              }
+            ]
+          },
+          {
+            "band_index": 7,
+            "x_left_cm": 357.0,
+            "x_right_cm": 408.0,
+            "segments": [
+              {
+                "segment_index": 0,
+                "x_left_cm": 357.0,
+                "x_right_cm": 408.0,
+                "y_top_cm": 0.0,
+                "y_bottom_cm": 300.0,
+                "raw_length_cm": 300.0,
+                "coverage_polygons": [
+                  [
+                    {
+                      "x": 357.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 408.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 408.0,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 357.0,
+                      "y": 300.0
+                    }
+                  ]
+                ],
+                "placement_id": "plane-5-b7-s0-r0",
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
+              }
+            ]
+          },
+          {
+            "band_index": 8,
+            "x_left_cm": 408.0,
+            "x_right_cm": 459.0,
+            "segments": [
+              {
+                "segment_index": 0,
+                "x_left_cm": 408.0,
+                "x_right_cm": 459.0,
+                "y_top_cm": 0.0,
+                "y_bottom_cm": 300.0,
+                "raw_length_cm": 300.0,
+                "coverage_polygons": [
+                  [
+                    {
+                      "x": 408.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 459.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 459.0,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 408.0,
+                      "y": 300.0
+                    }
+                  ]
+                ],
+                "placement_id": "plane-5-b8-s0-r0",
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
+              }
+            ]
+          },
+          {
+            "band_index": 9,
+            "x_left_cm": 459.0,
+            "x_right_cm": 510.0,
+            "segments": [
+              {
+                "segment_index": 0,
+                "x_left_cm": 459.0,
+                "x_right_cm": 510.0,
+                "y_top_cm": 0.0,
+                "y_bottom_cm": 300.0,
+                "raw_length_cm": 300.0,
+                "coverage_polygons": [
+                  [
+                    {
+                      "x": 459.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 510.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 510.0,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 459.0,
+                      "y": 300.0
+                    }
+                  ]
+                ],
+                "placement_id": "plane-5-b9-s0-r0",
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
+              }
+            ]
+          },
+          {
+            "band_index": 10,
+            "x_left_cm": 510.0,
+            "x_right_cm": 561.0,
+            "segments": [
+              {
+                "segment_index": 0,
+                "x_left_cm": 510.0,
+                "x_right_cm": 561.0,
+                "y_top_cm": 0.0,
+                "y_bottom_cm": 300.0,
+                "raw_length_cm": 300.0,
+                "coverage_polygons": [
+                  [
+                    {
+                      "x": 510.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 561.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 561.0,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 510.0,
+                      "y": 300.0
+                    }
+                  ]
+                ],
+                "placement_id": "plane-5-b10-s0-r0",
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
+              }
+            ]
+          },
+          {
+            "band_index": 11,
+            "x_left_cm": 561.0,
+            "x_right_cm": 612.0,
+            "segments": [
+              {
+                "segment_index": 0,
+                "x_left_cm": 561.0,
+                "x_right_cm": 612.0,
+                "y_top_cm": 0.0,
+                "y_bottom_cm": 300.0,
+                "raw_length_cm": 300.0,
+                "coverage_polygons": [
+                  [
+                    {
+                      "x": 561.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 612.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 612.0,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 561.0,
+                      "y": 300.0
+                    }
+                  ]
+                ],
+                "placement_id": "plane-5-b11-s0-r0",
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
+              }
+            ]
+          },
+          {
+            "band_index": 12,
+            "x_left_cm": 612.0,
+            "x_right_cm": 663.0,
+            "segments": [
+              {
+                "segment_index": 0,
+                "x_left_cm": 612.0,
+                "x_right_cm": 663.0,
+                "y_top_cm": 0.0,
+                "y_bottom_cm": 300.0,
+                "raw_length_cm": 300.0,
+                "coverage_polygons": [
+                  [
+                    {
+                      "x": 612.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 663.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 663.0,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 612.0,
+                      "y": 300.0
+                    }
+                  ]
+                ],
+                "placement_id": "plane-5-b12-s0-r0",
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
+              }
+            ]
+          },
+          {
+            "band_index": 13,
+            "x_left_cm": 663.0,
+            "x_right_cm": 714.0,
+            "segments": [
+              {
+                "segment_index": 0,
+                "x_left_cm": 663.0,
+                "x_right_cm": 714.0,
+                "y_top_cm": 0.0,
+                "y_bottom_cm": 300.0,
+                "raw_length_cm": 300.0,
+                "coverage_polygons": [
+                  [
+                    {
+                      "x": 663.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 714.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 714.0,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 663.0,
+                      "y": 300.0
+                    }
+                  ]
+                ],
+                "placement_id": "plane-5-b13-s0-r0",
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
+              }
+            ]
+          },
+          {
+            "band_index": 14,
+            "x_left_cm": 714.0,
+            "x_right_cm": 765.0,
+            "segments": [
+              {
+                "segment_index": 0,
+                "x_left_cm": 714.0,
+                "x_right_cm": 765.0,
+                "y_top_cm": 0.0,
+                "y_bottom_cm": 300.0,
+                "raw_length_cm": 300.0,
+                "coverage_polygons": [
+                  [
+                    {
+                      "x": 714.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 765.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 765.0,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 714.0,
+                      "y": 300.0
+                    }
+                  ]
+                ],
+                "placement_id": "plane-5-b14-s0-r0",
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
+              }
+            ]
+          },
+          {
+            "band_index": 15,
+            "x_left_cm": 765.0,
+            "x_right_cm": 816.0,
+            "segments": [
+              {
+                "segment_index": 0,
+                "x_left_cm": 765.0,
+                "x_right_cm": 816.0,
+                "y_top_cm": 0.0,
+                "y_bottom_cm": 300.0,
+                "raw_length_cm": 300.0,
+                "coverage_polygons": [
+                  [
+                    {
+                      "x": 765.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 816.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 816.0,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 765.0,
+                      "y": 300.0
+                    }
+                  ]
+                ],
+                "placement_id": "plane-5-b15-s0-r0",
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
+              }
+            ]
+          },
+          {
+            "band_index": 16,
+            "x_left_cm": 816.0,
+            "x_right_cm": 867.0,
+            "segments": [
+              {
+                "segment_index": 0,
+                "x_left_cm": 816.0,
+                "x_right_cm": 867.0,
+                "y_top_cm": 0.0,
+                "y_bottom_cm": 300.0,
+                "raw_length_cm": 300.0,
+                "coverage_polygons": [
+                  [
+                    {
+                      "x": 816.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 867.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 867.0,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 816.0,
+                      "y": 300.0
+                    }
+                  ]
+                ],
+                "placement_id": "plane-5-b16-s0-r0",
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
+              }
+            ]
+          },
+          {
+            "band_index": 17,
+            "x_left_cm": 867.0,
+            "x_right_cm": 918.0,
+            "segments": [
+              {
+                "segment_index": 0,
+                "x_left_cm": 867.0,
+                "x_right_cm": 918.0,
+                "y_top_cm": 0.0,
+                "y_bottom_cm": 300.0,
+                "raw_length_cm": 300.0,
+                "coverage_polygons": [
+                  [
+                    {
+                      "x": 867.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 918.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 918.0,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 867.0,
+                      "y": 300.0
+                    }
+                  ]
+                ],
+                "placement_id": "plane-5-b17-s0-r0",
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
+              }
+            ]
+          },
+          {
+            "band_index": 18,
+            "x_left_cm": 918.0,
+            "x_right_cm": 969.0,
+            "segments": [
+              {
+                "segment_index": 0,
+                "x_left_cm": 918.0,
+                "x_right_cm": 969.0,
+                "y_top_cm": 0.0,
+                "y_bottom_cm": 300.0,
+                "raw_length_cm": 300.0,
+                "coverage_polygons": [
+                  [
+                    {
+                      "x": 918.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 969.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 969.0,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 918.0,
+                      "y": 300.0
+                    }
+                  ]
+                ],
+                "placement_id": "plane-5-b18-s0-r0",
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
+              }
+            ]
+          },
+          {
+            "band_index": 19,
+            "x_left_cm": 969.0,
+            "x_right_cm": 1000.0,
+            "segments": [
+              {
+                "segment_index": 0,
+                "x_left_cm": 969.0,
+                "x_right_cm": 1000.0,
+                "y_top_cm": 0.0,
+                "y_bottom_cm": 300.0,
+                "raw_length_cm": 300.0,
+                "coverage_polygons": [
+                  [
+                    {
+                      "x": 969.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 1000.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 1000.0,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 969.0,
+                      "y": 300.0
+                    }
+                  ]
+                ],
+                "placement_id": "plane-5-b19-s0-r0",
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
+              }
+            ]
+          }
+        ],
+        "manual_sheet_placements": [],
+        "manually_removed_auto_sheet_ids": [],
+        "layout_revision": 57,
+        "layout_dirty_reason": null,
+        "outline": [
+          {
+            "x": 0.0,
+            "y": 0.0
+          },
+          {
+            "x": 1000.0,
+            "y": 0.0
+          },
+          {
+            "x": 1000.0,
+            "y": 300.0
+          },
+          {
+            "x": 0.0,
+            "y": 300.0
+          }
+        ],
+        "holes": [
+          [
+            {
+              "x": 179.08218034351142,
+              "y": 100.17891221374043
+            },
+            {
+              "x": 279.08218034351137,
+              "y": 100.17891221374043
+            },
+            {
+              "x": 279.08218034351137,
+              "y": 200.17891221374043
+            },
+            {
+              "x": 179.08218034351142,
+              "y": 200.17891221374043
+            }
+          ]
+        ]
       }
     ]
   },
