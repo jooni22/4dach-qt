@@ -368,14 +368,15 @@ def test_project_state_generates_layout_for_active_plane_and_persists_auto_place
     fragment = state.to_config_fragment()
     plane_payload = fragment["project_state"]["roof_planes"][0]
 
-    assert len(result.placements) == 3
+    assert len(result.placements) == 4
     assert len(result.bands) == 3
     assert len(result.bands[1].segments) == 1
     assert len(result.bands[1].segments[0].coverage_polygons) == 4
-    assert len(plane.auto_sheet_placements) == 3
+    assert result.bands[1].segments[0].cutout_interaction == "partial"
+    assert len(plane.auto_sheet_placements) == 4
     assert almost_equal(plane.generation_settings.base_line_y_cm or 0.0, 200.0)
     assert plane.layout_revision == 2
-    assert len(plane_payload["auto_sheet_placements"]) == 3
+    assert len(plane_payload["auto_sheet_placements"]) == 4
     assert plane_payload["auto_sheet_placements"][0]["id"].startswith("plane-1-b0-s0")
 
 

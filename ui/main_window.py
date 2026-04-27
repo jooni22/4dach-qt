@@ -782,7 +782,7 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Aktywna połać nie ma jeszcze obrysu.", 4000)
             return
 
-        mapper = CanvasMapper(plane.outline.bounds(), QRectF(canvas.rect()))
+        mapper = DrawingCanvas.build_view_mapper(plane.outline.bounds(), QRectF(canvas.rect()))
         hole = Polygon2D([mapper.unmap_point(point) for point in pixel_points])
         self._edit(lambda: self.project_state.add_hole_to_plane(hole, plane.id), f"Dodano wycinek do {plane.name}")
 

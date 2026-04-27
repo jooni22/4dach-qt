@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from math import ceil
 
 from core.app_settings import AppSettings
-from core.geometry import validate_polygon, vertical_segments_for_band
+from core.geometry import polygon_edges, validate_polygon, vertical_segments_for_band
 from core.models import Material, Point2D, Polygon2D, RoofPlane, SheetPlacement
 
 
@@ -493,6 +493,9 @@ def _detect_cutout_interaction(
     *segment* in-place with ``cutout_interaction``, ``partial_cut_line_y_cm``,
     and ``top_extra_cm``.
     """
+    full_overlap_detected = False
+    partial_cut_line_y_cm: float | None = None
+
     for hole in plane.holes:
         bounds = hole.bounds()
 
@@ -506,11 +509,18 @@ def _detect_cutout_interaction(
 
         # FULL: hole covers the entire band width
         if bounds.min_x <= segment.x_left_cm and bounds.max_x >= segment.x_right_cm:
-            segment.cutout_interaction = "full"
+            full_overlap_detected = True
             continue  # keep inspecting — another hole might be partial
 
         # PARTIAL: hole partially overlaps this segment in x
-        cut_y = bounds.min_y  # top edge of the hole = where the cut must happen
+        cut_y = _highest_cutout_edge_y_in_range(hole, segment.x_left_cm, segment.x_right_cm)
+        if cut_y is None:
+            continue
+        if partial_cut_line_y_cm is None or cut_y < partial_cut_line_y_cm:
+            partial_cut_line_y_cm = cut_y
+
+    if partial_cut_line_y_cm is not None:
+        cut_y = min(max(partial_cut_line_y_cm, segment.y_top_cm), segment.y_bottom_cm)
         extra_raw = getattr(settings, "partial_cutout_top_extra_cm", 15.0)
         max_possible_extra = cut_y - segment.y_top_cm
         extra_clamped = max(0.0, min(extra_raw, max_possible_extra))
@@ -518,7 +528,52 @@ def _detect_cutout_interaction(
         segment.cutout_interaction = "partial"
         segment.partial_cut_line_y_cm = cut_y
         segment.top_extra_cm = extra_clamped
-        break  # first valid partial hole is sufficient
+        return
+
+    if full_overlap_detected:
+        segment.cutout_interaction = "full"
+
+
+def _highest_cutout_edge_y_in_range(hole: Polygon2D, x_left: float, x_right: float) -> float | None:
+    highest_y: float | None = None
+    for start, end in polygon_edges(hole):
+        clipped = _clip_edge_to_x_range(start, end, x_left, x_right)
+        if clipped is None:
+            continue
+        clipped_start, clipped_end = clipped
+        edge_highest_y = min(clipped_start.y, clipped_end.y)
+        if highest_y is None or edge_highest_y < highest_y:
+            highest_y = edge_highest_y
+    return highest_y
+
+
+def _clip_edge_to_x_range(
+    start: Point2D,
+    end: Point2D,
+    x_left: float,
+    x_right: float,
+) -> tuple[Point2D, Point2D] | None:
+    edge_min_x = min(start.x, end.x)
+    edge_max_x = max(start.x, end.x)
+    if edge_max_x < x_left - EPSILON or edge_min_x > x_right + EPSILON:
+        return None
+
+    if abs(start.x - end.x) <= EPSILON:
+        if x_left - EPSILON <= start.x <= x_right + EPSILON:
+            return start, end
+        return None
+
+    clipped_left = max(x_left, edge_min_x)
+    clipped_right = min(x_right, edge_max_x)
+    if clipped_right < clipped_left - EPSILON:
+        return None
+    return _point_on_edge_at_x(start, end, clipped_left), _point_on_edge_at_x(start, end, clipped_right)
+
+
+def _point_on_edge_at_x(start: Point2D, end: Point2D, x_value: float) -> Point2D:
+    ratio = (x_value - start.x) / (end.x - start.x)
+    y_value = start.y + ratio * (end.y - start.y)
+    return Point2D(x_value, y_value)
 
 
 def _polygon_to_dict(polygon: Polygon2D) -> list[dict[str, float]]:

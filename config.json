@@ -20,8 +20,8 @@
       "bottom_allowance_cm": 0.0,
       "zapas_dolny": 0.0,
       "zapas_gorny": 0.0,
-      "min_sheet_length_cm": 50.0,
-      "min_dlugosc_arkusza": 50.0,
+      "min_sheet_length_cm": 0.0,
+      "min_dlugosc_arkusza": 0.0,
       "max_sheet_length_cm": 900.0,
       "max_dlugosc_arkusza": 900.0,
       "odleglosc_miedzy_latami": 0.0,
@@ -62,7 +62,7 @@
         "selected_material_id": "PD510",
         "generation_settings": {
           "layout_origin": "left",
-          "base_line_y_cm": 800.0
+          "base_line_y_cm": 800
         },
         "auto_sheet_placements": [
           {
@@ -94,12 +94,24 @@
             "band_index": 2,
             "x_left_cm": 102.0,
             "x_right_cm": 153.0,
-            "y_top_cm": 0.0,
+            "y_top_cm": 151.55951242829838,
             "y_bottom_cm": 800.0,
-            "raw_length_cm": 800.0,
-            "final_length_cm": 800.0,
+            "raw_length_cm": 648.4404875717016,
+            "final_length_cm": 648.4404875717016,
             "source": "auto",
             "split_reason": null
+          },
+          {
+            "id": "plane-1-b2-s0-r1",
+            "band_index": 2,
+            "x_left_cm": 102.0,
+            "x_right_cm": 153.0,
+            "y_top_cm": 0.0,
+            "y_bottom_cm": 151.55951242829832,
+            "raw_length_cm": 151.55951242829832,
+            "final_length_cm": 166.55951242829832,
+            "source": "auto",
+            "split_reason": "partial_cutout_top"
           },
           {
             "id": "plane-1-b3-s0-r0",
@@ -142,12 +154,24 @@
             "band_index": 4,
             "x_left_cm": 204.0,
             "x_right_cm": 255.0,
-            "y_top_cm": 261.86784604210925,
+            "y_top_cm": 360.19214855919006,
             "y_bottom_cm": 800.0,
-            "raw_length_cm": 538.1321539578908,
-            "final_length_cm": 538.1321539578908,
+            "raw_length_cm": 439.80785144080994,
+            "final_length_cm": 439.80785144080994,
             "source": "auto",
             "split_reason": null
+          },
+          {
+            "id": "plane-1-b4-s1-r1",
+            "band_index": 4,
+            "x_left_cm": 204.0,
+            "x_right_cm": 255.0,
+            "y_top_cm": 261.86784604210925,
+            "y_bottom_cm": 360.19214855919006,
+            "raw_length_cm": 98.32430251708081,
+            "final_length_cm": 113.32430251708081,
+            "source": "auto",
+            "split_reason": "partial_cutout_top"
           },
           {
             "id": "plane-1-b5-s0-r0",
@@ -418,12 +442,24 @@
             "band_index": 12,
             "x_left_cm": 612.0,
             "x_right_cm": 663.0,
-            "y_top_cm": 321.1300995836301,
+            "y_top_cm": 360.19214855919006,
             "y_bottom_cm": 800.0,
-            "raw_length_cm": 478.8699004163699,
-            "final_length_cm": 478.8699004163699,
+            "raw_length_cm": 439.80785144080994,
+            "final_length_cm": 439.80785144080994,
             "source": "auto",
             "split_reason": null
+          },
+          {
+            "id": "plane-1-b12-s1-r1",
+            "band_index": 12,
+            "x_left_cm": 612.0,
+            "x_right_cm": 663.0,
+            "y_top_cm": 321.1300995836301,
+            "y_bottom_cm": 360.19214855919006,
+            "raw_length_cm": 39.06204897555995,
+            "final_length_cm": 54.06204897555995,
+            "source": "auto",
+            "split_reason": "partial_cutout_top"
           },
           {
             "id": "plane-1-b13-s0-r0",
@@ -442,24 +478,48 @@
             "band_index": 13,
             "x_left_cm": 663.0,
             "x_right_cm": 714.0,
-            "y_top_cm": 328.53788127632026,
+            "y_top_cm": 421.965050623053,
             "y_bottom_cm": 800.0,
-            "raw_length_cm": 471.46211872367974,
-            "final_length_cm": 471.46211872367974,
+            "raw_length_cm": 378.034949376947,
+            "final_length_cm": 378.034949376947,
             "source": "auto",
             "split_reason": null
+          },
+          {
+            "id": "plane-1-b13-s1-r1",
+            "band_index": 13,
+            "x_left_cm": 663.0,
+            "x_right_cm": 714.0,
+            "y_top_cm": 328.53788127632026,
+            "y_bottom_cm": 421.965050623053,
+            "raw_length_cm": 93.42716934673274,
+            "final_length_cm": 108.42716934673274,
+            "source": "auto",
+            "split_reason": "partial_cutout_top"
           },
           {
             "id": "plane-1-b14-s0-r0",
             "band_index": 14,
             "x_left_cm": 714.0,
             "x_right_cm": 765.0,
-            "y_top_cm": 0.0,
+            "y_top_cm": 151.55951242829832,
             "y_bottom_cm": 427.1857817150696,
-            "raw_length_cm": 427.1857817150696,
-            "final_length_cm": 427.1857817150696,
+            "raw_length_cm": 275.6262692867713,
+            "final_length_cm": 275.6262692867713,
             "source": "auto",
             "split_reason": null
+          },
+          {
+            "id": "plane-1-b14-s0-r1",
+            "band_index": 14,
+            "x_left_cm": 714.0,
+            "x_right_cm": 765.0,
+            "y_top_cm": 0.0,
+            "y_bottom_cm": 151.55951242829832,
+            "raw_length_cm": 151.55951242829832,
+            "final_length_cm": 166.55951242829832,
+            "source": "auto",
+            "split_reason": "partial_cutout_top"
           },
           {
             "id": "plane-1-b14-s1-r0",
@@ -526,12 +586,24 @@
             "band_index": 17,
             "x_left_cm": 867.0,
             "x_right_cm": 918.0,
-            "y_top_cm": 0.0,
+            "y_top_cm": 421.965050623053,
             "y_bottom_cm": 800.0,
-            "raw_length_cm": 800.0,
-            "final_length_cm": 800.0,
+            "raw_length_cm": 378.034949376947,
+            "final_length_cm": 378.034949376947,
             "source": "auto",
             "split_reason": null
+          },
+          {
+            "id": "plane-1-b17-s0-r1",
+            "band_index": 17,
+            "x_left_cm": 867.0,
+            "x_right_cm": 918.0,
+            "y_top_cm": 0.0,
+            "y_bottom_cm": 421.965050623053,
+            "raw_length_cm": 421.965050623053,
+            "final_length_cm": 436.965050623053,
+            "source": "auto",
+            "split_reason": "partial_cutout_top"
           },
           {
             "id": "plane-1-b18-s0-r0",
@@ -549,7 +621,7 @@
             "id": "plane-1-b19-s0-r0",
             "band_index": 19,
             "x_left_cm": 969.0,
-            "x_right_cm": 1000.0,
+            "x_right_cm": 1000,
             "y_top_cm": 552.0,
             "y_bottom_cm": 800.0,
             "raw_length_cm": 248.0,
@@ -592,7 +664,10 @@
                   ]
                 ],
                 "placement_id": "plane-1-b0-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
@@ -647,7 +722,10 @@
                   ]
                 ],
                 "placement_id": "plane-1-b1-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
@@ -720,7 +798,10 @@
                   ]
                 ],
                 "placement_id": "plane-1-b2-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "partial",
+                "partial_cut_line_y_cm": 151.55951242829832,
+                "top_extra_cm": 15.0
               }
             ]
           },
@@ -757,7 +838,10 @@
                   ]
                 ],
                 "placement_id": "plane-1-b3-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               },
               {
                 "segment_index": 1,
@@ -787,7 +871,10 @@
                   ]
                 ],
                 "placement_id": "plane-1-b3-s1-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
@@ -860,7 +947,10 @@
                   ]
                 ],
                 "placement_id": "plane-1-b4-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               },
               {
                 "segment_index": 1,
@@ -962,7 +1052,10 @@
                   ]
                 ],
                 "placement_id": "plane-1-b4-s1-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "partial",
+                "partial_cut_line_y_cm": 360.19214855919006,
+                "top_extra_cm": 15.0
               }
             ]
           },
@@ -999,7 +1092,10 @@
                   ]
                 ],
                 "placement_id": "plane-1-b5-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               },
               {
                 "segment_index": 1,
@@ -1029,7 +1125,10 @@
                   ]
                 ],
                 "placement_id": "plane-1-b5-s1-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               },
               {
                 "segment_index": 2,
@@ -1059,7 +1158,10 @@
                   ]
                 ],
                 "placement_id": "plane-1-b5-s2-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
@@ -1114,7 +1216,10 @@
                   ]
                 ],
                 "placement_id": "plane-1-b6-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               },
               {
                 "segment_index": 1,
@@ -1162,7 +1267,10 @@
                   ]
                 ],
                 "placement_id": "plane-1-b6-s1-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               },
               {
                 "segment_index": 2,
@@ -1210,7 +1318,10 @@
                   ]
                 ],
                 "placement_id": "plane-1-b6-s2-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
@@ -1247,7 +1358,10 @@
                   ]
                 ],
                 "placement_id": "plane-1-b7-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               },
               {
                 "segment_index": 1,
@@ -1277,7 +1391,10 @@
                   ]
                 ],
                 "placement_id": "plane-1-b7-s1-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               },
               {
                 "segment_index": 2,
@@ -1307,7 +1424,10 @@
                   ]
                 ],
                 "placement_id": "plane-1-b7-s2-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
@@ -1344,7 +1464,10 @@
                   ]
                 ],
                 "placement_id": "plane-1-b8-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               },
               {
                 "segment_index": 1,
@@ -1374,7 +1497,10 @@
                   ]
                 ],
                 "placement_id": "plane-1-b8-s1-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               },
               {
                 "segment_index": 2,
@@ -1404,7 +1530,10 @@
                   ]
                 ],
                 "placement_id": "plane-1-b8-s2-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
@@ -1459,7 +1588,10 @@
                   ]
                 ],
                 "placement_id": "plane-1-b9-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               },
               {
                 "segment_index": 1,
@@ -1507,7 +1639,10 @@
                   ]
                 ],
                 "placement_id": "plane-1-b9-s1-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               },
               {
                 "segment_index": 2,
@@ -1555,7 +1690,10 @@
                   ]
                 ],
                 "placement_id": "plane-1-b9-s2-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
@@ -1592,7 +1730,10 @@
                   ]
                 ],
                 "placement_id": "plane-1-b10-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               },
               {
                 "segment_index": 1,
@@ -1622,7 +1763,10 @@
                   ]
                 ],
                 "placement_id": "plane-1-b10-s1-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               },
               {
                 "segment_index": 2,
@@ -1652,7 +1796,10 @@
                   ]
                 ],
                 "placement_id": "plane-1-b10-s2-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
@@ -1689,7 +1836,10 @@
                   ]
                 ],
                 "placement_id": "plane-1-b11-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               },
               {
                 "segment_index": 1,
@@ -1719,7 +1869,10 @@
                   ]
                 ],
                 "placement_id": "plane-1-b11-s1-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               },
               {
                 "segment_index": 2,
@@ -1749,7 +1902,10 @@
                   ]
                 ],
                 "placement_id": "plane-1-b11-s2-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
@@ -1858,7 +2014,10 @@
                   ]
                 ],
                 "placement_id": "plane-1-b12-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               },
               {
                 "segment_index": 1,
@@ -2014,7 +2173,10 @@
                   ]
                 ],
                 "placement_id": "plane-1-b12-s1-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "partial",
+                "partial_cut_line_y_cm": 360.19214855919006,
+                "top_extra_cm": 15.0
               }
             ]
           },
@@ -2087,7 +2249,10 @@
                   ]
                 ],
                 "placement_id": "plane-1-b13-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               },
               {
                 "segment_index": 1,
@@ -2189,7 +2354,10 @@
                   ]
                 ],
                 "placement_id": "plane-1-b13-s1-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "partial",
+                "partial_cut_line_y_cm": 421.965050623053,
+                "top_extra_cm": 15.0
               }
             ]
           },
@@ -2262,7 +2430,10 @@
                   ]
                 ],
                 "placement_id": "plane-1-b14-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "partial",
+                "partial_cut_line_y_cm": 151.55951242829832,
+                "top_extra_cm": 15.0
               },
               {
                 "segment_index": 1,
@@ -2310,7 +2481,10 @@
                   ]
                 ],
                 "placement_id": "plane-1-b14-s1-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
@@ -2347,7 +2521,10 @@
                   ]
                 ],
                 "placement_id": "plane-1-b15-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               },
               {
                 "segment_index": 1,
@@ -2377,7 +2554,10 @@
                   ]
                 ],
                 "placement_id": "plane-1-b15-s1-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
@@ -2432,7 +2612,10 @@
                   ]
                 ],
                 "placement_id": "plane-1-b16-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               },
               {
                 "segment_index": 1,
@@ -2480,7 +2663,10 @@
                   ]
                 ],
                 "placement_id": "plane-1-b16-s1-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
@@ -2571,7 +2757,10 @@
                   ]
                 ],
                 "placement_id": "plane-1-b17-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": "partial",
+                "partial_cut_line_y_cm": 421.965050623053,
+                "top_extra_cm": 15.0
               }
             ]
           },
@@ -2608,7 +2797,10 @@
                   ]
                 ],
                 "placement_id": "plane-1-b18-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
@@ -2645,14 +2837,17 @@
                   ]
                 ],
                 "placement_id": "plane-1-b19-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           }
         ],
         "manual_sheet_placements": [],
         "manually_removed_auto_sheet_ids": [],
-        "layout_revision": 94,
+        "layout_revision": 99,
         "layout_dirty_reason": null,
         "outline": [
           {
@@ -2905,12 +3100,12 @@
             "band_index": 6,
             "x_left_cm": 306.0,
             "x_right_cm": 357.0,
-            "y_top_cm": 100.0,
+            "y_top_cm": 330.95065403197907,
             "y_bottom_cm": 1000.0,
-            "raw_length_cm": 900.0,
-            "final_length_cm": 915.0,
+            "raw_length_cm": 669.0493459680209,
+            "final_length_cm": 669.0493459680209,
             "source": "auto",
-            "split_reason": "partial_cutout"
+            "split_reason": null
           },
           {
             "id": "plane-2-b6-s0-r1",
@@ -2918,11 +3113,11 @@
             "x_left_cm": 306.0,
             "x_right_cm": 357.0,
             "y_top_cm": 0.0,
-            "y_bottom_cm": 100.0,
-            "raw_length_cm": 100.0,
-            "final_length_cm": 100.0,
+            "y_bottom_cm": 330.95065403197907,
+            "raw_length_cm": 330.95065403197907,
+            "final_length_cm": 345.95065403197907,
             "source": "auto",
-            "split_reason": null
+            "split_reason": "partial_cutout_top"
           },
           {
             "id": "plane-2-b7-s0-r0",
@@ -2965,12 +3160,24 @@
             "band_index": 8,
             "x_left_cm": 408.0,
             "x_right_cm": 459.0,
-            "y_top_cm": 430.4810858130596,
+            "y_top_cm": 579.9972837334437,
             "y_bottom_cm": 1000.0,
-            "raw_length_cm": 569.5189141869404,
-            "final_length_cm": 584.5189141869404,
+            "raw_length_cm": 420.00271626655626,
+            "final_length_cm": 420.00271626655626,
             "source": "auto",
-            "split_reason": "partial_cutout"
+            "split_reason": null
+          },
+          {
+            "id": "plane-2-b8-s1-r1",
+            "band_index": 8,
+            "x_left_cm": 408.0,
+            "x_right_cm": 459.0,
+            "y_top_cm": 430.4810858130596,
+            "y_bottom_cm": 579.9972837334437,
+            "raw_length_cm": 149.51619792038412,
+            "final_length_cm": 164.51619792038412,
+            "source": "auto",
+            "split_reason": "partial_cutout_top"
           },
           {
             "id": "plane-2-b9-s0-r0",
@@ -3061,12 +3268,24 @@
             "band_index": 11,
             "x_left_cm": 561.0,
             "x_right_cm": 612.0,
-            "y_top_cm": 540.5802723899199,
+            "y_top_cm": 579.9972837334437,
             "y_bottom_cm": 1000.0,
-            "raw_length_cm": 459.41972761008014,
-            "final_length_cm": 474.41972761008014,
+            "raw_length_cm": 420.00271626655626,
+            "final_length_cm": 420.00271626655626,
             "source": "auto",
-            "split_reason": "partial_cutout"
+            "split_reason": null
+          },
+          {
+            "id": "plane-2-b11-s1-r1",
+            "band_index": 11,
+            "x_left_cm": 561.0,
+            "x_right_cm": 612.0,
+            "y_top_cm": 540.5802723899199,
+            "y_bottom_cm": 579.9972837334437,
+            "raw_length_cm": 39.41701134352388,
+            "final_length_cm": 54.41701134352388,
+            "source": "auto",
+            "split_reason": "partial_cutout_top"
           },
           {
             "id": "plane-2-b12-s0-r0",
@@ -3193,12 +3412,12 @@
             "band_index": 17,
             "x_left_cm": 867.0,
             "x_right_cm": 918.0,
-            "y_top_cm": 100.0,
+            "y_top_cm": 330.95065403197907,
             "y_bottom_cm": 1000.0,
-            "raw_length_cm": 900.0,
-            "final_length_cm": 915.0,
+            "raw_length_cm": 669.0493459680209,
+            "final_length_cm": 669.0493459680209,
             "source": "auto",
-            "split_reason": "partial_cutout"
+            "split_reason": null
           },
           {
             "id": "plane-2-b17-s0-r1",
@@ -3206,11 +3425,11 @@
             "x_left_cm": 867.0,
             "x_right_cm": 918.0,
             "y_top_cm": 0.0,
-            "y_bottom_cm": 100.0,
-            "raw_length_cm": 100.0,
-            "final_length_cm": 100.0,
+            "y_bottom_cm": 330.95065403197907,
+            "raw_length_cm": 330.95065403197907,
+            "final_length_cm": 345.95065403197907,
             "source": "auto",
-            "split_reason": null
+            "split_reason": "partial_cutout_top"
           },
           {
             "id": "plane-2-b18-s0-r0",
@@ -4785,7 +5004,7 @@
         ],
         "manual_sheet_placements": [],
         "manually_removed_auto_sheet_ids": [],
-        "layout_revision": 47,
+        "layout_revision": 52,
         "layout_dirty_reason": null,
         "outline": [
           {
@@ -5038,12 +5257,24 @@
             "band_index": 15,
             "x_left_cm": 184.0,
             "x_right_cm": 235.0,
-            "y_top_cm": 0.0,
+            "y_top_cm": 100.16732379283488,
             "y_bottom_cm": 300.0,
-            "raw_length_cm": 300.0,
-            "final_length_cm": 315.0,
+            "raw_length_cm": 199.83267620716512,
+            "final_length_cm": 199.83267620716512,
             "source": "auto",
-            "split_reason": "partial_cutout"
+            "split_reason": null
+          },
+          {
+            "id": "plane-3-b15-s0-r1",
+            "band_index": 15,
+            "x_left_cm": 184.0,
+            "x_right_cm": 235.0,
+            "y_top_cm": 0.0,
+            "y_bottom_cm": 100.16732379283488,
+            "raw_length_cm": 100.16732379283488,
+            "final_length_cm": 115.16732379283488,
+            "source": "auto",
+            "split_reason": "partial_cutout_top"
           },
           {
             "id": "plane-3-b16-s0-r0",
@@ -5074,12 +5305,24 @@
             "band_index": 17,
             "x_left_cm": 82.0,
             "x_right_cm": 133.0,
-            "y_top_cm": 0.0,
+            "y_top_cm": 100.16732379283488,
             "y_bottom_cm": 300.0,
-            "raw_length_cm": 300.0,
-            "final_length_cm": 315.0,
+            "raw_length_cm": 199.83267620716512,
+            "final_length_cm": 199.83267620716512,
             "source": "auto",
-            "split_reason": "partial_cutout"
+            "split_reason": null
+          },
+          {
+            "id": "plane-3-b17-s0-r1",
+            "band_index": 17,
+            "x_left_cm": 82.0,
+            "x_right_cm": 133.0,
+            "y_top_cm": 0.0,
+            "y_bottom_cm": 100.16732379283488,
+            "raw_length_cm": 100.16732379283488,
+            "final_length_cm": 115.16732379283488,
+            "source": "auto",
+            "split_reason": "partial_cutout_top"
           },
           {
             "id": "plane-3-b18-s0-r0",
@@ -5886,7 +6129,7 @@
                 ],
                 "placement_id": "plane-3-b16-s1-r0",
                 "split_reason": null,
-                "cutout_interaction": "full",
+                "cutout_interaction": null,
                 "partial_cut_line_y_cm": null,
                 "top_extra_cm": 0.0
               }
@@ -6051,7 +6294,7 @@
         ],
         "manual_sheet_placements": [],
         "manually_removed_auto_sheet_ids": [],
-        "layout_revision": 38,
+        "layout_revision": 43,
         "layout_dirty_reason": null,
         "outline": [
           {
@@ -6232,6 +6475,18 @@
             "final_length_cm": 54.36752976496018,
             "source": "auto",
             "split_reason": null
+          },
+          {
+            "id": "plane-4-b11-s0-r0",
+            "band_index": 11,
+            "x_left_cm": 561.0,
+            "x_right_cm": 594.1565793917517,
+            "y_top_cm": 1389.144173402643,
+            "y_bottom_cm": 1410.5642611725364,
+            "raw_length_cm": 21.42008776989337,
+            "final_length_cm": 21.42008776989337,
+            "source": "auto",
+            "split_reason": null
           }
         ],
         "layout_bands": [
@@ -6286,7 +6541,10 @@
                   ]
                 ],
                 "placement_id": "plane-4-b0-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
@@ -6323,7 +6581,10 @@
                   ]
                 ],
                 "placement_id": "plane-4-b1-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
@@ -6360,7 +6621,10 @@
                   ]
                 ],
                 "placement_id": "plane-4-b2-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
@@ -6397,7 +6661,10 @@
                   ]
                 ],
                 "placement_id": "plane-4-b3-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
@@ -6434,7 +6701,10 @@
                   ]
                 ],
                 "placement_id": "plane-4-b4-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
@@ -6471,7 +6741,10 @@
                   ]
                 ],
                 "placement_id": "plane-4-b5-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
@@ -6508,7 +6781,10 @@
                   ]
                 ],
                 "placement_id": "plane-4-b6-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
@@ -6545,7 +6821,10 @@
                   ]
                 ],
                 "placement_id": "plane-4-b7-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
@@ -6582,7 +6861,10 @@
                   ]
                 ],
                 "placement_id": "plane-4-b8-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
@@ -6619,7 +6901,10 @@
                   ]
                 ],
                 "placement_id": "plane-4-b9-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
@@ -6656,7 +6941,10 @@
                   ]
                 ],
                 "placement_id": "plane-4-b10-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
@@ -6693,14 +6981,17 @@
                   ]
                 ],
                 "placement_id": "plane-4-b11-s0-r0",
-                "split_reason": null
+                "split_reason": null,
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           }
         ],
         "manual_sheet_placements": [],
         "manually_removed_auto_sheet_ids": [],
-        "layout_revision": 18,
+        "layout_revision": 23,
         "layout_dirty_reason": null,
         "outline": [
           {
@@ -6771,9 +7062,9 @@
             "y_top_cm": 0.0,
             "y_bottom_cm": 300.0,
             "raw_length_cm": 300.0,
-            "final_length_cm": 315.0,
+            "final_length_cm": 300.0,
             "source": "auto",
-            "split_reason": "partial_cutout"
+            "split_reason": null
           },
           {
             "id": "plane-5-b4-s0-r0",
@@ -6781,21 +7072,9 @@
             "x_left_cm": 204.0,
             "x_right_cm": 255.0,
             "y_top_cm": 0.0,
-            "y_bottom_cm": 100.17891221374043,
-            "raw_length_cm": 100.17891221374043,
-            "final_length_cm": 100.17891221374043,
-            "source": "auto",
-            "split_reason": null
-          },
-          {
-            "id": "plane-5-b4-s1-r0",
-            "band_index": 4,
-            "x_left_cm": 204.0,
-            "x_right_cm": 255.0,
-            "y_top_cm": 200.17891221374043,
             "y_bottom_cm": 300.0,
-            "raw_length_cm": 99.82108778625957,
-            "final_length_cm": 99.82108778625957,
+            "raw_length_cm": 300.0,
+            "final_length_cm": 300.0,
             "source": "auto",
             "split_reason": null
           },
@@ -6804,12 +7083,24 @@
             "band_index": 5,
             "x_left_cm": 255.0,
             "x_right_cm": 306.0,
-            "y_top_cm": 0.0,
+            "y_top_cm": 100.1118201335878,
             "y_bottom_cm": 300.0,
-            "raw_length_cm": 300.0,
-            "final_length_cm": 315.0,
+            "raw_length_cm": 199.8881798664122,
+            "final_length_cm": 199.8881798664122,
             "source": "auto",
-            "split_reason": "partial_cutout"
+            "split_reason": null
+          },
+          {
+            "id": "plane-5-b5-s0-r1",
+            "band_index": 5,
+            "x_left_cm": 255.0,
+            "x_right_cm": 306.0,
+            "y_top_cm": 0.0,
+            "y_bottom_cm": 100.11182013358778,
+            "raw_length_cm": 100.11182013358778,
+            "final_length_cm": 115.11182013358778,
+            "source": "auto",
+            "split_reason": "partial_cutout_top"
           },
           {
             "id": "plane-5-b6-s0-r0",
@@ -6817,9 +7108,21 @@
             "x_left_cm": 306.0,
             "x_right_cm": 357.0,
             "y_top_cm": 0.0,
+            "y_bottom_cm": 100.46304693816793,
+            "raw_length_cm": 100.46304693816793,
+            "final_length_cm": 100.46304693816793,
+            "source": "auto",
+            "split_reason": null
+          },
+          {
+            "id": "plane-5-b6-s1-r0",
+            "band_index": 6,
+            "x_left_cm": 306.0,
+            "x_right_cm": 357.0,
+            "y_top_cm": 229.94543177480904,
             "y_bottom_cm": 300.0,
-            "raw_length_cm": 300.0,
-            "final_length_cm": 300.0,
+            "raw_length_cm": 70.05456822519096,
+            "final_length_cm": 70.05456822519096,
             "source": "auto",
             "split_reason": null
           },
@@ -6828,12 +7131,24 @@
             "band_index": 7,
             "x_left_cm": 357.0,
             "x_right_cm": 408.0,
-            "y_top_cm": 0.0,
+            "y_top_cm": 100.1118201335878,
             "y_bottom_cm": 300.0,
-            "raw_length_cm": 300.0,
-            "final_length_cm": 300.0,
+            "raw_length_cm": 199.8881798664122,
+            "final_length_cm": 199.8881798664122,
             "source": "auto",
             "split_reason": null
+          },
+          {
+            "id": "plane-5-b7-s0-r1",
+            "band_index": 7,
+            "x_left_cm": 357.0,
+            "x_right_cm": 408.0,
+            "y_top_cm": 0.0,
+            "y_bottom_cm": 100.11182013358778,
+            "raw_length_cm": 100.11182013358778,
+            "final_length_cm": 115.11182013358778,
+            "source": "auto",
+            "split_reason": "partial_cutout_top"
           },
           {
             "id": "plane-5-b8-s0-r0",
@@ -7120,60 +7435,24 @@
                       "y": 0.0
                     },
                     {
-                      "x": 179.08218034351142,
+                      "x": 204.0,
                       "y": 0.0
                     },
                     {
-                      "x": 179.08218034351142,
+                      "x": 204.0,
                       "y": 300.0
                     },
                     {
                       "x": 153.0,
                       "y": 300.0
                     }
-                  ],
-                  [
-                    {
-                      "x": 179.08218034351142,
-                      "y": 0.0
-                    },
-                    {
-                      "x": 204.0,
-                      "y": 0.0
-                    },
-                    {
-                      "x": 204.0,
-                      "y": 100.17891221374043
-                    },
-                    {
-                      "x": 179.08218034351142,
-                      "y": 100.17891221374043
-                    }
-                  ],
-                  [
-                    {
-                      "x": 179.08218034351142,
-                      "y": 200.17891221374043
-                    },
-                    {
-                      "x": 204.0,
-                      "y": 200.17891221374043
-                    },
-                    {
-                      "x": 204.0,
-                      "y": 300.0
-                    },
-                    {
-                      "x": 179.08218034351142,
-                      "y": 300.0
-                    }
                   ]
                 ],
                 "placement_id": "plane-5-b3-s0-r0",
                 "split_reason": null,
-                "cutout_interaction": "partial",
-                "partial_cut_line_y_cm": 100.17891221374043,
-                "top_extra_cm": 15.0
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
@@ -7187,8 +7466,8 @@
                 "x_left_cm": 204.0,
                 "x_right_cm": 255.0,
                 "y_top_cm": 0.0,
-                "y_bottom_cm": 100.17891221374043,
-                "raw_length_cm": 100.17891221374043,
+                "y_bottom_cm": 300.0,
+                "raw_length_cm": 300.0,
                 "coverage_polygons": [
                   [
                     {
@@ -7201,50 +7480,17 @@
                     },
                     {
                       "x": 255.0,
-                      "y": 100.17891221374043
+                      "y": 300.0
                     },
                     {
                       "x": 204.0,
-                      "y": 100.17891221374043
+                      "y": 300.0
                     }
                   ]
                 ],
                 "placement_id": "plane-5-b4-s0-r0",
                 "split_reason": null,
-                "cutout_interaction": "full",
-                "partial_cut_line_y_cm": null,
-                "top_extra_cm": 0.0
-              },
-              {
-                "segment_index": 1,
-                "x_left_cm": 204.0,
-                "x_right_cm": 255.0,
-                "y_top_cm": 200.17891221374043,
-                "y_bottom_cm": 300.0,
-                "raw_length_cm": 99.82108778625957,
-                "coverage_polygons": [
-                  [
-                    {
-                      "x": 204.0,
-                      "y": 200.17891221374043
-                    },
-                    {
-                      "x": 255.0,
-                      "y": 200.17891221374043
-                    },
-                    {
-                      "x": 255.0,
-                      "y": 300.0
-                    },
-                    {
-                      "x": 204.0,
-                      "y": 300.0
-                    }
-                  ]
-                ],
-                "placement_id": "plane-5-b4-s1-r0",
-                "split_reason": null,
-                "cutout_interaction": "full",
+                "cutout_interaction": null,
                 "partial_cut_line_y_cm": null,
                 "top_extra_cm": 0.0
               }
@@ -7269,29 +7515,11 @@
                       "y": 0.0
                     },
                     {
-                      "x": 279.08218034351137,
+                      "x": 276.08092795801525,
                       "y": 0.0
                     },
                     {
-                      "x": 279.08218034351137,
-                      "y": 100.17891221374043
-                    },
-                    {
-                      "x": 255.0,
-                      "y": 100.17891221374043
-                    }
-                  ],
-                  [
-                    {
-                      "x": 255.0,
-                      "y": 200.17891221374043
-                    },
-                    {
-                      "x": 279.08218034351137,
-                      "y": 200.17891221374043
-                    },
-                    {
-                      "x": 279.08218034351137,
+                      "x": 276.08092795801525,
                       "y": 300.0
                     },
                     {
@@ -7301,19 +7529,73 @@
                   ],
                   [
                     {
-                      "x": 279.08218034351137,
+                      "x": 276.08092795801525,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 283.27618082061065,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 283.27618082061065,
+                      "y": 100.55525110687023
+                    },
+                    {
+                      "x": 276.08092795801525,
+                      "y": 100.56984883587786
+                    }
+                  ],
+                  [
+                    {
+                      "x": 276.08092795801525,
+                      "y": 165.26493916984674
+                    },
+                    {
+                      "x": 283.27618082061065,
+                      "y": 229.94543177480904
+                    },
+                    {
+                      "x": 283.27618082061065,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 276.08092795801525,
+                      "y": 300.0
+                    }
+                  ],
+                  [
+                    {
+                      "x": 283.27618082061065,
                       "y": 0.0
                     },
                     {
                       "x": 306.0,
                       "y": 0.0
+                    },
+                    {
+                      "x": 306.0,
+                      "y": 100.46304693816793
+                    },
+                    {
+                      "x": 283.27618082061065,
+                      "y": 100.55525110687023
+                    }
+                  ],
+                  [
+                    {
+                      "x": 283.27618082061065,
+                      "y": 229.94543177480904
+                    },
+                    {
+                      "x": 306.0,
+                      "y": 229.94543177480904
                     },
                     {
                       "x": 306.0,
                       "y": 300.0
                     },
                     {
-                      "x": 279.08218034351137,
+                      "x": 283.27618082061065,
                       "y": 300.0
                     }
                   ]
@@ -7321,7 +7603,7 @@
                 "placement_id": "plane-5-b5-s0-r0",
                 "split_reason": null,
                 "cutout_interaction": "partial",
-                "partial_cut_line_y_cm": 100.17891221374043,
+                "partial_cut_line_y_cm": 100.11182013358778,
                 "top_extra_cm": 15.0
               }
             ]
@@ -7336,8 +7618,8 @@
                 "x_left_cm": 306.0,
                 "x_right_cm": 357.0,
                 "y_top_cm": 0.0,
-                "y_bottom_cm": 300.0,
-                "raw_length_cm": 300.0,
+                "y_bottom_cm": 100.46304693816793,
+                "raw_length_cm": 100.46304693816793,
                 "coverage_polygons": [
                   [
                     {
@@ -7350,6 +7632,39 @@
                     },
                     {
                       "x": 357.0,
+                      "y": 100.25610933816793
+                    },
+                    {
+                      "x": 306.0,
+                      "y": 100.46304693816793
+                    }
+                  ]
+                ],
+                "placement_id": "plane-5-b6-s0-r0",
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
+              },
+              {
+                "segment_index": 1,
+                "x_left_cm": 306.0,
+                "x_right_cm": 357.0,
+                "y_top_cm": 229.94543177480904,
+                "y_bottom_cm": 300.0,
+                "raw_length_cm": 70.05456822519096,
+                "coverage_polygons": [
+                  [
+                    {
+                      "x": 306.0,
+                      "y": 229.94543177480904
+                    },
+                    {
+                      "x": 357.0,
+                      "y": 229.94543177480904
+                    },
+                    {
+                      "x": 357.0,
                       "y": 300.0
                     },
                     {
@@ -7358,7 +7673,7 @@
                     }
                   ]
                 ],
-                "placement_id": "plane-5-b6-s0-r0",
+                "placement_id": "plane-5-b6-s1-r0",
                 "split_reason": null,
                 "cutout_interaction": null,
                 "partial_cut_line_y_cm": null,
@@ -7385,6 +7700,78 @@
                       "y": 0.0
                     },
                     {
+                      "x": 383.27618082061065,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 383.27618082061065,
+                      "y": 100.14949110687023
+                    },
+                    {
+                      "x": 357.0,
+                      "y": 100.25610933816793
+                    }
+                  ],
+                  [
+                    {
+                      "x": 357.0,
+                      "y": 229.94543177480904
+                    },
+                    {
+                      "x": 383.27618082061065,
+                      "y": 229.94543177480904
+                    },
+                    {
+                      "x": 383.27618082061065,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 357.0,
+                      "y": 300.0
+                    }
+                  ],
+                  [
+                    {
+                      "x": 383.27618082061065,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 392.56023377862596,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 392.56023377862596,
+                      "y": 100.130655620229
+                    },
+                    {
+                      "x": 383.27618082061065,
+                      "y": 100.14949110687023
+                    }
+                  ],
+                  [
+                    {
+                      "x": 383.27618082061065,
+                      "y": 229.94543177480904
+                    },
+                    {
+                      "x": 392.56023377862596,
+                      "y": 165.0286259541984
+                    },
+                    {
+                      "x": 392.56023377862596,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 383.27618082061065,
+                      "y": 300.0
+                    }
+                  ],
+                  [
+                    {
+                      "x": 392.56023377862596,
+                      "y": 0.0
+                    },
+                    {
                       "x": 408.0,
                       "y": 0.0
                     },
@@ -7393,16 +7780,16 @@
                       "y": 300.0
                     },
                     {
-                      "x": 357.0,
+                      "x": 392.56023377862596,
                       "y": 300.0
                     }
                   ]
                 ],
                 "placement_id": "plane-5-b7-s0-r0",
                 "split_reason": null,
-                "cutout_interaction": null,
-                "partial_cut_line_y_cm": null,
-                "top_extra_cm": 0.0
+                "cutout_interaction": "partial",
+                "partial_cut_line_y_cm": 100.11182013358778,
+                "top_extra_cm": 15.0
               }
             ]
           },
@@ -7889,7 +8276,7 @@
         ],
         "manual_sheet_placements": [],
         "manually_removed_auto_sheet_ids": [],
-        "layout_revision": 57,
+        "layout_revision": 204,
         "layout_dirty_reason": null,
         "outline": [
           {
@@ -7912,20 +8299,20 @@
         "holes": [
           [
             {
-              "x": 179.08218034351142,
-              "y": 100.17891221374043
+              "x": 276.08092795801525,
+              "y": 100.5844465648855
             },
             {
-              "x": 279.08218034351137,
-              "y": 100.17891221374043
+              "x": 392.56023377862596,
+              "y": 100.11182013358778
             },
             {
-              "x": 279.08218034351137,
-              "y": 200.17891221374043
+              "x": 383.27618082061065,
+              "y": 229.94543177480904
             },
             {
-              "x": 179.08218034351142,
-              "y": 200.17891221374043
+              "x": 283.27618082061065,
+              "y": 229.94543177480904
             }
           ]
         ]
@@ -7946,8 +8333,8 @@
       "bottom_allowance_cm": 0.0,
       "zapas_dolny": 0.0,
       "zapas_gorny": 0.0,
-      "min_sheet_length_cm": 50.0,
-      "min_dlugosc_arkusza": 50.0,
+      "min_sheet_length_cm": 0.0,
+      "min_dlugosc_arkusza": 0.0,
       "max_sheet_length_cm": 900.0,
       "max_dlugosc_arkusza": 900.0,
       "odleglosc_miedzy_latami": 0.0,
