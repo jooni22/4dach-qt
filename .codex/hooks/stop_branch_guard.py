@@ -25,7 +25,7 @@ from branch_guard_common import (
 
 
 def output(message: str | None = None) -> int:
-    payload: dict[str, Any] = {"continue": True}
+    payload: dict[str, Any] = {}
     if message:
         payload["systemMessage"] = message
     json.dump(payload, sys.stdout)
@@ -96,6 +96,7 @@ def create_branch_commit_and_push(
     prompt: str,
     paths: list[str],
     has_committed_changes: bool,
+    included_preexisting_dirty: list[str],
 ) -> tuple[bool, str]:
     target_branch = proposed_branch_name(prompt, repo_root)
     current = current_branch(repo_root)
@@ -136,7 +137,18 @@ def create_branch_commit_and_push(
         return False, f"Committed current-turn files on `{target_branch}`, but push failed: {push_result.stderr.strip() or push_result.stdout.strip()}"
 
     commit_sha = run_git(repo_root, "rev-parse", "--short", "HEAD").stdout.strip()
-    return True, f"Branch mismatch detected. Moved current-turn changes to `{target_branch}`, committed as `{commit_message}` ({commit_sha}), and pushed to `origin`."
+    warning = ""
+    if included_preexisting_dirty:
+        warning = (
+            " Included files that were already dirty before the prompt but changed again in this turn: "
+            + ", ".join(f"`{path}`" for path in included_preexisting_dirty)
+            + "."
+        )
+
+    return True, (
+        f"Branch mismatch detected. Moved current-turn changes to `{target_branch}`, committed as `{commit_message}` ({commit_sha}), and pushed to `origin`."
+        + warning
+    )
 
 
 def main() -> int:
@@ -163,14 +175,7 @@ def main() -> int:
 
         committed_files = committed_files_since_start(repo_root, snapshot)
         clean_dirty, preexisting_dirty = touched_dirty_files(repo_root, snapshot)
-        if preexisting_dirty:
-            return output(
-                "Branch/task mismatch detected, but the current turn modified files that were already dirty before the prompt: "
-                + ", ".join(f"`{path}`" for path in preexisting_dirty)
-                + ". Auto-commit/push was skipped to avoid mixing earlier local changes."
-            )
-
-        touched = unique_paths(committed_files + clean_dirty)
+        touched = unique_paths(committed_files + clean_dirty + preexisting_dirty)
         if not touched:
             return output(
                 f"Branch/task mismatch detected for `{branch}`, but no net current-turn file changes were found. No branch switch or push was performed."
@@ -181,6 +186,7 @@ def main() -> int:
             prompt,
             touched,
             has_committed_changes=bool(committed_files),
+            included_preexisting_dirty=preexisting_dirty,
         )
         return output(message)
     finally:
