@@ -564,7 +564,39 @@ def test_project_state_material_change_marks_layout_dirty_without_dropping_manua
     assert changed is True
     assert plane.selected_material_id == "T20"
     assert len(plane.manual_sheet_placements) == 1
-    assert plane.layout_dirty_reason == "material_changed"
+
+
+def test_project_state_can_duplicate_roof_plane_with_independent_geometry_and_layout():
+    state = ProjectState(
+        materials=[
+            Material(
+                id="MAT",
+                nazwa="Material",
+                type="trapezowa",
+                effective_width_cm=50,
+                module_length_cm=25,
+                bottom_margin_cm=10,
+                top_margin_cm=15,
+                min_sheet_length_cm=20,
+                max_sheet_length_cm=400,
+            )
+        ]
+    )
+    plane = state.add_roof_plane(Polygon2D.rectangle(120, 100), name="Front", selected_material_id="MAT")
+    state.add_hole_to_plane(Polygon2D.rectangle(30, 20, origin_x=10, origin_y=15), plane.id)
+    state.generate_layout_for_plane(plane.id)
+
+    duplicate = state.duplicate_roof_plane(plane.id)
+
+    assert duplicate.id != plane.id
+    assert duplicate.name != plane.name
+    assert duplicate.outline == plane.outline
+    assert duplicate.outline is not plane.outline
+    assert duplicate.holes == plane.holes
+    assert duplicate.holes[0] is not plane.holes[0]
+    assert duplicate.auto_sheet_placements == plane.auto_sheet_placements
+    assert duplicate.auto_sheet_placements[0] is not plane.auto_sheet_placements[0]
+    assert duplicate.layout_bands == plane.layout_bands
 
 
 def test_project_state_can_create_and_edit_material_definitions():

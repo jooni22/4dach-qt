@@ -827,3 +827,16 @@ def test_canvas_updates_render_items_after_geometry_edit_and_relayout(qtbot):
     items = canvas._sheet_render_items()
     assert len(items) == 4
     assert items[-1].polygons[0].bounds().max_x == pytest.approx(180.0)
+
+
+def test_canvas_hides_sheet_rendering_in_wireframe_mode(qtbot):
+    outline = Polygon2D.rectangle(120, 100)
+    plane = RoofPlane(id="plane-1", name="Wireframe", outline=outline)
+    canvas = _make_canvas(qtbot, outline)
+
+    _apply_layout(canvas, plane, _material())
+    assert canvas._sheet_render_items()
+
+    canvas.set_sheet_visibility(False)
+
+    assert canvas._hit_test_sheet(QPointF(10.0, 10.0)) is None

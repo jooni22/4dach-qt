@@ -12,7 +12,7 @@ from PySide6.QtCore import QSettings, QRectF, QSize, Qt, QUrl
 from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QDialog, QInputDialog, QMainWindow,
-    QMenu, QMessageBox, QSizePolicy, QToolButton, QVBoxLayout, QWidget, QLabel,
+    QFileDialog, QMenu, QMessageBox, QSizePolicy, QToolButton, QVBoxLayout, QWidget, QLabel,
 )
 from PySide6.QtGui import QDesktopServices
 
@@ -59,6 +59,8 @@ class MainWindow(QMainWindow):
         self._has_unsaved_changes = False
         self._base_window_title = ""
         self._snap_to_grid_enabled = True
+        self._sheets_visible = True
+        self._project_file_path: Path | None = Path(__file__).resolve().parent.parent / "config.json"
 
         self._status_label = QLabel("")
         self.statusBar().addPermanentWidget(self._status_label)
@@ -123,12 +125,16 @@ class MainWindow(QMainWindow):
             return a
 
         plik = mb.addMenu("Plik")
-        plik.addAction(act("Nowa połać", "Ctrl+N", self._add_new_roof_plane))
+        plik.addAction(act("Nowy projekt", "Ctrl+N", self._new_project))
+        plik.addAction(act("Wczytaj projekt...", "Ctrl+O", self._open_project))
+        plik.addAction(act("Zapisz", "Ctrl+S", self._save_project))
+        plik.addAction(act("Zapisz jako...", "Ctrl+Shift+S", self._save_project_as))
+        plik.addSeparator()
+        plik.addAction(act("Nowa połać", None, self._add_new_roof_plane))
+        plik.addAction(act("Duplikuj połać", "Ctrl+D", self._duplicate_active_roof_plane))
         plik.addAction(act("Zmień nazwę połaci...", "F2", self._rename_active_roof_plane))
         plik.addAction(act("Usuń połać...", "Ctrl+W", self._delete_active_roof_plane))
         plik.addSeparator()
-        plik.addAction(act("Otwórz...", "Ctrl+O", self._open_project))
-        plik.addAction(act("Zapisz", "Ctrl+S", self._save_project))
         plik.addAction(act("Cofnij", "Ctrl+Z", self._undo))
         plik.addAction(act("Ponów", "Ctrl+Shift+Z", self._redo))
         plik.addSeparator()
@@ -170,7 +176,11 @@ class MainWindow(QMainWindow):
         from ui.toolbar import ToolbarController
         self._tb_ctrl = ToolbarController(self)
         self._tb_ctrl.variant_combo.currentTextChanged.connect(self._on_material_changed)
+        self._tb_ctrl.action_new_project.triggered.connect(self._new_project)
+        self._tb_ctrl.action_open_project.triggered.connect(self._open_project)
         self._tb_ctrl.action_save_project.triggered.connect(self._save_project)
+        self._tb_ctrl.action_new_surface.triggered.connect(self._add_new_roof_plane)
+        self._tb_ctrl.action_duplicate_surface.triggered.connect(self._duplicate_active_roof_plane)
         self._tb_ctrl.action_undo.triggered.connect(self._undo)
         self._tb_ctrl.action_trash.triggered.connect(self._delete_selected_geometry)
         self._tb_ctrl.action_trash.setEnabled(False)
@@ -178,9 +188,11 @@ class MainWindow(QMainWindow):
         self._tb_ctrl.action_grid.setChecked(self._snap_to_grid_enabled)
         self._tb_ctrl.action_module_count.triggered.connect(self._on_module_count_toggled)
         self._tb_ctrl.action_base_point_toggle.triggered.connect(self._on_origin_mode_toggled)
+        self._tb_ctrl.action_from_left.triggered.connect(self._on_from_left_toggled)
         self._tb_ctrl.action_from_right.triggered.connect(self._on_from_right_toggled)
         self._tb_ctrl.action_from_base.triggered.connect(self._on_from_base_toggled)
-        self._tb_ctrl.action_overlay_sheet.triggered.connect(self._recalculate)
+        self._tb_ctrl.action_overlay_sheet.triggered.connect(self._on_sheet_visibility_toggled)
+        self._tb_ctrl.action_overlay_sheet.setChecked(self._sheets_visible)
         self._refresh_material_combo()
         self._workspace.tabs.currentChanged.connect(self._on_tab_changed)
         self._workspace.tabs.tabCloseRequested.connect(self._on_tab_close_requested)
@@ -290,12 +302,35 @@ class MainWindow(QMainWindow):
         self._refresh_dirty_state()
 
     def _save_project(self) -> bool:
+        if self._project_file_path is None:
+            return self._save_project_as()
         payload = self._serialize_current_config()
-        if not save_config(payload, self):
+        if not save_config(payload, self, path=self._project_file_path):
             return False
         self._config = payload
         self._mark_saved_state()
         self.statusBar().showMessage("Zapisano projekt", 3000)
+        return True
+
+    def _save_project_as(self) -> bool:
+        target, _ = QFileDialog.getSaveFileName(
+            self,
+            "Zapisz projekt jako",
+            str(self._project_file_path or Path.cwd() / "projekt.json"),
+            "JSON (*.json);;Wszystkie pliki (*)",
+        )
+        if not target:
+            return False
+        if not target.lower().endswith(".json"):
+            target = f"{target}.json"
+        payload = self._serialize_current_config()
+        project_path = Path(target)
+        if not save_config(payload, self, path=project_path):
+            return False
+        self._project_file_path = project_path
+        self._config = payload
+        self._mark_saved_state()
+        self.statusBar().showMessage("Zapisano projekt pod nową nazwą", 3000)
         return True
 
     def _confirm_discard_unsaved_changes(self, *, context: str) -> bool:
@@ -314,12 +349,12 @@ class MainWindow(QMainWindow):
             return True
         return False
 
-    def _open_project(self) -> None:
-        if not self._confirm_discard_unsaved_changes(context="otwarciem projektu"):
-            return
-        self._undo_stack.clear()
-        self._redo_stack.clear()
-        self._config = load_config()
+    def _load_project_payload(self, payload: dict, *, project_file_path: Path | None, reset_history: bool) -> None:
+        if reset_history:
+            self._undo_stack.clear()
+            self._redo_stack.clear()
+        self._project_file_path = project_file_path
+        self._config = payload
         self.project_state = ProjectState.from_config(self._config)
         self._workspace.bind_project_state(self.project_state, self.project_state.material_by_id)
         self._latest_report_html = ""
@@ -329,6 +364,29 @@ class MainWindow(QMainWindow):
         self._refresh_material_combo()
         self._refresh_canvas()
         self._mark_saved_state()
+
+    def _new_project(self) -> None:
+        if not self._confirm_discard_unsaved_changes(context="utworzeniem nowego projektu"):
+            return
+        payload = self._serialize_current_config()
+        payload.setdefault("project_state", {})["active_plane_id"] = None
+        payload["project_state"]["roof_planes"] = {"order": [], "items": {}}
+        self._load_project_payload(payload, project_file_path=None, reset_history=True)
+        self.statusBar().showMessage("Utworzono nowy projekt", 3000)
+
+    def _open_project(self) -> None:
+        if not self._confirm_discard_unsaved_changes(context="otwarciem projektu"):
+            return
+        target, _ = QFileDialog.getOpenFileName(
+            self,
+            "Wczytaj projekt",
+            str(self._project_file_path or Path.cwd()),
+            "JSON (*.json);;Wszystkie pliki (*)",
+        )
+        if not target:
+            return
+        project_path = Path(target)
+        self._load_project_payload(load_config(project_path), project_file_path=project_path, reset_history=True)
         self.statusBar().showMessage("Wczytano projekt", 3000)
 
     def _undo(self) -> None:
@@ -387,6 +445,7 @@ class MainWindow(QMainWindow):
     def _refresh_canvas(self) -> None:
         plane = self.project_state.active_roof_plane()
         self._workspace.sync()
+        self._workspace.set_sheet_visibility(self._sheets_visible)
         self.primary_canvas = self._workspace.primary_canvas
         self.workspace_tabs = self._workspace.tabs
         for candidate in self._workspace.plane_canvases():
@@ -467,6 +526,7 @@ class MainWindow(QMainWindow):
             label += " | Układ: <--- od prawej"
         else:
             label += " | Układ: od lewej --->"
+        label += " | Arkusze: widoczne" if self._sheets_visible else " | Arkusze: ukryte"
         self._status_label.setText(label)
 
     def _refresh_canvas_from_state(self) -> None:
@@ -490,6 +550,7 @@ class MainWindow(QMainWindow):
             preferred = (plane.selected_material_id if plane else None) or ids[0]
             combo.setCurrentText(preferred if preferred in ids else ids[0])
         combo.blockSignals(False)
+        self._sync_layout_direction_actions()
 
     def _active_or_warn(self):
         plane = self.project_state.active_roof_plane()
@@ -527,6 +588,16 @@ class MainWindow(QMainWindow):
             raise ValueError("Nie znaleziono aktywnej połaci")
         plane.generation_settings.layout_origin = origin
         plane.layout_dirty_reason = "geometry_changed"
+
+    def _sync_layout_direction_actions(self) -> None:
+        plane = self.project_state.active_roof_plane()
+        from_left = plane is None or plane.generation_settings.layout_origin != "right"
+        self._tb_ctrl.action_from_left.blockSignals(True)
+        self._tb_ctrl.action_from_right.blockSignals(True)
+        self._tb_ctrl.action_from_left.setChecked(from_left)
+        self._tb_ctrl.action_from_right.setChecked(not from_left)
+        self._tb_ctrl.action_from_left.blockSignals(False)
+        self._tb_ctrl.action_from_right.blockSignals(False)
 
     def _set_plane_base_line_mode(self, plane_id: str, enabled: bool) -> None:
         plane = self.project_state.roof_plane_by_id(plane_id)
@@ -592,6 +663,21 @@ class MainWindow(QMainWindow):
             active_plane = self.project_state.active_roof_plane()
             if active_plane is not None:
                 index = self._workspace.tab_index_for_plane(active_plane.id)
+                if index >= 0:
+                    self._workspace.tabs.setCurrentIndex(index)
+
+    def _duplicate_active_roof_plane(self) -> None:
+        plane = self._active_or_warn()
+        if plane is None:
+            return
+        if self._edit(
+            lambda: self.project_state.duplicate_roof_plane(plane.id),
+            f"Zduplikowano połacię {plane.name}",
+            label=f"Duplikacja połaci {plane.name}",
+        ):
+            duplicated_plane = self.project_state.active_roof_plane()
+            if duplicated_plane is not None:
+                index = self._workspace.tab_index_for_plane(duplicated_plane.id)
                 if index >= 0:
                     self._workspace.tabs.setCurrentIndex(index)
 
@@ -696,10 +782,17 @@ class MainWindow(QMainWindow):
             return
 
         menu = QMenu(self)
+        duplicate_action = menu.addAction("Duplikuj połać")
         rename_action = menu.addAction("Zmień nazwę połaci...")
         delete_action = menu.addAction("Usuń połać...")
         selected = menu.exec(self._workspace.tabs.tabBar().mapToGlobal(pos))
-        if selected == rename_action:
+        if selected == duplicate_action:
+            self._edit(
+                lambda: self.project_state.duplicate_roof_plane(plane_id),
+                "Zduplikowano połacię",
+                label=f"Duplikacja połaci {plane_id}",
+            )
+        elif selected == rename_action:
             self._rename_roof_plane_by_id(plane_id)
         elif selected == delete_action:
             self._delete_roof_plane_by_id(plane_id)
@@ -757,6 +850,13 @@ class MainWindow(QMainWindow):
         self._snap_to_grid_enabled = checked
         self._workspace.set_snap_to_grid_enabled(checked)
 
+    def _on_sheet_visibility_toggled(self, checked: bool) -> None:
+        self._sheets_visible = checked
+        self._workspace.set_sheet_visibility(checked)
+        self._refresh_status_bar_info()
+        message = "Pokazano arkusze" if checked else "Ukryto arkusze i włączono widok obrysów"
+        self.statusBar().showMessage(message, 3000)
+
     def _on_module_count_toggled(self, checked: bool) -> None:
         self._workspace.toggle_module_count(checked)
 
@@ -774,15 +874,29 @@ class MainWindow(QMainWindow):
         else:
             self.statusBar().showMessage("Wyłączono ustawianie punktu zerowego.", 2500)
 
+    def _on_from_left_toggled(self, checked: bool) -> None:
+        if not checked:
+            self._sync_layout_direction_actions()
+            return
+        self._set_active_layout_origin("left")
+
     def _on_from_right_toggled(self, checked: bool) -> None:
+        if not checked:
+            self._sync_layout_direction_actions()
+            return
+        self._set_active_layout_origin("right")
+
+    def _set_active_layout_origin(self, origin: str) -> None:
         plane = self._active_or_warn()
         if plane is None:
+            self._sync_layout_direction_actions()
             return
         if plane.outline is None:
             QMessageBox.information(self, "Brak obrysu", "Aktywna połać nie ma jeszcze obrysu")
+            self._sync_layout_direction_actions()
             return
-        origin = "right" if checked else "left"
         if plane.generation_settings.layout_origin == origin:
+            self._sync_layout_direction_actions()
             return
         self._edit(
             lambda: self._set_plane_layout_origin(plane.id, origin),

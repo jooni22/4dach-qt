@@ -117,6 +117,7 @@ class DrawingCanvas(QWidget):
         self._selected_sheet_id: str | None = None
         self._show_grid: bool = False
         self._show_module_count: bool = False
+        self._show_sheet_placements: bool = True
         self._snap_to_grid_enabled: bool = True
 
         self._plane_selected: bool = False
@@ -161,6 +162,14 @@ class DrawingCanvas(QWidget):
 
     def toggle_module_count(self, enabled: bool | None = None) -> None:
         self._show_module_count = not self._show_module_count if enabled is None else enabled
+        self.update()
+
+    def set_sheet_visibility(self, visible: bool) -> None:
+        if self._show_sheet_placements == visible:
+            return
+        self._show_sheet_placements = visible
+        if not visible:
+            self._selected_sheet_id = None
         self.update()
 
     def set_snap_to_grid_enabled(self, enabled: bool) -> None:
@@ -383,6 +392,8 @@ class DrawingCanvas(QWidget):
         )
 
     def _hit_test_sheet(self, pos: QPointF) -> str | None:
+        if not self._show_sheet_placements:
+            return None
         mapper = self._canvas_mapper()
         if mapper is None or self.roof_plane is None:
             return None
@@ -1534,7 +1545,7 @@ class DrawingCanvas(QWidget):
             fill_color.setAlpha(90)
 
         painter.setPen(QPen(outline_color, 2))
-        painter.setBrush(fill_color)
+        painter.setBrush(fill_color if self._show_sheet_placements else Qt.BrushStyle.NoBrush)
         painter.drawPolygon(outline_polygon)
 
         self._draw_sheet_placements(painter, plane, mapper, text_color)
@@ -1542,10 +1553,11 @@ class DrawingCanvas(QWidget):
         painter.setPen(QPen(hole_color, 1.5, Qt.PenStyle.DashLine))
         for hole_index, hole in enumerate(holes):
             hole_polygon = QPolygonF([mapper.map_point(point) for point in hole.points])
-            hole_bg = QColor(background_color)
-            hole_bg.setAlpha(150)
-            painter.setBrush(hole_bg)
-            painter.drawPolygon(hole_polygon)
+            if self._show_sheet_placements:
+                hole_bg = QColor(background_color)
+                hole_bg.setAlpha(150)
+                painter.setBrush(hole_bg)
+                painter.drawPolygon(hole_polygon)
             if hole_index == self._selected_hole_index:
                 painter.setPen(QPen(selected_hole_color, 2.0, Qt.PenStyle.DashLine))
             else:
@@ -1582,7 +1594,8 @@ class DrawingCanvas(QWidget):
             radius = MIDPOINT_HANDLE_RADIUS + (2 if is_active else 0)
             painter.drawEllipse(mapped_center, radius, radius)
 
-        self._draw_edge_measurements(painter, mapper, outline, text_color, outline_color)
+        if self._show_sheet_placements:
+            self._draw_edge_measurements(painter, mapper, outline, text_color, outline_color)
         self._draw_axis_indicator(painter)
         self._draw_edit_overlay(painter, mapper, outline)
 
@@ -1666,6 +1679,8 @@ class DrawingCanvas(QWidget):
             painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, str(length_int))
 
     def _draw_sheet_placements(self, painter: QPainter, plane, mapper: CanvasMapper, text_color: QColor) -> None:
+        if not self._show_sheet_placements:
+            return
         render_items = self._sheet_render_items()
         if not render_items:
             return

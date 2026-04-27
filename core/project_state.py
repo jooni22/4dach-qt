@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass, field
 
 from core.app_settings import AppSettings
@@ -244,6 +245,27 @@ class ProjectState:
 
         plane.name = normalized_name
         return plane
+
+    def duplicate_roof_plane(self, plane_id: str | None = None, *, name: str | None = None) -> RoofPlane:
+        source_plane = self._require_plane(plane_id)
+        duplicate = RoofPlane(
+            id=self.next_plane_id(),
+            name=name or self.next_plane_name(),
+            outline=_clone_polygon(source_plane.outline),
+            holes=[_clone_polygon(hole) for hole in source_plane.holes],
+            selected_material_id=source_plane.selected_material_id,
+            generation_settings=GenerationSettings.from_dict(source_plane.generation_settings.to_dict()),
+            auto_sheet_placements=[SheetPlacement.from_dict(placement.to_dict()) for placement in source_plane.auto_sheet_placements],
+            layout_bands=copy.deepcopy(source_plane.layout_bands),
+            manual_sheet_placements=[SheetPlacement.from_dict(placement.to_dict()) for placement in source_plane.manual_sheet_placements],
+            manually_removed_auto_sheet_ids=list(source_plane.manually_removed_auto_sheet_ids),
+            layout_revision=source_plane.layout_revision,
+            layout_dirty_reason=source_plane.layout_dirty_reason,
+        )
+        duplicate.generation_settings.base_line_y_cm = self.resolve_base_line_y_cm(duplicate)
+        self.roof_planes.append(duplicate)
+        self.active_plane_id = duplicate.id
+        return duplicate
 
     def delete_roof_plane(self, plane_id: str) -> RoofPlane:
         plane_index = next((index for index, plane in enumerate(self.roof_planes) if plane.id == plane_id), None)
@@ -805,3 +827,9 @@ def _deserialize_layout_bands(payload: object) -> list[dict]:
     if isinstance(payload, list):
         return list(payload)
     return []
+
+
+def _clone_polygon(polygon: Polygon2D | None) -> Polygon2D | None:
+    if polygon is None:
+        return None
+    return Polygon2D([Point2D(point.x, point.y) for point in polygon.points])

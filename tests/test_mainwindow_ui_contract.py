@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from core.app_settings import AppSettings
@@ -10,7 +12,7 @@ from core.project_state import ProjectState
 pytest.importorskip("PySide6")
 pytest.importorskip("pytestqt")
 
-from PySide6.QtWidgets import QDialogButtonBox, QInputDialog, QMenu, QMessageBox
+from PySide6.QtWidgets import QDialogButtonBox, QFileDialog, QInputDialog, QMenu, QMessageBox
 from PySide6.QtWidgets import QDialog
 from PySide6.QtCore import QPointF
 
@@ -49,6 +51,12 @@ def test_mainwindow_exposes_expected_ui_contract(qtbot):
     assert window.variant_combo.currentText() == "PD510"
     assert window.project_state.available_material_ids() == ["PD510"]
     assert "Przelicz aktywną połać" in sheets_actions
+    file_actions = [action.text() for action in actions[0].menu().actions() if not action.isSeparator()]
+    assert file_actions[:4] == ["Nowy projekt", "Wczytaj projekt...", "Zapisz", "Zapisz jako..."]
+    assert window._tb_ctrl.action_new_surface.text() == "Nowa połać"
+    assert window._tb_ctrl.action_duplicate_surface.text() == "Duplikuj połać"
+    assert window._tb_ctrl.action_overlay_sheet.isCheckable() is True
+    assert window._tb_ctrl.action_overlay_sheet.isChecked() is True
 
 
 def test_mainwindow_refreshes_active_plane_on_primary_canvas(qtbot):
@@ -123,6 +131,31 @@ def test_mainwindow_adds_renames_and_deletes_roof_plane_tabs(qtbot, monkeypatch)
     window._delete_active_roof_plane()
 
     assert len(window.project_state.roof_planes) == base_count
+
+
+def test_mainwindow_duplicates_active_roof_plane_with_geometry_and_cutouts(qtbot):
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.project_state = ProjectState(materials=window.project_state.materials)
+    window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
+    plane = window.project_state.add_roof_plane(build_rectangle_outline(320, 180), name="Front", selected_material_id="PD510")
+    window.project_state.add_hole_to_plane(Polygon2D.rectangle(60, 50, origin_x=40, origin_y=30), plane.id)
+    window.project_state.generate_layout_for_plane(plane.id)
+    window._refresh_canvas_from_state()
+
+    window._duplicate_active_roof_plane()
+
+    assert len(window.project_state.roof_planes) == 2
+    duplicate = window.project_state.active_roof_plane()
+    assert duplicate is not None
+    assert duplicate.id != plane.id
+    assert duplicate.outline is not plane.outline
+    assert duplicate.outline == plane.outline
+    assert duplicate.holes[0] is not plane.holes[0]
+    assert duplicate.holes == plane.holes
+    assert duplicate.layout_bands == plane.layout_bands
+    assert duplicate.auto_sheet_placements == plane.auto_sheet_placements
 
 
 def test_mainwindow_creates_rectangle_geometry_in_active_tab(qtbot, monkeypatch):
@@ -412,6 +445,62 @@ def test_mainwindow_toolbar_snap_toggle_updates_canvas_snap_state(qtbot):
     assert canvas.snap_to_grid_enabled() is False
 
 
+def test_mainwindow_toolbar_sheet_toggle_switches_wireframe_mode_without_recalc(qtbot, monkeypatch):
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.project_state = ProjectState(materials=window.project_state.materials)
+    window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
+    plane = window.project_state.add_roof_plane(build_rectangle_outline(320, 180), selected_material_id="PD510")
+    window.project_state.generate_layout_for_plane(plane.id)
+    window._refresh_canvas_from_state()
+
+    calls: list[str] = []
+    original_generate_layout = ProjectState.generate_layout_for_plane
+
+    def _tracked_generate_layout(self, plane_id=None):
+        calls.append(plane_id or "active")
+        return original_generate_layout(self, plane_id)
+
+    monkeypatch.setattr(ProjectState, "generate_layout_for_plane", _tracked_generate_layout)
+
+    canvas = window._workspace.canvas_for_plane(plane.id)
+    assert canvas is not None
+    assert window._tb_ctrl.action_overlay_sheet.isChecked() is True
+
+    window._tb_ctrl.action_overlay_sheet.trigger()
+
+    assert window._tb_ctrl.action_overlay_sheet.isChecked() is False
+    assert window._sheets_visible is False
+    assert canvas._show_sheet_placements is False
+    assert calls == []
+
+
+def test_mainwindow_layout_direction_uses_explicit_left_and_right_actions(qtbot):
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.project_state = ProjectState(materials=window.project_state.materials)
+    window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
+    plane = window.project_state.add_roof_plane(build_rectangle_outline(320, 180), selected_material_id="PD510")
+    window._refresh_canvas_from_state()
+
+    assert window._tb_ctrl.action_from_left.isChecked() is True
+    assert window._tb_ctrl.action_from_right.isChecked() is False
+
+    window._tb_ctrl.action_from_right.trigger()
+
+    assert plane.generation_settings.layout_origin == "right"
+    assert window._tb_ctrl.action_from_left.isChecked() is False
+    assert window._tb_ctrl.action_from_right.isChecked() is True
+
+    window._tb_ctrl.action_from_left.trigger()
+
+    assert plane.generation_settings.layout_origin == "left"
+    assert window._tb_ctrl.action_from_left.isChecked() is True
+    assert window._tb_ctrl.action_from_right.isChecked() is False
+
+
 def test_mainwindow_commits_canvas_origin_edit_to_project_state(qtbot):
     window = MainWindow()
     qtbot.addWidget(window)
@@ -624,7 +713,8 @@ def test_mainwindow_open_project_resets_cached_report_and_company_title(qtbot, m
         "blachy": initial_config["blachy"],
     }
     loads = iter([initial_config, reopened_config])
-    monkeypatch.setattr("ui.main_window.load_config", lambda: next(loads))
+    monkeypatch.setattr("ui.main_window.load_config", lambda *args, **kwargs: next(loads))
+    monkeypatch.setattr(QFileDialog, "getOpenFileName", staticmethod(lambda *args, **kwargs: ("/tmp/reopened.json", "JSON (*.json)")))
 
     window = MainWindow()
     qtbot.addWidget(window)
@@ -636,12 +726,13 @@ def test_mainwindow_open_project_resets_cached_report_and_company_title(qtbot, m
     assert window._latest_report_html == ""
     assert window._latest_report_plane_id is None
     assert window.windowTitle() == "4Dach — Firma B"
+    assert window._project_file_path == Path("/tmp/reopened.json")
 
 
 def test_mainwindow_marks_project_dirty_until_explicit_save(qtbot, monkeypatch):
     saved_payloads: list[dict] = []
 
-    def _save_config(config_data, parent=None):
+    def _save_config(config_data, parent=None, path=None):
         saved_payloads.append(config_data)
         return True
 
@@ -680,6 +771,42 @@ def test_mainwindow_marks_project_dirty_until_explicit_save(qtbot, monkeypatch):
     assert window._has_unsaved_changes is False
     assert window._plane_has_unsaved_changes(plane.id) is False
     assert saved_payloads
+
+
+def test_mainwindow_new_project_clears_roof_planes_and_detaches_save_path(qtbot):
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.project_state = ProjectState(materials=window.project_state.materials)
+    window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
+    window.project_state.add_roof_plane(build_rectangle_outline(320, 180), selected_material_id="PD510")
+    window._project_file_path = Path("/tmp/existing.json")
+    window._refresh_canvas_from_state()
+
+    window._new_project()
+
+    assert window.project_state.roof_planes == []
+    assert window.project_state.active_plane_id is None
+    assert window._project_file_path is None
+
+
+def test_mainwindow_save_as_updates_target_path(qtbot, monkeypatch):
+    saved_paths: list[Path | None] = []
+
+    def _save_config(config_data, parent=None, path=None):
+        saved_paths.append(path)
+        return True
+
+    monkeypatch.setattr("ui.main_window.save_config", _save_config)
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", staticmethod(lambda *args, **kwargs: ("/tmp/exported-project.json", "JSON (*.json)")))
+
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window._project_file_path = None
+
+    assert window._save_project_as() is True
+    assert window._project_file_path == Path("/tmp/exported-project.json")
+    assert saved_paths == [Path("/tmp/exported-project.json")]
 
 
 def test_mainwindow_unsaved_close_confirmation_can_cancel_or_discard(qtbot, monkeypatch):
