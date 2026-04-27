@@ -146,7 +146,7 @@ class ToolbarController:
         # Trailing toggle actions
         trailing: list[tuple[str, str, bool, object]] = [
             ("overlay_sheet",    "Nakładanie blachy na powierzchnie", False, None),
-            ("grid",             "Siatka",                             False, None),
+            ("grid",             "Snap to Grid",                       True,  None),
             ("select_properties","Właściwości / Wybierz",             False, None),
             ("from_right",       "Od prawej",                          True,  None),
             ("from_base",        "Od bazy",                            True,  None),

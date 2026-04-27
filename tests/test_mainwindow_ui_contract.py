@@ -385,6 +385,28 @@ def test_mainwindow_settings_dialog_updates_grid_size_on_project_state_and_canva
     assert canvas._edit_overlay_grid_step_cm(canvas._canvas_mapper()) == pytest.approx(25.0)
 
 
+def test_mainwindow_toolbar_snap_toggle_updates_canvas_snap_state(qtbot):
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.project_state = ProjectState(materials=window.project_state.materials)
+    window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
+    plane = window.project_state.add_roof_plane(build_rectangle_outline(320, 180), selected_material_id="PD510")
+    window._refresh_canvas_from_state()
+
+    canvas = window._workspace.canvas_for_plane(plane.id)
+    assert canvas is not None
+    assert window._tb_ctrl.action_grid.text() == "Snap to Grid"
+    assert window._tb_ctrl.action_grid.isCheckable() is True
+    assert window._tb_ctrl.action_grid.isChecked() is True
+    assert canvas.snap_to_grid_enabled() is True
+
+    window._tb_ctrl.action_grid.trigger()
+
+    assert window._tb_ctrl.action_grid.isChecked() is False
+    assert canvas.snap_to_grid_enabled() is False
+
+
 def test_mainwindow_commits_canvas_origin_edit_to_project_state(qtbot):
     window = MainWindow()
     qtbot.addWidget(window)

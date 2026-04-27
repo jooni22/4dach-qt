@@ -26,7 +26,7 @@ from math import ceil, floor, hypot
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QFontMetricsF, QKeyEvent, QMouseEvent, QPainter, QPainterPath, QPalette, QPen, QPolygonF
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QApplication, QWidget
 
 from core.app_settings import AppSettings
 from core.canvas_mapper import CanvasMapper
@@ -113,6 +113,7 @@ class DrawingCanvas(QWidget):
         self._selected_sheet_id: str | None = None
         self._show_grid: bool = False
         self._show_module_count: bool = False
+        self._snap_to_grid_enabled: bool = True
 
         self._plane_selected: bool = False
         self._selected_hole_index: int | None = None
@@ -156,6 +157,15 @@ class DrawingCanvas(QWidget):
     def toggle_module_count(self, enabled: bool | None = None) -> None:
         self._show_module_count = not self._show_module_count if enabled is None else enabled
         self.update()
+
+    def set_snap_to_grid_enabled(self, enabled: bool) -> None:
+        if self._snap_to_grid_enabled == enabled:
+            return
+        self._snap_to_grid_enabled = enabled
+        self.update()
+
+    def snap_to_grid_enabled(self) -> bool:
+        return self._snap_to_grid_enabled
 
     def set_app_settings(self, settings: AppSettings | None) -> None:
         self._app_settings = settings or AppSettings()
@@ -464,17 +474,19 @@ class DrawingCanvas(QWidget):
         self._set_edit_overlay("drag", "hole_center", self._hole_center_point(hole), hole_index=hole_index)
         self.setCursor(Qt.CursorShape.ClosedHandCursor)
 
-    def _update_geometry_drag(self, pos: QPointF) -> None:
+    def _update_geometry_drag(self, pos: QPointF, modifiers: Qt.KeyboardModifier = Qt.KeyboardModifier.NoModifier) -> None:
         if self._drag_mapper is None:
             return
-        domain_point = self._snap_domain_point(self._drag_mapper.unmap_point(pos))
+        raw_domain_point = self._drag_mapper.unmap_point(pos)
+        domain_point = self._snap_domain_point(raw_domain_point, modifiers=modifiers)
         
         if self._dragging_hole_center_index is not None and self._drag_start_pos is not None:
             if self._drag_start_hole is not None:
-                start_center = self._hole_center_point(self._drag_start_hole)
-                dx = domain_point.x - start_center.x
-                dy = domain_point.y - start_center.y
+                dx = raw_domain_point.x - self._drag_start_pos.x
+                dy = raw_domain_point.y - self._drag_start_pos.y
                 new_points = [Point2D(p.x + dx, p.y + dy) for p in self._drag_start_hole.points]
+                if self._snap_should_apply(modifiers):
+                    new_points = self._snap_translated_hole_vertices(new_points, modifiers=modifiers)
                 self._preview_hole = Polygon2D(new_points)
                 self._set_edit_overlay(
                     "drag",
@@ -694,12 +706,59 @@ class DrawingCanvas(QWidget):
     def _grid_step_cm(self) -> float:
         return max(0.1, self._app_settings.grid_size_cm)
 
-    def _snap_domain_point(self, point: Point2D, *, origin: Point2D | None = None) -> Point2D:
+    def _effective_grid_step_cm(self, modifiers: Qt.KeyboardModifier = Qt.KeyboardModifier.NoModifier) -> float:
         step_cm = self._grid_step_cm()
+        if modifiers & Qt.KeyboardModifier.ControlModifier:
+            return max(0.1, step_cm / 10.0)
+        return step_cm
+
+    def _current_modifiers(self) -> Qt.KeyboardModifier:
+        return QApplication.keyboardModifiers()
+
+    def _snap_should_apply(self, modifiers: Qt.KeyboardModifier | None = None) -> bool:
+        effective_modifiers = self._current_modifiers() if modifiers is None else modifiers
+        if not self._snap_to_grid_enabled:
+            return False
+        if effective_modifiers & Qt.KeyboardModifier.ShiftModifier:
+            return False
+        return True
+
+    def _snap_domain_point(
+        self,
+        point: Point2D,
+        *,
+        origin: Point2D | None = None,
+        modifiers: Qt.KeyboardModifier = Qt.KeyboardModifier.NoModifier,
+    ) -> Point2D:
+        if not self._snap_should_apply(modifiers):
+            return point
+        step_cm = self._effective_grid_step_cm(modifiers)
         anchor = self._origin_point() if origin is None else origin
         snapped_x = anchor.x + round((point.x - anchor.x) / step_cm) * step_cm
         snapped_y = anchor.y - round((anchor.y - point.y) / step_cm) * step_cm
         return Point2D(snapped_x, snapped_y)
+
+    def _snap_translated_hole_vertices(
+        self,
+        translated_points: list[Point2D],
+        *,
+        modifiers: Qt.KeyboardModifier,
+    ) -> list[Point2D]:
+        snapped_adjustment: Point2D | None = None
+        best_distance: float | None = None
+        for point in translated_points:
+            snapped_point = self._snap_domain_point(point, modifiers=modifiers)
+            adjustment = Point2D(snapped_point.x - point.x, snapped_point.y - point.y)
+            distance = hypot(adjustment.x, adjustment.y)
+            if best_distance is None or distance < best_distance:
+                best_distance = distance
+                snapped_adjustment = adjustment
+        if snapped_adjustment is None:
+            return translated_points
+        return [
+            Point2D(point.x + snapped_adjustment.x, point.y + snapped_adjustment.y)
+            for point in translated_points
+        ]
 
     def _point_on_polygon_boundary(self, point: Point2D, polygon: Polygon2D) -> bool:
         tolerance = 1e-6
@@ -736,7 +795,11 @@ class DrawingCanvas(QWidget):
             settings = self.roof_plane.generation_settings
             if settings.origin_x_cm is not None and settings.origin_y_cm is not None:
                 base_origin = Point2D(settings.origin_x_cm, settings.origin_y_cm)
-        domain_point = self._snap_domain_point(self._drag_mapper.unmap_point(pos), origin=base_origin)
+        domain_point = self._snap_domain_point(
+            self._drag_mapper.unmap_point(pos),
+            origin=base_origin,
+            modifiers=self._current_modifiers(),
+        )
         if not self._point_within_plane(domain_point, outline):
             return
         self._preview_origin_point = domain_point
@@ -950,7 +1013,7 @@ class DrawingCanvas(QWidget):
             self._update_origin_drag(event.position())
             return
         elif self._mode == self.MODE_VIEW and (self._dragging_vertex_index is not None or self._dragging_hole_center_index is not None):
-            self._update_geometry_drag(event.position())
+            self._update_geometry_drag(event.position(), event.modifiers())
             return
         elif self._mode == self.MODE_VIEW and not self._origin_edit_enabled:
             self._update_edit_overlay_hover(event.position())
@@ -1089,7 +1152,7 @@ class DrawingCanvas(QWidget):
             painter.drawEllipse(int(point.x()) - 3, int(point.y()) - 3, 6, 6)
 
     def _edit_overlay_grid_step_cm(self, mapper: CanvasMapper) -> float:
-        return self._grid_step_cm()
+        return self._effective_grid_step_cm(self._current_modifiers())
 
     def _draw_domain_grid(self, painter: QPainter, mapper: CanvasMapper, bounds) -> None:
         domain_rect = mapper.map_rect(bounds.min_x, bounds.max_x, bounds.min_y, bounds.max_y)

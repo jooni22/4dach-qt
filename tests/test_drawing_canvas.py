@@ -39,9 +39,15 @@ def _overlay_point(canvas: DrawingCanvas) -> Point2D | None:
     return overlay.domain_point
 
 
-def _send_mouse_move(canvas: DrawingCanvas, point: QPoint | QPointF, *, buttons: Qt.MouseButton = Qt.MouseButton.NoButton) -> None:
+def _send_mouse_move(
+    canvas: DrawingCanvas,
+    point: QPoint | QPointF,
+    *,
+    buttons: Qt.MouseButton = Qt.MouseButton.NoButton,
+    modifiers: Qt.KeyboardModifier = Qt.KeyboardModifier.NoModifier,
+) -> None:
     pos = QPointF(point)
-    event = QMouseEvent(QEvent.Type.MouseMove, pos, pos, Qt.MouseButton.NoButton, buttons, Qt.KeyboardModifier.NoModifier)
+    event = QMouseEvent(QEvent.Type.MouseMove, pos, pos, Qt.MouseButton.NoButton, buttons, modifiers)
     QApplication.sendEvent(canvas, event)
 
 
@@ -357,6 +363,99 @@ def test_canvas_dragging_vertex_snaps_to_configured_grid_size(qtbot):
     assert preview is not None
     assert preview.points[1].x == pytest.approx(275.0, abs=1.5)
     assert preview.points[1].y == pytest.approx(50.0, abs=1.5)
+
+
+def test_canvas_global_snap_toggle_disables_vertex_snapping(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+    canvas.set_app_settings(AppSettings(grid_size_cm=25.0))
+    canvas.set_snap_to_grid_enabled(False)
+
+    start = _point_on_canvas(canvas, outline.points[1])
+    target_domain = Point2D(263, 43)
+    target = _point_on_canvas(canvas, target_domain)
+
+    QTest.mousePress(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, start)
+    _send_mouse_move(canvas, target, buttons=Qt.MouseButton.LeftButton)
+
+    preview = canvas.display_outline()
+    assert preview is not None
+    assert preview.points[1].x == pytest.approx(target_domain.x, abs=1.5)
+    assert preview.points[1].y == pytest.approx(target_domain.y, abs=1.5)
+
+
+def test_canvas_shift_temporarily_bypasses_vertex_snapping(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+    canvas.set_app_settings(AppSettings(grid_size_cm=25.0))
+
+    start = _point_on_canvas(canvas, outline.points[1])
+    target_domain = Point2D(263, 43)
+    target = _point_on_canvas(canvas, target_domain)
+
+    QTest.mousePress(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, start)
+    _send_mouse_move(
+        canvas,
+        target,
+        buttons=Qt.MouseButton.LeftButton,
+        modifiers=Qt.KeyboardModifier.ShiftModifier,
+    )
+
+    preview = canvas.display_outline()
+    assert preview is not None
+    assert preview.points[1].x == pytest.approx(target_domain.x, abs=1.5)
+    assert preview.points[1].y == pytest.approx(target_domain.y, abs=1.5)
+
+
+def test_canvas_ctrl_uses_ten_times_finer_snap_step(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+    canvas.set_app_settings(AppSettings(grid_size_cm=25.0))
+
+    start = _point_on_canvas(canvas, outline.points[1])
+    target = _point_on_canvas(canvas, Point2D(263, 43))
+
+    QTest.mousePress(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, start)
+    _send_mouse_move(
+        canvas,
+        target,
+        buttons=Qt.MouseButton.LeftButton,
+        modifiers=Qt.KeyboardModifier.ControlModifier,
+    )
+
+    preview = canvas.display_outline()
+    assert preview is not None
+    assert preview.points[1].x == pytest.approx(262.5, abs=1.5)
+    assert preview.points[1].y == pytest.approx(42.5, abs=1.5)
+
+
+def test_canvas_dragging_hole_center_snaps_a_vertex_instead_of_the_center(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    hole = Polygon2D.rectangle(80, 60, origin_x=100, origin_y=70)
+    canvas = _make_canvas(qtbot, outline, holes=[hole])
+    canvas.set_app_settings(AppSettings(grid_size_cm=25.0))
+
+    hole_center = Point2D(140, 100)
+    target_domain = Point2D(171, 121)
+    start = _point_on_canvas(canvas, hole_center)
+    target = _point_on_canvas(canvas, target_domain)
+
+    QTest.mousePress(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, start)
+    _send_mouse_move(canvas, target, buttons=Qt.MouseButton.LeftButton)
+
+    preview_hole = canvas.display_holes()[0]
+    preview_center = canvas._hole_center_point(preview_hole)
+    origin = canvas._origin_point()
+
+    snapped_vertices = [
+        point
+        for point in preview_hole.points
+        if abs((point.x - origin.x) / 25.0 - round((point.x - origin.x) / 25.0)) < 1e-6
+        and abs((origin.y - point.y) / 25.0 - round((origin.y - point.y) / 25.0)) < 1e-6
+    ]
+
+    assert snapped_vertices
+    assert abs(preview_center.x - 175.0) > 1.5 or abs(preview_center.y - 125.0) > 1.5
 
 
 def test_canvas_edit_overlay_uses_configured_grid_size(qtbot):

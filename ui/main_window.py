@@ -58,6 +58,7 @@ class MainWindow(QMainWindow):
         self._unsaved_plane_ids: set[str] = set()
         self._has_unsaved_changes = False
         self._base_window_title = ""
+        self._snap_to_grid_enabled = True
 
         self._status_label = QLabel("")
         self.statusBar().addPermanentWidget(self._status_label)
@@ -174,6 +175,7 @@ class MainWindow(QMainWindow):
         self._tb_ctrl.action_trash.triggered.connect(self._delete_selected_geometry)
         self._tb_ctrl.action_trash.setEnabled(False)
         self._tb_ctrl.action_grid.triggered.connect(self._on_grid_toggled)
+        self._tb_ctrl.action_grid.setChecked(self._snap_to_grid_enabled)
         self._tb_ctrl.action_module_count.triggered.connect(self._on_module_count_toggled)
         self._tb_ctrl.action_base_point_toggle.triggered.connect(self._on_origin_mode_toggled)
         self._tb_ctrl.action_from_right.triggered.connect(self._on_from_right_toggled)
@@ -381,6 +383,7 @@ class MainWindow(QMainWindow):
         self.workspace_tabs = self._workspace.tabs
         for candidate in self._workspace.plane_canvases():
             candidate.set_app_settings(self.project_state.app_settings)
+            candidate.set_snap_to_grid_enabled(self._snap_to_grid_enabled)
             try:
                 candidate.outline_edit_committed.connect(
                     self._on_outline_edit_committed,
@@ -428,8 +431,10 @@ class MainWindow(QMainWindow):
             canvas.set_roof_plane(plane)
             canvas.set_material(self.project_state.material_by_id(plane.selected_material_id))
             canvas.set_app_settings(self.project_state.app_settings)
+            canvas.set_snap_to_grid_enabled(self._snap_to_grid_enabled)
         elif self.primary_canvas is not None:
             self.primary_canvas.set_app_settings(self.project_state.app_settings)
+            self.primary_canvas.set_snap_to_grid_enabled(self._snap_to_grid_enabled)
         self._apply_origin_edit_mode_to_canvases()
             
         if self.primary_canvas:
@@ -741,7 +746,8 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Odrzucono zmianę geometrii połaci", 4000)
 
     def _on_grid_toggled(self, checked: bool) -> None:
-        self._workspace.toggle_grid(checked)
+        self._snap_to_grid_enabled = checked
+        self._workspace.set_snap_to_grid_enabled(checked)
 
     def _on_module_count_toggled(self, checked: bool) -> None:
         self._workspace.toggle_module_count(checked)
