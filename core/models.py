@@ -263,6 +263,7 @@ class GenerationSettings:
 @dataclass(slots=True)
 class SheetDivisionLine:
     id: str
+    sheet_id: str
     orientation: DivisionOrientation
     position_cm: float
 
@@ -270,16 +271,18 @@ class SheetDivisionLine:
     def from_dict(cls, data: object) -> "SheetDivisionLine | None":
         if isinstance(data, dict):
             line_id = str(data.get("id", "")).strip()
+            sheet_id = str(data.get("sheet_id", "")).strip()
             orientation = str(data.get("orientation", "")).strip()
             position = data.get("position_cm")
-            if not line_id or orientation not in {"vertical", "horizontal"} or position is None:
+            if not line_id or not sheet_id or orientation not in {"vertical", "horizontal"} or position is None:
                 return None
-            return cls(id=line_id, orientation=orientation, position_cm=float(position))
+            return cls(id=line_id, sheet_id=sheet_id, orientation=orientation, position_cm=float(position))
         return None
 
     def to_dict(self) -> dict:
         return {
             "id": self.id,
+            "sheet_id": self.sheet_id,
             "orientation": self.orientation,
             "position_cm": self.position_cm,
         }
@@ -297,6 +300,7 @@ class SheetPlacement:
     final_length_cm: float
     source: SheetSource = "auto"
     split_reason: str | None = None
+    group_id: str | None = None
 
     @classmethod
     def from_dict(cls, data: dict) -> "SheetPlacement":
@@ -311,6 +315,7 @@ class SheetPlacement:
             final_length_cm=float(data.get("final_length_cm", 0.0)),
             source=data.get("source", "auto"),
             split_reason=data.get("split_reason"),
+            group_id=data.get("group_id"),
         )
 
     def to_dict(self) -> dict:
@@ -325,6 +330,7 @@ class SheetPlacement:
             "final_length_cm": self.final_length_cm,
             "source": self.source,
             "split_reason": self.split_reason,
+            "group_id": self.group_id,
         }
 
     @property

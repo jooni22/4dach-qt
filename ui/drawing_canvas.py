@@ -118,7 +118,7 @@ class DrawingCanvas(QWidget):
     outline_edit_committed = Signal(object)
     hole_edit_committed = Signal(int, object)
     origin_edit_committed = Signal(object)
-    sheet_division_line_inserted = Signal(str, float)
+    sheet_division_line_inserted = Signal(str, float, str)
     sheet_division_line_moved = Signal(str, float)
     sheet_division_line_deleted = Signal(str)
     outline_edit_rejected = Signal(str)
@@ -138,7 +138,7 @@ class DrawingCanvas(QWidget):
 
         self._mode: str = self.MODE_VIEW
         self._selected_sheet_id: str | None = None
-        self._show_grid: bool = False
+        self._show_grid: bool = True
         self._show_module_count: bool = False
         self._show_sheet_placements: bool = True
         self._snap_to_grid_enabled: bool = True
@@ -795,9 +795,9 @@ class DrawingCanvas(QWidget):
                 return Point2D(settings.origin_x_cm, settings.origin_y_cm)
         return self._default_origin_point(outline)
 
-    def _relative_coordinate_point(self, point: Point2D) -> Point2D:
-        origin = self._origin_point()
-        return Point2D(point.x - origin.x, origin.y - point.y)
+    def _relative_coordinate_point(self, point: Point2D, *, origin: Point2D | None = None) -> Point2D:
+        anchor = self._origin_point() if origin is None else origin
+        return Point2D(point.x - anchor.x, anchor.y - point.y)
 
     def _grid_step_cm(self) -> float:
         return max(0.1, self._app_settings.grid_size_cm)
@@ -926,35 +926,53 @@ class DrawingCanvas(QWidget):
             return None
         return next((line for line in self._sheet_division_lines() if line.id == line_id), None)
 
+    def _placement_by_id(self, placement_id: str | None):
+        if placement_id is None:
+            return None
+        return next((placement for placement in self._visible_sheet_placements() if placement.id == placement_id), None)
+
+    def _sheet_group_bounds(self, sheet_id: str) -> tuple[float, float, float, float] | None:
+        matching = [
+            placement
+            for placement in self._visible_sheet_placements()
+            if (placement.group_id or placement.id) == sheet_id
+        ]
+        if not matching:
+            return None
+        return (
+            min(placement.x_left_cm for placement in matching),
+            max(placement.x_right_cm for placement in matching),
+            min(placement.y_top_cm for placement in matching),
+            max(placement.y_bottom_cm for placement in matching),
+        )
+
     def _rendered_sheet_division_lines(self) -> list[_RenderedDivisionLine]:
-        outline = self.display_outline()
-        if outline is None:
-            return []
-        holes = self.display_holes()
         rendered: list[_RenderedDivisionLine] = []
         for line in self._sheet_division_lines():
+            bounds = self._sheet_group_bounds(line.sheet_id)
+            if bounds is None:
+                continue
+            min_x, max_x, min_y, max_y = bounds
             if line.orientation == "vertical":
-                for y_top, y_bottom in vertical_segments_for_band(outline, holes, line.position_cm, line.position_cm):
-                    rendered.append(
-                        _RenderedDivisionLine(
-                            id=line.id,
-                            orientation=line.orientation,
-                            position_cm=line.position_cm,
-                            start=Point2D(line.position_cm, y_top),
-                            end=Point2D(line.position_cm, y_bottom),
-                        )
+                rendered.append(
+                    _RenderedDivisionLine(
+                        id=line.id,
+                        orientation=line.orientation,
+                        position_cm=line.position_cm,
+                        start=Point2D(line.position_cm, min_y),
+                        end=Point2D(line.position_cm, max_y),
                     )
+                )
             else:
-                for x_left, x_right in horizontal_segments_for_range(outline, holes, line.position_cm, line.position_cm):
-                    rendered.append(
-                        _RenderedDivisionLine(
-                            id=line.id,
-                            orientation=line.orientation,
-                            position_cm=line.position_cm,
-                            start=Point2D(x_left, line.position_cm),
-                            end=Point2D(x_right, line.position_cm),
-                        )
+                rendered.append(
+                    _RenderedDivisionLine(
+                        id=line.id,
+                        orientation=line.orientation,
+                        position_cm=line.position_cm,
+                        start=Point2D(min_x, line.position_cm),
+                        end=Point2D(max_x, line.position_cm),
                     )
+                )
         return rendered
 
     def _hit_test_sheet_division_line(self, pos: QPointF, mapper: CanvasMapper) -> str | None:
@@ -969,9 +987,21 @@ class DrawingCanvas(QWidget):
                     return line.id
         return None
 
-    def _sheet_division_line_position_from_pointer(self, pos: QPointF, mapper: CanvasMapper, orientation: str) -> float:
+    def _sheet_division_line_position_from_pointer(
+        self,
+        pos: QPointF,
+        mapper: CanvasMapper,
+        orientation: str,
+        sheet_id: str,
+    ) -> float:
         domain_point = self._snap_domain_point(mapper.unmap_point(pos))
-        return domain_point.x if orientation == "vertical" else domain_point.y
+        bounds = self._sheet_group_bounds(sheet_id)
+        if bounds is None:
+            return domain_point.x if orientation == "vertical" else domain_point.y
+        min_x, max_x, min_y, max_y = bounds
+        if orientation == "vertical":
+            return min(max(domain_point.x, min_x), max_x)
+        return min(max(domain_point.y, min_y), max_y)
 
     def _project_point_to_segment(self, point: Point2D, start: Point2D, end: Point2D) -> Point2D:
         dx = end.x - start.x
@@ -1132,8 +1162,8 @@ class DrawingCanvas(QWidget):
     def _format_coordinate_value(value_cm: float) -> str:
         return f"{value_cm:.1f}"
 
-    def _coordinate_label_text(self, point: Point2D) -> str:
-        relative_point = self._relative_coordinate_point(point)
+    def _coordinate_label_text(self, point: Point2D, *, origin: Point2D | None = None) -> str:
+        relative_point = self._relative_coordinate_point(point, origin=origin)
         return f"X: {self._format_coordinate_value(relative_point.x)} | Y: {self._format_coordinate_value(relative_point.y)}"
 
     def _origin_drag_label_text(self) -> str:
@@ -1146,7 +1176,7 @@ class DrawingCanvas(QWidget):
         return f"X: {self._format_coordinate_value(relative_point.x)} | Y: {self._format_coordinate_value(relative_point.y)}"
 
     def _grid_visible(self) -> bool:
-        return self._show_grid or self._dragging_origin or self._mode == self.MODE_DRAW_OUTLINE
+        return self._show_grid or self._dragging_origin or self._mode in {self.MODE_DRAW_OUTLINE, self.MODE_DRAW_CUTOUT}
 
     def _coordinate_overlay_labels(self) -> list[_CoordinateOverlayLabel]:
         if self._edit_overlay is None:
@@ -1160,6 +1190,22 @@ class DrawingCanvas(QWidget):
         ):
             labels.extend(_CoordinateOverlayLabel("vertex", point) for point in self._preview_hole.points)
         return labels
+
+    def _drawing_overlay_label(self) -> tuple[CanvasMapper, _CoordinateOverlayLabel, Point2D] | None:
+        if self.preview_point is None or self._mode not in {self.MODE_DRAW_OUTLINE, self.MODE_DRAW_CUTOUT}:
+            return None
+        if self._mode == self.MODE_DRAW_OUTLINE:
+            mapper = self._free_draw_mapper()
+            bounds = self._free_draw_bounds()
+            origin = Point2D(bounds.min_x, bounds.max_y)
+        else:
+            mapper = self._canvas_mapper()
+            if mapper is None:
+                return None
+            origin = self._origin_point()
+        preview_point = self.user_points[0] if self._snap_active and self.user_points else self.preview_point
+        domain_point = mapper.unmap_point(preview_point)
+        return mapper, _CoordinateOverlayLabel("active", domain_point), origin
 
     # ------------------------------------------------------------------
     # Qt event overrides
@@ -1192,14 +1238,20 @@ class DrawingCanvas(QWidget):
                         line_id = self._hit_test_sheet_division_line(pos, mapper)
                         self._active_sheet_division_line_id = line_id
                         if self._sheet_division_tool_mode == "insert":
-                            self.sheet_division_line_inserted.emit(
-                                self._sheet_division_insert_orientation,
-                                self._sheet_division_line_position_from_pointer(
-                                    pos,
-                                    mapper,
+                            target_sheet_id = self._hit_test_sheet(pos)
+                            placement = self._placement_by_id(target_sheet_id)
+                            if placement is not None:
+                                sheet_id = placement.group_id or placement.id
+                                self.sheet_division_line_inserted.emit(
                                     self._sheet_division_insert_orientation,
-                                ),
-                            )
+                                    self._sheet_division_line_position_from_pointer(
+                                        pos,
+                                        mapper,
+                                        self._sheet_division_insert_orientation,
+                                        sheet_id,
+                                    ),
+                                    sheet_id,
+                                )
                             return
                         if self._sheet_division_tool_mode == "delete":
                             if line_id is not None:
@@ -1306,6 +1358,7 @@ class DrawingCanvas(QWidget):
                     event.position(),
                     self._drag_mapper,
                     line.orientation,
+                    line.sheet_id,
                 )
                 self.update()
             return
@@ -1421,6 +1474,7 @@ class DrawingCanvas(QWidget):
 
         if self._mode in {self.MODE_DRAW_OUTLINE, self.MODE_DRAW_CUTOUT}:
             self._draw_user_path(painter)
+            self._draw_active_drawing_coordinate_label(painter)
 
         if self._selected_sheet_id and self._mode == self.MODE_SELECT_SHEET:
             self._draw_selected_sheet_highlight(painter)
@@ -1588,6 +1642,25 @@ class DrawingCanvas(QWidget):
         labels = self._coordinate_overlay_labels()
         if not labels:
             return
+        self._draw_coordinate_labels(painter, mapper, labels, origin=self._origin_point())
+
+    def _draw_active_drawing_coordinate_label(self, painter: QPainter) -> None:
+        overlay = self._drawing_overlay_label()
+        if overlay is None:
+            return
+        mapper, label, origin = overlay
+        self._draw_coordinate_labels(painter, mapper, [label], origin=origin)
+
+    def _draw_coordinate_labels(
+        self,
+        painter: QPainter,
+        mapper: CanvasMapper,
+        labels: list[_CoordinateOverlayLabel],
+        *,
+        origin: Point2D,
+    ) -> None:
+        if not labels:
+            return
 
         viewport = self.rect().adjusted(6, 6, -6, -6)
         font = painter.font()
@@ -1600,12 +1673,13 @@ class DrawingCanvas(QWidget):
 
         for label in labels:
             mapped_point = mapper.map_point(label.domain_point)
+            label_text = self._coordinate_label_text(label.domain_point, origin=origin)
             if label.kind == "active":
                 label_rect = self._coordinate_label_rect(
                     mapped_point,
                     mapped_center,
                     metrics,
-                    self._coordinate_label_text(label.domain_point),
+                    label_text,
                     viewport,
                     mode="active",
                 )
@@ -1614,7 +1688,7 @@ class DrawingCanvas(QWidget):
                     mapped_point,
                     mapped_center,
                     metrics,
-                    self._coordinate_label_text(label.domain_point),
+                    label_text,
                     viewport,
                     mode="vertex",
                 )
@@ -1625,7 +1699,7 @@ class DrawingCanvas(QWidget):
             painter.setBrush(background)
             painter.drawRoundedRect(label_rect, 4.0, 4.0)
             painter.setPen(QColor(255, 255, 255))
-            painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, self._coordinate_label_text(label.domain_point))
+            painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, label_text)
 
         painter.restore()
 

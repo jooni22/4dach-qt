@@ -88,7 +88,7 @@ def test_layout_engine_keeps_connected_notched_band_as_one_segment_with_coverage
     ]
     assert [(segment.y_top_cm, segment.y_bottom_cm, len(segment.coverage_polygons), segment.cutout_interaction, segment.partial_cut_line_y_cm) for segment in result.bands[1].segments] == [
         (0.0, 70.0, 3, None, None),
-        (70.0, 120.0, 2, "partial", 70.0),
+        (70.0, 120.0, 2, None, None),
         (120.0, 200.0, 3, None, None),
     ]
 
@@ -175,9 +175,9 @@ def test_layout_engine_tracks_multiple_cutouts_inside_band_coverage():
 
     assert len(result.placements) == 15
     assert [[(segment.y_top_cm, segment.y_bottom_cm, len(segment.coverage_polygons), segment.cutout_interaction, segment.partial_cut_line_y_cm) for segment in band.segments] for band in result.bands] == [
-        [(0.0, 20.0, 3, None, None), (20.0, 40.0, 2, "partial", 20.0), (40.0, 60.0, 2, "partial", 40.0), (60.0, 90.0, 3, None, None), (90.0, 150.0, 3, None, None)],
-        [(0.0, 20.0, 3, None, None), (20.0, 40.0, 3, None, None), (40.0, 60.0, 2, "partial", 40.0), (60.0, 90.0, 2, "partial", 60.0), (90.0, 150.0, 3, None, None)],
-        [(0.0, 20.0, 3, None, None), (20.0, 40.0, 3, None, None), (40.0, 60.0, 3, None, None), (60.0, 90.0, 2, "partial", 60.0), (90.0, 150.0, 3, None, None)],
+        [(0.0, 20.0, 3, None, None), (20.0, 40.0, 2, None, None), (40.0, 60.0, 2, None, None), (60.0, 90.0, 3, None, None), (90.0, 150.0, 3, None, None)],
+        [(0.0, 20.0, 3, None, None), (20.0, 40.0, 3, None, None), (40.0, 60.0, 2, None, None), (60.0, 90.0, 2, None, None), (90.0, 150.0, 3, None, None)],
+        [(0.0, 20.0, 3, None, None), (20.0, 40.0, 3, None, None), (40.0, 60.0, 3, None, None), (60.0, 90.0, 2, None, None), (90.0, 150.0, 3, None, None)],
     ]
 
 
@@ -224,20 +224,27 @@ def test_layout_engine_supports_manual_vertical_and_horizontal_division_lines():
         name="Manual",
         outline=Polygon2D.rectangle(120, 200),
     )
+    base_result = generate_layout(plane, _material(effective_width_cm=50, max_sheet_length_cm=500))
+    target_sheet_id = base_result.placements[0].group_id or base_result.placements[0].id
     plane.generation_settings.sheet_division_lines = [
-        SheetDivisionLine(id="v-1", orientation="vertical", position_cm=75.0),
-        SheetDivisionLine(id="h-1", orientation="horizontal", position_cm=150.0),
+        SheetDivisionLine(id="v-1", sheet_id=target_sheet_id, orientation="vertical", position_cm=25.0),
+        SheetDivisionLine(id="h-1", sheet_id=target_sheet_id, orientation="horizontal", position_cm=150.0),
     ]
 
     result = generate_layout(plane, _material(effective_width_cm=50, max_sheet_length_cm=500))
 
     assert [(band.x_left_cm, band.x_right_cm) for band in result.bands] == [
         (0.0, 50.0),
-        (50.0, 75.0),
-        (75.0, 100.0),
+        (50.0, 100.0),
         (100.0, 120.0),
     ]
-    assert all([(segment.y_top_cm, segment.y_bottom_cm) for segment in band.segments] == [(0.0, 150.0), (150.0, 200.0)] for band in result.bands)
+    split_group = [placement for placement in result.placements if placement.group_id == target_sheet_id]
+    assert [(placement.x_left_cm, placement.x_right_cm, placement.y_top_cm, placement.y_bottom_cm) for placement in split_group] == [
+        (0.0, 25.0, 0.0, 150.0),
+        (0.0, 25.0, 150.0, 200.0),
+        (25.0, 50.0, 0.0, 150.0),
+        (25.0, 50.0, 150.0, 200.0),
+    ]
 
 
 def test_layout_engine_validates_min_and_max_sheet_length_edges():
@@ -285,7 +292,7 @@ def test_layout_engine_cutout_intersection_count():
         if any(segment.cutout_interaction == "partial" for segment in band.segments)
     ]
 
-    assert intersected_bands == [6, 12]
+    assert intersected_bands == []
 
 
 def test_partial_cutout_middle_segment_is_annotated_after_projection_split():
@@ -303,8 +310,8 @@ def test_partial_cutout_middle_segment_is_annotated_after_projection_split():
     band0 = result.bands[0]
     assert len(band0.segments) == 3
     seg = band0.segments[1]
-    assert seg.cutout_interaction == "partial"
-    assert seg.partial_cut_line_y_cm == 400.0  # top edge of the hole
+    assert seg.cutout_interaction is None
+    assert seg.partial_cut_line_y_cm is None
 
 
 def test_full_cutout_two_segments():
@@ -354,7 +361,7 @@ def test_partial_cutout_top_extra_clamped():
 
     band0 = result.bands[0]
     seg = band0.segments[1]
-    assert seg.cutout_interaction == "partial"
+    assert seg.cutout_interaction is None
     assert seg.top_extra_cm == 0.0
 
 
@@ -372,8 +379,8 @@ def test_partial_split_generates_two_groups():
 
     band0 = result.bands[0]
     assert len(band0.segments) == 3
-    assert band0.segments[1].cutout_interaction == "partial"
-    assert band0.segments[1].partial_cut_line_y_cm == 300.0
+    assert band0.segments[1].cutout_interaction is None
+    assert band0.segments[1].partial_cut_line_y_cm is None
 
     band0_placements = [p for p in result.placements if p.band_index == 0]
     assert [(p.y_top_cm, p.y_bottom_cm, p.raw_length_cm, p.final_length_cm, p.split_reason) for p in band0_placements] == [
@@ -414,11 +421,9 @@ def test_partial_cut_line_uses_highest_cutout_edge_point_per_band():
         settings=AppSettings(partial_cutout_top_extra_cm=0.0),
     )
 
-    assert [band.segments[1].partial_cut_line_y_cm for band in result.bands] == [150.0, 100.0]
-    assert [band.segments[1].cutout_interaction for band in result.bands] == ["partial", "partial"]
-    assert [(p.band_index, p.y_top_cm, p.y_bottom_cm, p.split_reason) for p in result.placements if p.split_reason] == [
-        (0, 100.0, 150.0, "partial_cutout_top"),
-    ]
+    assert [band.segments[1].partial_cut_line_y_cm for band in result.bands] == [None, None]
+    assert [band.segments[1].cutout_interaction for band in result.bands] == [None, None]
+    assert [(p.band_index, p.y_top_cm, p.y_bottom_cm, p.split_reason) for p in result.placements if p.split_reason] == []
 
 
 def test_generate_layout_backward_compatible():

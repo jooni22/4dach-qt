@@ -186,133 +186,46 @@ def generate_layout(
         band_segments = _build_band_segments(plane, band_index, x_left, x_right)
         layout_band = LayoutBand(band_index=band_index, x_left_cm=x_left, x_right_cm=x_right)
 
-        for band_segment in band_segments:
-            _detect_cutout_interaction(plane, band_segment, _settings)
-
         for segment_index, band_segment in enumerate(band_segments):
             y_bottom = band_segment.y_bottom_cm
             y_top = band_segment.y_top_cm
             max_len = material.max_sheet_length_cm
             row_index = 0
-
-            if (
-                band_segment.cutout_interaction == "partial"
-                and band_segment.partial_cut_line_y_cm is not None
-            ):
-                cut_y = band_segment.partial_cut_line_y_cm
-                extra = band_segment.top_extra_cm
-
-                # Phase A — BOTTOM: from y_bottom down to cut_y (below the cutout)
-                y_cursor = y_bottom
-                while y_cursor > cut_y + EPSILON:
-                    sheet_height = min(max_len, y_cursor - cut_y)
-                    sheet_top = y_cursor - sheet_height
-                    sheet_bottom = y_cursor
-                    if sheet_height >= material.min_sheet_length_cm - EPSILON:
-                        placement_id = f"{plane.id}-b{band_index}-s{segment_index}-r{row_index}"
-                        result.placements.append(
-                            SheetPlacement(
-                                id=placement_id,
-                                band_index=band_index,
-                                x_left_cm=band_segment.x_left_cm,
-                                x_right_cm=band_segment.x_right_cm,
-                                y_top_cm=sheet_top,
-                                y_bottom_cm=sheet_bottom,
-                                raw_length_cm=sheet_height,
-                                final_length_cm=sheet_height,
-                                split_reason=None,
-                            )
+            y_cursor = y_bottom
+            while y_cursor > y_top + EPSILON:
+                sheet_height = min(max_len, y_cursor - y_top)
+                sheet_top = y_cursor - sheet_height
+                sheet_bottom = y_cursor
+                if sheet_height >= material.min_sheet_length_cm - EPSILON:
+                    placement_id = f"{plane.id}-b{band_index}-s{segment_index}-r{row_index}"
+                    result.placements.append(
+                        SheetPlacement(
+                            id=placement_id,
+                            band_index=band_index,
+                            x_left_cm=band_segment.x_left_cm,
+                            x_right_cm=band_segment.x_right_cm,
+                            y_top_cm=sheet_top,
+                            y_bottom_cm=sheet_bottom,
+                            raw_length_cm=sheet_height,
+                            final_length_cm=sheet_height,
+                            split_reason=None,
+                            group_id=placement_id,
                         )
-                    else:
-                        result.rejected_segments.append(
-                            RejectedSegment(
-                                band_index=band_index,
-                                x_left_cm=band_segment.x_left_cm,
-                                x_right_cm=band_segment.x_right_cm,
-                                y_top_cm=sheet_top,
-                                y_bottom_cm=sheet_bottom,
-                                raw_length_cm=sheet_height,
-                                reason=f"Arkusz za krótki: {sheet_height:.1f} cm (min. {material.min_sheet_length_cm:.1f} cm)",
-                            )
+                    )
+                else:
+                    result.rejected_segments.append(
+                        RejectedSegment(
+                            band_index=band_index,
+                            x_left_cm=band_segment.x_left_cm,
+                            x_right_cm=band_segment.x_right_cm,
+                            y_top_cm=sheet_top,
+                            y_bottom_cm=sheet_bottom,
+                            raw_length_cm=sheet_height,
+                            reason=f"Arkusz za krótki: {sheet_height:.1f} cm (min. {material.min_sheet_length_cm:.1f} cm)",
                         )
-                    y_cursor -= sheet_height
-                    row_index += 1
-
-                # Phase B — TOP: from cut_y down to y_top (above the cutout)
-                y_cursor = cut_y
-                while y_cursor > y_top + EPSILON:
-                    sheet_height = min(max_len, y_cursor - y_top)
-                    sheet_top = y_cursor - sheet_height
-                    sheet_bottom = y_cursor
-                    is_top_sheet = sheet_top <= y_top + EPSILON
-                    actual_length = sheet_height + (extra if is_top_sheet else 0.0)
-                    placement_split = "partial_cutout_top" if is_top_sheet else None
-                    if sheet_height >= material.min_sheet_length_cm - EPSILON:
-                        placement_id = f"{plane.id}-b{band_index}-s{segment_index}-r{row_index}"
-                        result.placements.append(
-                            SheetPlacement(
-                                id=placement_id,
-                                band_index=band_index,
-                                x_left_cm=band_segment.x_left_cm,
-                                x_right_cm=band_segment.x_right_cm,
-                                y_top_cm=sheet_top,
-                                y_bottom_cm=sheet_bottom,
-                                raw_length_cm=sheet_height,
-                                final_length_cm=actual_length,
-                                split_reason=placement_split,
-                            )
-                        )
-                    else:
-                        result.rejected_segments.append(
-                            RejectedSegment(
-                                band_index=band_index,
-                                x_left_cm=band_segment.x_left_cm,
-                                x_right_cm=band_segment.x_right_cm,
-                                y_top_cm=sheet_top,
-                                y_bottom_cm=sheet_bottom,
-                                raw_length_cm=sheet_height,
-                                reason=f"Arkusz za krótki: {sheet_height:.1f} cm (min. {material.min_sheet_length_cm:.1f} cm)",
-                            )
-                        )
-                    y_cursor -= sheet_height
-                    row_index += 1
-
-            else:
-                # Standard single-phase loop (no partial cutout)
-                y_cursor = y_bottom
-                while y_cursor > y_top + EPSILON:
-                    sheet_height = min(max_len, y_cursor - y_top)
-                    sheet_top = y_cursor - sheet_height
-                    sheet_bottom = y_cursor
-                    if sheet_height >= material.min_sheet_length_cm - EPSILON:
-                        placement_id = f"{plane.id}-b{band_index}-s{segment_index}-r{row_index}"
-                        result.placements.append(
-                            SheetPlacement(
-                                id=placement_id,
-                                band_index=band_index,
-                                x_left_cm=band_segment.x_left_cm,
-                                x_right_cm=band_segment.x_right_cm,
-                                y_top_cm=sheet_top,
-                                y_bottom_cm=sheet_bottom,
-                                raw_length_cm=sheet_height,
-                                final_length_cm=sheet_height,
-                                split_reason=None,
-                            )
-                        )
-                    else:
-                        result.rejected_segments.append(
-                            RejectedSegment(
-                                band_index=band_index,
-                                x_left_cm=band_segment.x_left_cm,
-                                x_right_cm=band_segment.x_right_cm,
-                                y_top_cm=sheet_top,
-                                y_bottom_cm=sheet_bottom,
-                                raw_length_cm=sheet_height,
-                                reason=f"Arkusz za krótki: {sheet_height:.1f} cm (min. {material.min_sheet_length_cm:.1f} cm)",
-                            )
-                        )
-                    y_cursor -= sheet_height
-                    row_index += 1
+                    )
+                y_cursor -= sheet_height
+                row_index += 1
 
             band_segment.segment_index = segment_index
             band_segment.placement_id = f"{plane.id}-b{band_index}-s{segment_index}-r0"
@@ -320,8 +233,102 @@ def generate_layout(
 
         result.bands.append(layout_band)
 
+    _apply_manual_sheet_divisions(result, plane)
     return result
 
+
+def _apply_manual_sheet_divisions(result: LayoutResult, plane: RoofPlane) -> None:
+    if not plane.generation_settings.sheet_division_lines or not result.placements:
+        return
+
+    placements = list(result.placements)
+    for line in plane.generation_settings.sheet_division_lines:
+        updated: list[SheetPlacement] = []
+        changed = False
+        for placement in placements:
+            group_id = placement.group_id or placement.id
+            if group_id != line.sheet_id:
+                updated.append(placement)
+                continue
+
+            if line.orientation == "vertical":
+                if not placement.x_left_cm + EPSILON < line.position_cm < placement.x_right_cm - EPSILON:
+                    updated.append(placement)
+                    continue
+                updated.extend(
+                    [
+                        SheetPlacement(
+                            id=f"{group_id}-v{line.id}-l",
+                            band_index=placement.band_index,
+                            x_left_cm=placement.x_left_cm,
+                            x_right_cm=line.position_cm,
+                            y_top_cm=placement.y_top_cm,
+                            y_bottom_cm=placement.y_bottom_cm,
+                            raw_length_cm=placement.raw_length_cm,
+                            final_length_cm=placement.final_length_cm,
+                            source=placement.source,
+                            split_reason=placement.split_reason,
+                            group_id=group_id,
+                        ),
+                        SheetPlacement(
+                            id=f"{group_id}-v{line.id}-r",
+                            band_index=placement.band_index,
+                            x_left_cm=line.position_cm,
+                            x_right_cm=placement.x_right_cm,
+                            y_top_cm=placement.y_top_cm,
+                            y_bottom_cm=placement.y_bottom_cm,
+                            raw_length_cm=placement.raw_length_cm,
+                            final_length_cm=placement.final_length_cm,
+                            source=placement.source,
+                            split_reason=placement.split_reason,
+                            group_id=group_id,
+                        ),
+                    ]
+                )
+                changed = True
+                continue
+
+            if not placement.y_top_cm + EPSILON < line.position_cm < placement.y_bottom_cm - EPSILON:
+                updated.append(placement)
+                continue
+            updated.extend(
+                [
+                    SheetPlacement(
+                        id=f"{group_id}-h{line.id}-t",
+                        band_index=placement.band_index,
+                        x_left_cm=placement.x_left_cm,
+                        x_right_cm=placement.x_right_cm,
+                        y_top_cm=placement.y_top_cm,
+                        y_bottom_cm=line.position_cm,
+                        raw_length_cm=line.position_cm - placement.y_top_cm,
+                        final_length_cm=line.position_cm - placement.y_top_cm,
+                        source=placement.source,
+                        split_reason=placement.split_reason,
+                        group_id=group_id,
+                    ),
+                    SheetPlacement(
+                        id=f"{group_id}-h{line.id}-b",
+                        band_index=placement.band_index,
+                        x_left_cm=placement.x_left_cm,
+                        x_right_cm=placement.x_right_cm,
+                        y_top_cm=line.position_cm,
+                        y_bottom_cm=placement.y_bottom_cm,
+                        raw_length_cm=placement.y_bottom_cm - line.position_cm,
+                        final_length_cm=placement.y_bottom_cm - line.position_cm,
+                        source=placement.source,
+                        split_reason=placement.split_reason,
+                        group_id=group_id,
+                    ),
+                ]
+            )
+            changed = True
+        if changed:
+            placements = updated
+
+    result.placements = sorted(
+        placements,
+        key=lambda placement: (placement.band_index, placement.x_left_cm, placement.y_top_cm, placement.id),
+    )
 
 
 def _iter_band_ranges(plane: RoofPlane, band_width_cm: float) -> list[tuple[float, float]]:
@@ -342,11 +349,6 @@ def _iter_band_ranges(plane: RoofPlane, band_width_cm: float) -> list[tuple[floa
             boundaries.append(min(bounds.max_x, x_cursor + band_width_cm))
             x_cursor += band_width_cm
 
-    boundaries.extend(
-        line.position_cm
-        for line in plane.generation_settings.sheet_division_lines
-        if line.orientation == "vertical" and bounds.min_x + EPSILON < line.position_cm < bounds.max_x - EPSILON
-    )
     ordered = _unique_sorted(boundaries)
     bands = [(left, right) for left, right in zip(ordered, ordered[1:]) if right - left > EPSILON]
     if plane.generation_settings.layout_origin == "right":
@@ -408,11 +410,6 @@ def _split_component_into_segments(plane: RoofPlane, component: list[_BandPiece]
         if polygon is not None
         for point in polygon.points
         if y_top_cm + EPSILON < point.y < y_bottom_cm - EPSILON
-    )
-    y_guides.extend(
-        line.position_cm
-        for line in plane.generation_settings.sheet_division_lines
-        if line.orientation == "horizontal" and y_top_cm + EPSILON < line.position_cm < y_bottom_cm - EPSILON
     )
     ordered_guides = _unique_sorted(y_guides)
 

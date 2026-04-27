@@ -223,8 +223,12 @@ def test_project_state_round_trip_preserves_sheet_division_lines():
     )
 
     plane = state.add_roof_plane(build_rectangle_outline(300, 200))
-    state.add_sheet_division_line(SheetDivisionLine(id="v-1", orientation="vertical", position_cm=125.0), plane.id)
-    state.add_sheet_division_line(SheetDivisionLine(id="h-1", orientation="horizontal", position_cm=75.0), plane.id)
+    state.generate_layout_for_plane(plane.id)
+    active_sheets = state.active_sheet_placements_for_plane(plane.id)
+    target_sheet_id = active_sheets[0].group_id or active_sheets[0].id
+    state.add_sheet_division_line(SheetDivisionLine(id="v-1", sheet_id=target_sheet_id, orientation="vertical", position_cm=125.0), plane.id)
+    state.generate_layout_for_plane(plane.id)
+    state.add_sheet_division_line(SheetDivisionLine(id="h-1", sheet_id=target_sheet_id, orientation="horizontal", position_cm=75.0), plane.id)
 
     payload = {"blachy": [material.to_dict() for material in state.materials]}
     state.apply_to_config(payload)
@@ -232,11 +236,11 @@ def test_project_state_round_trip_preserves_sheet_division_lines():
     reloaded = ProjectState.from_config(payload)
     reloaded_plane = reloaded.active_roof_plane()
 
-    assert plane_payload["g"]["dl"] == [["v-1", "vertical", 125.0], ["h-1", "horizontal", 75.0]]
+    assert plane_payload["g"]["dl"] == [["v-1", target_sheet_id, "vertical", 51.0], ["h-1", target_sheet_id, "horizontal", 75.0]]
     assert reloaded_plane is not None
-    assert [(line.id, line.orientation, line.position_cm) for line in reloaded_plane.generation_settings.sheet_division_lines] == [
-        ("v-1", "vertical", 125.0),
-        ("h-1", "horizontal", 75.0),
+    assert [(line.id, line.sheet_id, line.orientation, line.position_cm) for line in reloaded_plane.generation_settings.sheet_division_lines] == [
+        ("v-1", target_sheet_id, "vertical", 51.0),
+        ("h-1", target_sheet_id, "horizontal", 75.0),
     ]
 
 
@@ -475,7 +479,7 @@ def test_project_state_generates_layout_for_active_plane_and_persists_auto_place
     assert len(result.bands) == 3
     assert len(result.bands[1].segments) == 3
     assert len(result.bands[1].segments[1].coverage_polygons) == 2
-    assert result.bands[1].segments[1].cutout_interaction == "partial"
+    assert result.bands[1].segments[1].cutout_interaction is None
     assert len(plane.auto_sheet_placements) == 9
     assert almost_equal(plane.generation_settings.base_line_y_cm or 0.0, 200.0)
     assert plane.layout_revision == 2

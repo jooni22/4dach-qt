@@ -432,6 +432,7 @@ class ProjectState:
             final_length_cm=placement.final_length_cm,
             source="manual",
             split_reason=placement.split_reason,
+            group_id=placement.group_id or placement.id,
         )
         duplicate_ids = {item.id for item in plane.auto_sheet_placements}
         duplicate_ids.update(item.id for item in plane.manual_sheet_placements)
@@ -445,29 +446,37 @@ class ProjectState:
 
     def add_sheet_division_line(self, line: SheetDivisionLine, plane_id: str | None = None) -> SheetDivisionLine:
         plane = self._require_plane(plane_id)
-        outline = self._require_plane_outline(plane)
-        position_cm = self._clamp_division_line_position(outline, line.orientation, line.position_cm)
+        group_bounds = self._require_sheet_group_bounds(plane, line.sheet_id)
+        position_cm = self._clamp_division_line_position(group_bounds, line.orientation, line.position_cm)
         if any(item.id == line.id for item in plane.generation_settings.sheet_division_lines):
             raise ValueError("Linia podziału o podanym identyfikatorze już istnieje")
         if any(
-            item.orientation == line.orientation and abs(item.position_cm - position_cm) < 1e-6
+            item.sheet_id == line.sheet_id
+            and item.orientation == line.orientation
+            and abs(item.position_cm - position_cm) < 1e-6
             for item in plane.generation_settings.sheet_division_lines
         ):
             raise ValueError("Linia podziału w tej pozycji już istnieje")
-        created = SheetDivisionLine(id=line.id, orientation=line.orientation, position_cm=position_cm)
+        created = SheetDivisionLine(
+            id=line.id,
+            sheet_id=line.sheet_id,
+            orientation=line.orientation,
+            position_cm=position_cm,
+        )
         plane.generation_settings.sheet_division_lines.append(created)
         self._mark_layout_inputs_changed(plane, "geometry_changed")
         return created
 
     def move_sheet_division_line(self, line_id: str, position_cm: float, plane_id: str | None = None) -> SheetDivisionLine:
         plane = self._require_plane(plane_id)
-        outline = self._require_plane_outline(plane)
         for line in plane.generation_settings.sheet_division_lines:
             if line.id != line_id:
                 continue
-            clamped = self._clamp_division_line_position(outline, line.orientation, position_cm)
+            group_bounds = self._require_sheet_group_bounds(plane, line.sheet_id)
+            clamped = self._clamp_division_line_position(group_bounds, line.orientation, position_cm)
             if any(
-                other.id != line_id
+                other.sheet_id == line.sheet_id
+                and other.id != line_id
                 and other.orientation == line.orientation
                 and abs(other.position_cm - clamped) < 1e-6
                 for other in plane.generation_settings.sheet_division_lines
@@ -582,12 +591,30 @@ class ProjectState:
         plane.generation_settings.base_line_y_cm = self.resolve_base_line_y_cm(plane)
         plane.layout_dirty_reason = reason
 
+    def _require_sheet_group_bounds(self, plane: RoofPlane, sheet_id: str) -> tuple[float, float, float, float]:
+        bounds = self._sheet_group_bounds(plane, sheet_id)
+        if bounds is None:
+            raise ValueError("Nie znaleziono arkusza dla linii podziału")
+        return bounds
+
+    def _sheet_group_bounds(self, plane: RoofPlane, sheet_id: str) -> tuple[float, float, float, float] | None:
+        placements = self.active_sheet_placements_for_plane(plane.id)
+        matching = [placement for placement in placements if (placement.group_id or placement.id) == sheet_id]
+        if not matching:
+            return None
+        return (
+            min(placement.x_left_cm for placement in matching),
+            max(placement.x_right_cm for placement in matching),
+            min(placement.y_top_cm for placement in matching),
+            max(placement.y_bottom_cm for placement in matching),
+        )
+
     @staticmethod
-    def _clamp_division_line_position(outline: Polygon2D, orientation: str, position_cm: float) -> float:
-        bounds = outline.bounds()
+    def _clamp_division_line_position(bounds: tuple[float, float, float, float], orientation: str, position_cm: float) -> float:
+        min_x, max_x, min_y, max_y = bounds
         if orientation == "vertical":
-            return min(max(position_cm, bounds.min_x), bounds.max_x)
-        return min(max(position_cm, bounds.min_y), bounds.max_y)
+            return min(max(position_cm, min_x), max_x)
+        return min(max(position_cm, min_y), max_y)
 
     def _mark_planes_using_material_dirty(self, material_id: str) -> None:
         for plane in self.roof_planes:
@@ -725,7 +752,7 @@ def _serialize_generation_settings(settings: GenerationSettings) -> dict:
         payload["y"] = settings.origin_y_cm
     if settings.sheet_division_lines:
         payload["dl"] = [
-            [line.id, line.orientation, line.position_cm]
+            [line.id, line.sheet_id, line.orientation, line.position_cm]
             for line in settings.sheet_division_lines
         ]
     return payload
@@ -735,10 +762,10 @@ def _deserialize_generation_settings(payload: object) -> GenerationSettings:
     if isinstance(payload, dict) and "o" in payload:
         division_lines = []
         for entry in payload.get("dl", []):
-            if not isinstance(entry, (list, tuple)) or len(entry) < 3:
+            if not isinstance(entry, (list, tuple)) or len(entry) < 4:
                 continue
             line = SheetDivisionLine.from_dict(
-                {"id": entry[0], "orientation": entry[1], "position_cm": entry[2]}
+                {"id": entry[0], "sheet_id": entry[1], "orientation": entry[2], "position_cm": entry[3]}
             )
             if line is not None:
                 division_lines.append(line)
@@ -793,6 +820,7 @@ def _serialize_placements(placements: list[SheetPlacement]) -> dict:
                 placement.raw_length_cm,
                 placement.final_length_cm,
                 placement.split_reason,
+                placement.group_id,
             ]
             for placement in placements
         },
@@ -820,6 +848,7 @@ def _deserialize_placements(payload: object, *, source: str) -> list[SheetPlacem
                     final_length_cm=float(entry[6]),
                     source=source,
                     split_reason=entry[7] if len(entry) > 7 else None,
+                    group_id=str(entry[8]) if len(entry) > 8 and entry[8] not in (None, "") else None,
                 )
             )
         return placements

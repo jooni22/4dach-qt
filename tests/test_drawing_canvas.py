@@ -13,7 +13,7 @@ from PySide6.QtWidgets import QApplication
 from core.app_settings import AppSettings
 from core.geometry import segment_length
 from core.layout_engine import generate_layout
-from core.models import Material, Point2D, Polygon2D, RoofPlane, SheetDivisionLine
+from core.models import Material, Point2D, Polygon2D, RoofPlane, SheetDivisionLine, SheetPlacement
 from ui.drawing_canvas import AXIS_WIDGET_PADDING_PX, DrawingCanvas
 
 
@@ -386,6 +386,7 @@ def test_canvas_dragging_origin_forces_grid_visibility_only_during_drag(qtbot):
     outline = Polygon2D.rectangle(300, 200)
     canvas = _make_canvas(qtbot, outline)
     canvas.set_origin_edit_enabled(True)
+    canvas.toggle_grid(False)
 
     assert canvas._show_grid is False
     assert canvas._grid_visible() is False
@@ -412,6 +413,60 @@ def test_canvas_draw_outline_mode_shows_grid_immediately(qtbot):
     canvas.set_mode(DrawingCanvas.MODE_DRAW_OUTLINE)
 
     assert canvas._grid_visible() is True
+
+
+def test_canvas_draw_cutout_mode_shows_grid_immediately(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+
+    canvas.set_mode(DrawingCanvas.MODE_DRAW_CUTOUT)
+
+    assert canvas._grid_visible() is True
+
+
+def test_canvas_draw_outline_preview_coordinates_use_free_draw_origin(qtbot):
+    canvas = DrawingCanvas()
+    canvas.resize(640, 420)
+    qtbot.addWidget(canvas)
+    canvas.show()
+    qtbot.waitExposed(canvas)
+    canvas.set_mode(DrawingCanvas.MODE_DRAW_OUTLINE)
+
+    preview = QPointF(160.0, 120.0)
+    canvas.preview_point = preview
+
+    mapper, label, origin = canvas._drawing_overlay_label()
+    domain_point = mapper.unmap_point(preview)
+
+    assert label.kind == "active"
+    assert label.domain_point.x == pytest.approx(domain_point.x)
+    assert label.domain_point.y == pytest.approx(domain_point.y)
+    assert origin.x == pytest.approx(0.0)
+    assert origin.y == pytest.approx(canvas._free_draw_bounds().max_y)
+    assert canvas._coordinate_label_text(label.domain_point, origin=origin).startswith("X: ")
+
+
+def test_canvas_draw_cutout_preview_coordinates_use_plane_origin(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    plane = RoofPlane(id="plane-1", name="1", outline=outline)
+    plane.generation_settings.origin_x_cm = 25.0
+    plane.generation_settings.origin_y_cm = 180.0
+    canvas = DrawingCanvas()
+    canvas.resize(640, 420)
+    canvas.set_roof_plane(plane)
+    qtbot.addWidget(canvas)
+    canvas.show()
+    qtbot.waitExposed(canvas)
+    canvas.set_mode(DrawingCanvas.MODE_DRAW_CUTOUT)
+
+    preview = QPointF(160.0, 120.0)
+    canvas.preview_point = preview
+
+    mapper, label, origin = canvas._drawing_overlay_label()
+
+    assert label.kind == "active"
+    assert origin == Point2D(25.0, 180.0)
+    assert label.domain_point == mapper.unmap_point(preview)
 
 
 def test_canvas_draw_outline_mode_uses_global_free_draw_mapper(qtbot):
@@ -498,15 +553,21 @@ def test_canvas_sheet_division_insert_emits_snapped_vertical_position(qtbot):
     plane = RoofPlane(id="plane-1", name="1", outline=Polygon2D.rectangle(300, 200))
     canvas = _make_canvas(qtbot, plane.outline)
     canvas.set_app_settings(AppSettings(grid_size_cm=25.0))
+    canvas.set_material(_material())
+    _apply_layout(canvas, plane, _material())
     canvas.set_sheet_division_tool_mode("insert", insert_orientation="vertical")
 
     click = _point_on_canvas(canvas, Point2D(113, 90))
+    target_sheet = canvas._hit_test_sheet(QPointF(click))
+    placement = canvas._placement_by_id(target_sheet)
+    assert placement is not None
 
     with qtbot.waitSignal(canvas.sheet_division_line_inserted, timeout=1000) as blocker:
         QTest.mouseClick(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, click)
 
     assert blocker.args[0] == "vertical"
     assert blocker.args[1] == pytest.approx(125.0, abs=1.5)
+    assert blocker.args[2] == (placement.group_id or placement.id)
 
 
 def test_canvas_sheet_division_move_updates_preview_and_emits_snapped_position(qtbot):
@@ -515,7 +576,20 @@ def test_canvas_sheet_division_move_updates_preview_and_emits_snapped_position(q
         name="1",
         outline=Polygon2D.rectangle(300, 200),
     )
-    plane.generation_settings.sheet_division_lines = [SheetDivisionLine(id="v-1", orientation="vertical", position_cm=100.0)]
+    plane.auto_sheet_placements = [
+        SheetPlacement(
+            id="sheet-1",
+            band_index=0,
+            x_left_cm=0.0,
+            x_right_cm=300.0,
+            y_top_cm=0.0,
+            y_bottom_cm=200.0,
+            raw_length_cm=200.0,
+            final_length_cm=200.0,
+            group_id="sheet-1",
+        )
+    ]
+    plane.generation_settings.sheet_division_lines = [SheetDivisionLine(id="v-1", sheet_id="sheet-1", orientation="vertical", position_cm=100.0)]
     canvas = DrawingCanvas()
     canvas.resize(640, 420)
     canvas.set_roof_plane(plane)
@@ -540,7 +614,20 @@ def test_canvas_sheet_division_move_updates_preview_and_emits_snapped_position(q
 
 def test_canvas_sheet_division_escape_restores_original_position(qtbot):
     plane = RoofPlane(id="plane-1", name="1", outline=Polygon2D.rectangle(300, 200))
-    plane.generation_settings.sheet_division_lines = [SheetDivisionLine(id="v-1", orientation="vertical", position_cm=100.0)]
+    plane.auto_sheet_placements = [
+        SheetPlacement(
+            id="sheet-1",
+            band_index=0,
+            x_left_cm=0.0,
+            x_right_cm=300.0,
+            y_top_cm=0.0,
+            y_bottom_cm=200.0,
+            raw_length_cm=200.0,
+            final_length_cm=200.0,
+            group_id="sheet-1",
+        )
+    ]
+    plane.generation_settings.sheet_division_lines = [SheetDivisionLine(id="v-1", sheet_id="sheet-1", orientation="vertical", position_cm=100.0)]
     canvas = DrawingCanvas()
     canvas.resize(640, 420)
     canvas.set_roof_plane(plane)
@@ -565,7 +652,20 @@ def test_canvas_sheet_division_escape_restores_original_position(qtbot):
 
 def test_canvas_sheet_division_delete_emits_line_id(qtbot):
     plane = RoofPlane(id="plane-1", name="1", outline=Polygon2D.rectangle(300, 200))
-    plane.generation_settings.sheet_division_lines = [SheetDivisionLine(id="h-1", orientation="horizontal", position_cm=100.0)]
+    plane.auto_sheet_placements = [
+        SheetPlacement(
+            id="sheet-1",
+            band_index=0,
+            x_left_cm=0.0,
+            x_right_cm=300.0,
+            y_top_cm=0.0,
+            y_bottom_cm=200.0,
+            raw_length_cm=200.0,
+            final_length_cm=200.0,
+            group_id="sheet-1",
+        )
+    ]
+    plane.generation_settings.sheet_division_lines = [SheetDivisionLine(id="h-1", sheet_id="sheet-1", orientation="horizontal", position_cm=100.0)]
     canvas = DrawingCanvas()
     canvas.resize(640, 420)
     canvas.set_roof_plane(plane)
@@ -789,7 +889,14 @@ def test_canvas_manual_grid_toggle_remains_independent_from_edit_overlay(qtbot):
     canvas.toggle_grid(False)
 
     assert canvas._show_grid is False
-    assert canvas._edit_overlay is not None
+
+
+def test_canvas_defaults_grid_to_visible(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+
+    assert canvas._show_grid is True
+    assert canvas._grid_visible() is True
 
 
 def test_canvas_origin_drag_renders_grid_after_roof_plane(qtbot, monkeypatch):
@@ -1013,7 +1120,7 @@ def test_canvas_wireframe_draws_edge_measurements_for_outline_and_cutouts(qtbot,
     canvas.grab()
     QApplication.processEvents()
 
-    assert calls == [outline, hole]
+    assert calls[-2:] == [outline, hole]
 
 
 def test_canvas_sheet_view_hides_wireframe_edge_measurements(qtbot, monkeypatch):

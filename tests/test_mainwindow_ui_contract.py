@@ -67,6 +67,7 @@ def test_mainwindow_refreshes_active_plane_on_primary_canvas(qtbot):
     window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
 
     plane = window.project_state.add_roof_plane(build_rectangle_outline(320, 180), selected_material_id="PD510")
+    window.project_state.generate_layout_for_plane(plane.id)
     window._refresh_canvas_from_state()
 
     assert window.primary_canvas.roof_plane is not None
@@ -279,6 +280,7 @@ def test_mainwindow_commits_canvas_outline_edits_to_project_state(qtbot):
     window.project_state = ProjectState(materials=window.project_state.materials)
     window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
     plane = window.project_state.add_roof_plane(build_rectangle_outline(320, 180), selected_material_id="PD510")
+    window.project_state.generate_layout_for_plane(plane.id)
     window._refresh_canvas_from_state()
 
     updated_outline = Polygon2D(
@@ -395,6 +397,7 @@ def test_mainwindow_settings_dialog_updates_grid_size_on_project_state_and_canva
     window.project_state = ProjectState(materials=window.project_state.materials)
     window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
     plane = window.project_state.add_roof_plane(build_rectangle_outline(320, 180), selected_material_id="PD510")
+    window.project_state.generate_layout_for_plane(plane.id)
     window._refresh_canvas_from_state()
 
     class FakeSettingsDialog:
@@ -430,19 +433,22 @@ def test_mainwindow_toolbar_snap_toggle_updates_canvas_snap_state(qtbot):
     window.project_state = ProjectState(materials=window.project_state.materials)
     window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
     plane = window.project_state.add_roof_plane(build_rectangle_outline(320, 180), selected_material_id="PD510")
+    window.project_state.generate_layout_for_plane(plane.id)
     window._refresh_canvas_from_state()
 
     canvas = window._workspace.canvas_for_plane(plane.id)
     assert canvas is not None
-    assert window._tb_ctrl.action_grid.text() == "Snap to Grid"
+    assert window._tb_ctrl.action_grid.text() == "Pokaż siatkę"
     assert window._tb_ctrl.action_grid.isCheckable() is True
     assert window._tb_ctrl.action_grid.isChecked() is True
+    assert canvas._show_grid is True
     assert canvas.snap_to_grid_enabled() is True
 
     window._tb_ctrl.action_grid.trigger()
 
     assert window._tb_ctrl.action_grid.isChecked() is False
-    assert canvas.snap_to_grid_enabled() is False
+    assert canvas._show_grid is False
+    assert canvas.snap_to_grid_enabled() is True
 
 
 def test_mainwindow_toolbar_sheet_toggle_switches_wireframe_mode_without_recalc(qtbot, monkeypatch):
@@ -526,15 +532,17 @@ def test_mainwindow_commits_sheet_division_line_insert_to_project_state(qtbot):
     window.project_state = ProjectState(materials=window.project_state.materials)
     window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
     plane = window.project_state.add_roof_plane(build_rectangle_outline(320, 180), selected_material_id="PD510")
+    window.project_state.generate_layout_for_plane(plane.id)
     window._refresh_canvas_from_state()
 
     canvas = window._workspace.canvas_for_plane(plane.id)
     assert canvas is not None
+    target_sheet = window.project_state.active_sheet_placements_for_plane(plane.id)[0]
 
-    canvas.sheet_division_line_inserted.emit("vertical", 125.0)
+    canvas.sheet_division_line_inserted.emit("vertical", 125.0, target_sheet.group_id or target_sheet.id)
 
-    assert [(line.orientation, line.position_cm) for line in plane.generation_settings.sheet_division_lines] == [
-        ("vertical", pytest.approx(125.0, abs=0.1))
+    assert [(line.sheet_id, line.orientation, line.position_cm) for line in plane.generation_settings.sheet_division_lines] == [
+        (target_sheet.group_id or target_sheet.id, "vertical", pytest.approx(51.0, abs=0.1))
     ]
     assert plane.layout_dirty_reason is None
     assert len(plane.layout_bands) > 0
@@ -547,15 +555,19 @@ def test_mainwindow_commits_sheet_division_line_move_and_delete_to_project_state
     window.project_state = ProjectState(materials=window.project_state.materials)
     window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
     plane = window.project_state.add_roof_plane(build_rectangle_outline(320, 180), selected_material_id="PD510")
-    plane.generation_settings.sheet_division_lines = [SheetDivisionLine(id="v-1", orientation="vertical", position_cm=80.0)]
+    window.project_state.generate_layout_for_plane(plane.id)
+    target_sheet = window.project_state.active_sheet_placements_for_plane(plane.id)[0]
+    plane.generation_settings.sheet_division_lines = [
+        SheetDivisionLine(id="v-1", sheet_id=target_sheet.group_id or target_sheet.id, orientation="vertical", position_cm=25.0)
+    ]
     window.project_state.generate_layout_for_plane(plane.id)
     window._refresh_canvas_from_state()
 
     canvas = window._workspace.canvas_for_plane(plane.id)
     assert canvas is not None
 
-    canvas.sheet_division_line_moved.emit("v-1", 140.0)
-    assert plane.generation_settings.sheet_division_lines[0].position_cm == pytest.approx(140.0)
+    canvas.sheet_division_line_moved.emit("v-1", 40.0)
+    assert plane.generation_settings.sheet_division_lines[0].position_cm == pytest.approx(40.0)
     assert plane.layout_dirty_reason is None
 
     canvas.sheet_division_line_deleted.emit("v-1")
