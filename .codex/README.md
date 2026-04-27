@@ -38,7 +38,8 @@ This repository uses the repo-local location.
 ## Notes
 
 - The hook commands resolve the repository root via `git rev-parse --show-toplevel`, so they work even when Codex starts in a subdirectory.
+- The hook commands use `bash --noprofile --norc` plus an absolute `uv` path so shell profile output does not corrupt hook JSON on stdout.
 - Runtime snapshots are stored under `.git/codex-branch-guard/`, not in tracked files.
 - Branch matching uses a conservative keyword overlap heuristic from the latest prompt. When no meaningful keywords are found, the hook leaves the current branch unchanged.
-- If the current turn touches a file that was already dirty before the prompt, auto-commit/push is skipped for safety because the hook does not try to split mixed local edits.
+- If the current turn touches a file that was already dirty before the prompt, the hook now still creates the branch/commit/push and includes those mixed edits in the new branch, with a warning in the final hook message.
 - The stop hook never rewrites history. If commits already landed on the old branch during the turn, it only creates a new branch from the current `HEAD` and leaves the old branch untouched.
