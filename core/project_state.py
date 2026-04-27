@@ -31,37 +31,40 @@ class ProjectState:
         material_payloads = payload.get("materials")
         if material_payloads is None:
             material_payloads = payload.get("blachy", [])
-        materials = [Material.from_dict(item) for item in material_payloads]
+        materials = _deserialize_materials(material_payloads)
         roof_planes: list[RoofPlane] = []
 
-        for plane_payload in project_payload.get("roof_planes", []):
-            outline_points = plane_payload.get("outline", [])
-            outline = None
-            if len(outline_points) >= 3:
-                outline = Polygon2D([Point2D(point["x"], point["y"]) for point in outline_points])
+        for plane_payload in _iter_plane_payloads(project_payload.get("roof_planes", [])):
+            outline = _deserialize_polygon(plane_payload.get("outline", plane_payload.get("o", [])))
             holes = [
-                Polygon2D([Point2D(point["x"], point["y"]) for point in hole_points])
-                for hole_points in plane_payload.get("holes", [])
-                if len(hole_points) >= 3 and outline is not None
+                hole
+                for hole in (
+                    _deserialize_polygon(hole_payload)
+                    for hole_payload in plane_payload.get("holes", plane_payload.get("h", []))
+                )
+                if hole is not None and outline is not None
             ]
             roof_planes.append(
                 RoofPlane(
                     id=plane_payload["id"],
-                    name=plane_payload.get("name", plane_payload["id"]),
+                    name=plane_payload.get("name", plane_payload.get("n", plane_payload["id"])),
                     outline=outline,
                     holes=holes,
-                    selected_material_id=plane_payload.get("selected_material_id"),
-                    generation_settings=GenerationSettings.from_dict(plane_payload.get("generation_settings")),
-                    auto_sheet_placements=[
-                        SheetPlacement.from_dict(item) for item in plane_payload.get("auto_sheet_placements", [])
-                    ],
-                    layout_bands=list(plane_payload.get("layout_bands", [])),
-                    manual_sheet_placements=[
-                        SheetPlacement.from_dict(item) for item in plane_payload.get("manual_sheet_placements", [])
-                    ],
-                    manually_removed_auto_sheet_ids=list(plane_payload.get("manually_removed_auto_sheet_ids", [])),
-                    layout_revision=int(plane_payload.get("layout_revision", 0)),
-                    layout_dirty_reason=plane_payload.get("layout_dirty_reason"),
+                    selected_material_id=plane_payload.get("selected_material_id", plane_payload.get("m")),
+                    generation_settings=_deserialize_generation_settings(
+                        plane_payload.get("generation_settings", plane_payload.get("g"))
+                    ),
+                    auto_sheet_placements=_deserialize_placements(plane_payload.get("auto_sheet_placements", []), source="auto"),
+                    layout_bands=_deserialize_layout_bands(plane_payload.get("layout_bands", [])),
+                    manual_sheet_placements=_deserialize_placements(
+                        plane_payload.get("manual_sheet_placements", plane_payload.get("mp", [])),
+                        source="manual",
+                    ),
+                    manually_removed_auto_sheet_ids=list(
+                        plane_payload.get("manually_removed_auto_sheet_ids", plane_payload.get("rm", []))
+                    ),
+                    layout_revision=int(plane_payload.get("layout_revision", plane_payload.get("r", 0))),
+                    layout_dirty_reason=plane_payload.get("layout_dirty_reason", plane_payload.get("d")),
                 )
             )
 
@@ -71,7 +74,7 @@ class ProjectState:
 
         app_settings = AppSettings.from_dict(payload.get("app_settings"))
 
-        return cls(
+        state = cls(
             company_data=CompanyData.from_dict(payload.get("company_data")),
             materials=materials,
             roof_planes=roof_planes,
@@ -79,6 +82,8 @@ class ProjectState:
             version=project_payload.get("version", 1),
             app_settings=app_settings,
         )
+        state._rebuild_runtime_layout_cache()
+        return state
 
     def active_roof_plane(self) -> RoofPlane | None:
         if self.active_plane_id is None:
@@ -507,36 +512,296 @@ class ProjectState:
                 self._mark_layout_inputs_changed(plane, "material_changed")
 
     def apply_to_config(self, config_data: dict) -> dict:
+        config_data.pop("materials", None)
         config_data.update(self.to_config_fragment())
         return config_data
 
     def to_config_fragment(self) -> dict:
         return {
             "app_settings": self.app_settings.to_dict(),
-            "materials": [material.to_dict() for material in self.materials],
+            "materials": _serialize_materials(self.materials),
             "blachy": [material.to_dict() for material in self.materials],
             "project_state": {
-                "version": self.version,
+                "version": max(self.version, 2),
                 "active_plane_id": self.active_plane_id,
-                "roof_planes": [
-                    {
-                        "id": plane.id,
-                        "name": plane.name,
-                        "selected_material_id": plane.selected_material_id,
-                        "generation_settings": plane.generation_settings.to_dict(),
-                        "auto_sheet_placements": [placement.to_dict() for placement in plane.auto_sheet_placements],
-                        "layout_bands": list(plane.layout_bands),
-                        "manual_sheet_placements": [placement.to_dict() for placement in plane.manual_sheet_placements],
-                        "manually_removed_auto_sheet_ids": list(plane.manually_removed_auto_sheet_ids),
-                        "layout_revision": plane.layout_revision,
-                        "layout_dirty_reason": plane.layout_dirty_reason,
-                        "outline": [] if plane.outline is None else [{"x": point.x, "y": point.y} for point in plane.outline.points],
-                        "holes": [
-                            [{"x": point.x, "y": point.y} for point in hole.points]
-                            for hole in plane.holes
-                        ],
-                    }
-                    for plane in self.roof_planes
-                ],
+                "roof_planes": _serialize_roof_planes(self.roof_planes),
             }
         }
+
+    def _rebuild_runtime_layout_cache(self) -> None:
+        for plane in self.roof_planes:
+            plane.generation_settings.base_line_y_cm = self.resolve_base_line_y_cm(plane)
+            if plane.outline is None:
+                plane.auto_sheet_placements = []
+                plane.layout_bands = []
+                continue
+            if plane.layout_dirty_reason not in (None, "manual_override"):
+                plane.auto_sheet_placements = []
+                plane.layout_bands = []
+                continue
+            material = self.material_by_id(plane.selected_material_id) or self.material_by_id(self.active_material_id())
+            if material is None:
+                continue
+            result = generate_layout(plane, material, settings=self.app_settings)
+            plane.auto_sheet_placements = list(result.placements)
+            plane.layout_bands = [band.to_dict() for band in result.bands]
+
+
+def _deserialize_materials(payload: object) -> list[Material]:
+    if isinstance(payload, dict):
+        items = payload.get("items", {})
+        order = payload.get("order", list(items.keys()))
+        return [
+            Material.from_dict(_expand_compact_material_payload(items[material_id], material_id))
+            for material_id in order
+            if material_id in items
+        ]
+    if isinstance(payload, list):
+        return [Material.from_dict(item) for item in payload]
+    return []
+
+
+def _serialize_materials(materials: list[Material]) -> dict:
+    return {
+        "order": [material.id for material in materials],
+        "items": {
+            material.id: {
+                "n": material.display_name,
+                "t": material.type,
+                "w": material.effective_width_cm,
+                "min": material.min_sheet_length_cm,
+                "max": material.max_sheet_length_cm,
+                "top": material.top_margin_cm,
+                "bottom": material.bottom_margin_cm,
+                "mod": material.module_length_cm,
+                "p": material.price_per_m2,
+                "bat": material.batten_spacing_cm,
+                "cbat": material.counter_batten_spacing_cm,
+                "mods": list(material.modules),
+                "u": material.price_unit,
+            }
+            for material in materials
+        },
+    }
+
+
+def _expand_compact_material_payload(payload: dict, material_id: str) -> dict:
+    return {
+        "id": material_id,
+        "display_name": payload.get("n"),
+        "type": payload.get("t", "dachówkowa"),
+        "effective_width_cm": payload.get("w", 0.0),
+        "min_sheet_length_cm": payload.get("min", 0.0),
+        "max_sheet_length_cm": payload.get("max", 900.0),
+        "top_allowance_cm": payload.get("top", 0.0),
+        "bottom_allowance_cm": payload.get("bottom", 0.0),
+        "module_length_cm": payload.get("mod"),
+        "price_per_m2": payload.get("p"),
+        "odleglosc_miedzy_latami": payload.get("bat", 0.0),
+        "odleglosc_miedzy_kontrlatami": payload.get("cbat", 0.0),
+        "moduly": payload.get("mods", []),
+        "cena_za": payload.get("u", "m2"),
+    }
+
+
+def _iter_plane_payloads(payload: object) -> list[dict]:
+    if isinstance(payload, dict):
+        items = payload.get("items", {})
+        order = payload.get("order", list(items.keys()))
+        return [dict(items[plane_id], id=plane_id) for plane_id in order if plane_id in items]
+    if isinstance(payload, list):
+        return payload
+    return []
+
+
+def _serialize_roof_planes(planes: list[RoofPlane]) -> dict:
+    items: dict[str, dict] = {}
+    order: list[str] = []
+    for plane in planes:
+        order.append(plane.id)
+        payload = {
+            "n": plane.name,
+            "m": plane.selected_material_id,
+            "g": _serialize_generation_settings(plane.generation_settings),
+            "o": _serialize_polygon(plane.outline),
+            "h": [_serialize_polygon(hole) for hole in plane.holes],
+            "mp": _serialize_placements(plane.manual_sheet_placements),
+            "rm": list(plane.manually_removed_auto_sheet_ids),
+            "r": plane.layout_revision,
+            "d": plane.layout_dirty_reason,
+        }
+        items[plane.id] = payload
+    return {"order": order, "items": items}
+
+
+def _serialize_generation_settings(settings: GenerationSettings) -> dict:
+    payload = {"o": settings.layout_origin}
+    if settings.origin_x_cm is not None:
+        payload["x"] = settings.origin_x_cm
+    if settings.origin_y_cm is not None:
+        payload["y"] = settings.origin_y_cm
+    return payload
+
+
+def _deserialize_generation_settings(payload: object) -> GenerationSettings:
+    if isinstance(payload, dict) and "o" in payload:
+        return GenerationSettings.from_dict(
+            {
+                "layout_origin": payload.get("o", "left"),
+                "origin_x_cm": payload.get("x"),
+                "origin_y_cm": payload.get("y"),
+            }
+        )
+    return GenerationSettings.from_dict(payload if isinstance(payload, dict) else None)
+
+
+def _serialize_point(point: Point2D) -> list[float]:
+    return [point.x, point.y]
+
+
+def _deserialize_point(payload: object) -> Point2D | None:
+    if isinstance(payload, dict):
+        return Point2D(float(payload["x"]), float(payload["y"]))
+    if isinstance(payload, (list, tuple)) and len(payload) == 2:
+        return Point2D(float(payload[0]), float(payload[1]))
+    return None
+
+
+def _serialize_polygon(polygon: Polygon2D | None) -> list[list[float]]:
+    if polygon is None:
+        return []
+    return [_serialize_point(point) for point in polygon.points]
+
+
+def _deserialize_polygon(payload: object) -> Polygon2D | None:
+    if not isinstance(payload, list):
+        return None
+    points = [point for point in (_deserialize_point(item) for item in payload) if point is not None]
+    if len(points) < 3:
+        return None
+    return Polygon2D(points)
+
+
+def _serialize_placements(placements: list[SheetPlacement]) -> dict:
+    return {
+        "order": [placement.id for placement in placements],
+        "items": {
+            placement.id: [
+                placement.band_index,
+                placement.x_left_cm,
+                placement.x_right_cm,
+                placement.y_top_cm,
+                placement.y_bottom_cm,
+                placement.raw_length_cm,
+                placement.final_length_cm,
+                placement.split_reason,
+            ]
+            for placement in placements
+        },
+    }
+
+
+def _deserialize_placements(payload: object, *, source: str) -> list[SheetPlacement]:
+    if isinstance(payload, dict):
+        items = payload.get("items", {})
+        order = payload.get("order", list(items.keys()))
+        placements: list[SheetPlacement] = []
+        for placement_id in order:
+            entry = items.get(placement_id)
+            if not isinstance(entry, (list, tuple)) or len(entry) < 7:
+                continue
+            placements.append(
+                SheetPlacement(
+                    id=placement_id,
+                    band_index=int(entry[0]),
+                    x_left_cm=float(entry[1]),
+                    x_right_cm=float(entry[2]),
+                    y_top_cm=float(entry[3]),
+                    y_bottom_cm=float(entry[4]),
+                    raw_length_cm=float(entry[5]),
+                    final_length_cm=float(entry[6]),
+                    source=source,
+                    split_reason=entry[7] if len(entry) > 7 else None,
+                )
+            )
+        return placements
+    if isinstance(payload, list):
+        return [SheetPlacement.from_dict({**item, "source": source}) for item in payload]
+    return []
+
+
+def _serialize_layout_bands(layout_bands: list[dict]) -> dict:
+    items: dict[str, list] = {}
+    order: list[str] = []
+    for band in layout_bands:
+        band_id = str(int(band.get("band_index", len(order))))
+        order.append(band_id)
+        items[band_id] = [
+            band.get("x_left_cm", 0.0),
+            band.get("x_right_cm", 0.0),
+            [
+                [
+                    segment.get("segment_index", 0),
+                    segment.get("y_top_cm", 0.0),
+                    segment.get("y_bottom_cm", 0.0),
+                    segment.get("raw_length_cm", 0.0),
+                    [
+                        _serialize_polygon(_deserialize_polygon(polygon))
+                        for polygon in segment.get("coverage_polygons", [])
+                    ],
+                    segment.get("placement_id"),
+                    segment.get("split_reason"),
+                    segment.get("cutout_interaction"),
+                    segment.get("partial_cut_line_y_cm"),
+                    segment.get("top_extra_cm", 0.0),
+                ]
+                for segment in band.get("segments", [])
+            ],
+        ]
+    return {"order": order, "items": items}
+
+
+def _deserialize_layout_bands(payload: object) -> list[dict]:
+    if isinstance(payload, dict):
+        items = payload.get("items", {})
+        order = payload.get("order", list(items.keys()))
+        bands: list[dict] = []
+        for band_id in order:
+            entry = items.get(band_id)
+            if not isinstance(entry, (list, tuple)) or len(entry) < 3:
+                continue
+            segments = []
+            for segment_entry in entry[2]:
+                if not isinstance(segment_entry, (list, tuple)) or len(segment_entry) < 5:
+                    continue
+                segments.append(
+                    {
+                        "segment_index": int(segment_entry[0]),
+                        "x_left_cm": float(entry[0]),
+                        "x_right_cm": float(entry[1]),
+                        "y_top_cm": float(segment_entry[1]),
+                        "y_bottom_cm": float(segment_entry[2]),
+                        "raw_length_cm": float(segment_entry[3]),
+                        "coverage_polygons": [
+                            _serialize_polygon(_deserialize_polygon(polygon))
+                            for polygon in segment_entry[4]
+                        ],
+                        "placement_id": segment_entry[5] if len(segment_entry) > 5 else None,
+                        "split_reason": segment_entry[6] if len(segment_entry) > 6 else None,
+                        "cutout_interaction": segment_entry[7] if len(segment_entry) > 7 else None,
+                        "partial_cut_line_y_cm": segment_entry[8] if len(segment_entry) > 8 else None,
+                        "top_extra_cm": float(segment_entry[9]) if len(segment_entry) > 9 and segment_entry[9] is not None else 0.0,
+                    }
+                )
+            bands.append(
+                {
+                    "band_index": int(band_id),
+                    "x_left_cm": float(entry[0]),
+                    "x_right_cm": float(entry[1]),
+                    "segments": segments,
+                }
+            )
+        return bands
+    if isinstance(payload, list):
+        return list(payload)
+    return []

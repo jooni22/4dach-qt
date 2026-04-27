@@ -18,6 +18,43 @@ from core.models import CompanyData, Material, Point2D, Polygon2D, RoofPlane, Sh
 from core.project_state import ProjectState
 
 
+def _compact_plane_payload(fragment: dict, plane_id: str) -> dict:
+    roof_planes = fragment["project_state"]["roof_planes"]
+    return roof_planes["items"][plane_id]
+
+
+def _legacy_like_fragment(state: ProjectState) -> dict:
+    return {
+        "app_settings": state.app_settings.to_dict(),
+        "materials": [material.to_dict() for material in state.materials],
+        "blachy": [material.to_dict() for material in state.materials],
+        "project_state": {
+            "version": state.version,
+            "active_plane_id": state.active_plane_id,
+            "roof_planes": [
+                {
+                    "id": plane.id,
+                    "name": plane.name,
+                    "selected_material_id": plane.selected_material_id,
+                    "generation_settings": plane.generation_settings.to_dict(),
+                    "auto_sheet_placements": [placement.to_dict() for placement in plane.auto_sheet_placements],
+                    "layout_bands": list(plane.layout_bands),
+                    "manual_sheet_placements": [placement.to_dict() for placement in plane.manual_sheet_placements],
+                    "manually_removed_auto_sheet_ids": list(plane.manually_removed_auto_sheet_ids),
+                    "layout_revision": plane.layout_revision,
+                    "layout_dirty_reason": plane.layout_dirty_reason,
+                    "outline": [] if plane.outline is None else [{"x": point.x, "y": point.y} for point in plane.outline.points],
+                    "holes": [
+                        [{"x": point.x, "y": point.y} for point in hole.points]
+                        for hole in plane.holes
+                    ],
+                }
+                for plane in state.roof_planes
+            ],
+        },
+    }
+
+
 def test_company_data_round_trip():
     company = CompanyData.from_dict(
         {
@@ -103,11 +140,11 @@ def test_project_state_config_fragment_serializes_roof_planes():
     )
 
     fragment = state.to_config_fragment()
-    plane_payload = fragment["project_state"]["roof_planes"][0]
+    plane_payload = _compact_plane_payload(fragment, "plane-1")
 
-    assert plane_payload["id"] == "plane-1"
-    assert plane_payload["selected_material_id"] == "PD510"
-    assert len(plane_payload["outline"]) == 4
+    assert fragment["project_state"]["roof_planes"]["order"] == ["plane-1"]
+    assert plane_payload["m"] == "PD510"
+    assert len(plane_payload["o"]) == 4
 
 
 def test_project_state_add_roof_plane_round_trip():
@@ -282,13 +319,13 @@ def test_project_state_hole_workflow_updates_layout_revision_and_serialization()
     state.add_hole_to_plane(Polygon2D.rectangle(50, 60, origin_x=100, origin_y=40), plane.id)
     moved_plane = state.move_hole_in_plane(0, 10, 15, plane.id)
     payload = state.to_config_fragment()
-    plane_payload = payload["project_state"]["roof_planes"][0]
+    plane_payload = _compact_plane_payload(payload, plane.id)
 
     assert moved_plane.layout_revision == 2
     assert len(moved_plane.holes) == 1
     assert moved_plane.holes[0].points[0] == Point2D(110, 55)
-    assert plane_payload["layout_revision"] == 2
-    assert plane_payload["holes"][0][0] == {"x": 110, "y": 55}
+    assert plane_payload["r"] == 2
+    assert plane_payload["h"][0][0] == [110, 55]
 
 
 def test_project_state_supports_multiple_holes_and_round_trip():
@@ -399,7 +436,7 @@ def test_project_state_generates_layout_for_active_plane_and_persists_auto_place
 
     result = state.generate_layout_for_active_plane()
     fragment = state.to_config_fragment()
-    plane_payload = fragment["project_state"]["roof_planes"][0]
+    plane_payload = _compact_plane_payload(fragment, plane.id)
 
     assert len(result.placements) == 4
     assert len(result.bands) == 3
@@ -409,8 +446,8 @@ def test_project_state_generates_layout_for_active_plane_and_persists_auto_place
     assert len(plane.auto_sheet_placements) == 4
     assert almost_equal(plane.generation_settings.base_line_y_cm or 0.0, 200.0)
     assert plane.layout_revision == 2
-    assert len(plane_payload["auto_sheet_placements"]) == 4
-    assert plane_payload["auto_sheet_placements"][0]["id"].startswith("plane-1-b0-s0")
+    assert "auto_sheet_placements" not in plane_payload
+    assert "layout_bands" not in plane_payload
 
 
 def test_project_state_manual_sheet_overrides_are_merged_and_serialized():
@@ -448,15 +485,15 @@ def test_project_state_manual_sheet_overrides_are_merged_and_serialized():
         plane.id,
     )
     fragment = state.to_config_fragment()
-    plane_payload = fragment["project_state"]["roof_planes"][0]
+    plane_payload = _compact_plane_payload(fragment, plane.id)
     active_ids = [placement.id for placement in state.active_sheet_placements_for_plane(plane.id)]
 
     assert removed_auto_id not in active_ids
     assert "plane-1-manual-1" in active_ids
     assert plane.layout_dirty_reason == "manual_override"
-    assert plane_payload["manual_sheet_placements"][0]["id"] == "plane-1-manual-1"
-    assert plane_payload["manually_removed_auto_sheet_ids"] == [removed_auto_id]
-    assert plane_payload["layout_dirty_reason"] == "manual_override"
+    assert plane_payload["mp"]["order"] == ["plane-1-manual-1"]
+    assert plane_payload["rm"] == [removed_auto_id]
+    assert plane_payload["d"] == "manual_override"
 
 
 def test_project_state_geometry_change_keeps_manual_sheets_but_marks_layout_dirty():
@@ -813,6 +850,48 @@ def test_project_state_config_round_trip():
     assert state2.roof_planes[0].layout_dirty_reason is None
 
 
+def test_project_state_compact_fragment_is_substantially_smaller_than_legacy_shape():
+    state = ProjectState(
+        materials=[
+            Material(
+                id="PD510",
+                nazwa="PD510",
+                type="dachówkowa",
+                effective_width_cm=51,
+                module_length_cm=25,
+                bottom_margin_cm=10,
+                top_margin_cm=15,
+                min_sheet_length_cm=20,
+                max_sheet_length_cm=400,
+            )
+        ]
+    )
+    plane = state.add_roof_plane(build_rectangle_outline(600, 400), selected_material_id="PD510")
+    state.add_hole_to_plane(Polygon2D.rectangle(120, 100, origin_x=180, origin_y=120), plane.id)
+    state.generate_layout_for_plane(plane.id)
+    state.add_manual_sheet_placement(
+        SheetPlacement(
+            id="plane-1-manual-1",
+            band_index=99,
+            x_left_cm=10.0,
+            x_right_cm=40.0,
+            y_top_cm=20.0,
+            y_bottom_cm=140.0,
+            raw_length_cm=120.0,
+            final_length_cm=120.0,
+        ),
+        plane.id,
+    )
+
+    compact = state.to_config_fragment()
+    legacy = _legacy_like_fragment(state)
+
+    compact_bytes = len(json.dumps(compact, ensure_ascii=False, separators=(",", ":")))
+    legacy_bytes = len(json.dumps(legacy, ensure_ascii=False, separators=(",", ":")))
+
+    assert compact_bytes < legacy_bytes * 0.5
+
+
 def test_basic_user_workflow_smoke():
     """Smoke test: basic user workflow - add plane, generate layout, verify state."""
     config_dict = {
@@ -851,5 +930,5 @@ def test_basic_user_workflow_smoke():
     config_after = {}
     state.apply_to_config(config_after)
     assert "project_state" in config_after
-    assert len(config_after["project_state"]["roof_planes"]) == 1
-    assert config_after["project_state"]["roof_planes"][0]["layout_dirty_reason"] == "manual_override"
+    assert config_after["project_state"]["roof_planes"]["order"] == [plane.id]
+    assert _compact_plane_payload(config_after, plane.id)["d"] == "manual_override"

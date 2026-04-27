@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import tempfile
 
 _CONFIG_PATH = Path(__file__).parent / "config.json"
 
@@ -33,8 +34,16 @@ def save_config(config_data: dict, parent_widget=None) -> bool:
     dialog so the user is informed about the failure.
     """
     try:
-        with open(_CONFIG_PATH, "w", encoding="utf-8") as fh:
-            json.dump(config_data, fh, ensure_ascii=False, indent=2)
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=_CONFIG_PATH.parent,
+            delete=False,
+            suffix=".tmp",
+        ) as fh:
+            json.dump(config_data, fh, ensure_ascii=False, separators=(",", ":"))
+            temp_path = Path(fh.name)
+        temp_path.replace(_CONFIG_PATH)
         return True
     except OSError as exc:
         if parent_widget is not None:

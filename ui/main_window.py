@@ -229,6 +229,14 @@ class MainWindow(QMainWindow):
 
     def _plane_snapshot_signatures(self, payload: dict) -> dict[str, str]:
         planes = payload.get("project_state", {}).get("roof_planes", [])
+        if isinstance(planes, dict):
+            items = planes.get("items", {})
+            order = planes.get("order", list(items.keys()))
+            return {
+                plane_id: json.dumps(items[plane_id], ensure_ascii=False, sort_keys=True)
+                for plane_id in order
+                if plane_id in items
+            }
         return {
             plane_payload["id"]: json.dumps(plane_payload, ensure_ascii=False, sort_keys=True)
             for plane_payload in planes
