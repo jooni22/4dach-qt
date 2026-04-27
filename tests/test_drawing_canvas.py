@@ -265,6 +265,36 @@ def test_canvas_dragging_hole_center_updates_edit_overlay_domain_point(qtbot):
     assert _overlay_point(canvas).y == pytest.approx(target_domain.y, abs=1.5)
 
 
+def test_canvas_dragging_hole_center_exposes_coordinate_labels_for_all_cutout_vertices(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    hole = Polygon2D.rectangle(80, 60, origin_x=100, origin_y=70)
+    canvas = _make_canvas(qtbot, outline, holes=[hole])
+
+    hole_center = Point2D(140, 100)
+    target_domain = Point2D(170, 120)
+    start = _point_on_canvas(canvas, hole_center)
+    target = _point_on_canvas(canvas, target_domain)
+
+    QTest.mousePress(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, start)
+    _send_mouse_move(canvas, target, buttons=Qt.MouseButton.LeftButton)
+
+    labels = canvas._coordinate_overlay_labels()
+
+    assert [label.kind for label in labels] == ["active", "vertex", "vertex", "vertex", "vertex"]
+    assert labels[0].domain_point.x == pytest.approx(target_domain.x, abs=1.5)
+    assert labels[0].domain_point.y == pytest.approx(target_domain.y, abs=1.5)
+
+    preview_hole = canvas.display_holes()[0]
+    assert [label.domain_point for label in labels[1:]] == preview_hole.points
+
+
+def test_canvas_coordinate_label_text_uses_single_decimal_without_unit(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+
+    assert canvas._coordinate_label_text(Point2D(450.24, 120.54)) == "X: 450.2 | Y: 120.5"
+
+
 def test_canvas_mouse_release_clears_edit_overlay_after_drag(qtbot):
     outline = Polygon2D.rectangle(300, 200)
     canvas = _make_canvas(qtbot, outline)

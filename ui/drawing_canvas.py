@@ -67,6 +67,12 @@ class _EditOverlayState:
     edge_index: int | None = None
 
 
+@dataclass(slots=True)
+class _CoordinateOverlayLabel:
+    kind: str
+    domain_point: Point2D
+
+
 class DrawingCanvas(QWidget):
     """Interactive canvas for displaying and drawing roof planes."""
 
@@ -651,6 +657,26 @@ class DrawingCanvas(QWidget):
             return f"{round(length_cm):.0f}"
         return f"{length_cm:.1f}"
 
+    @staticmethod
+    def _format_coordinate_value(value_cm: float) -> str:
+        return f"{value_cm:.1f}"
+
+    def _coordinate_label_text(self, point: Point2D) -> str:
+        return f"X: {self._format_coordinate_value(point.x)} | Y: {self._format_coordinate_value(point.y)}"
+
+    def _coordinate_overlay_labels(self) -> list[_CoordinateOverlayLabel]:
+        if self._edit_overlay is None:
+            return []
+
+        labels = [_CoordinateOverlayLabel("active", self._edit_overlay.domain_point)]
+        if (
+            self._edit_overlay.mode == "drag"
+            and self._edit_overlay.target_kind == "hole_center"
+            and self._preview_hole is not None
+        ):
+            labels.extend(_CoordinateOverlayLabel("vertex", point) for point in self._preview_hole.points)
+        return labels
+
     # ------------------------------------------------------------------
     # Qt event overrides
     # ------------------------------------------------------------------
@@ -936,35 +962,97 @@ class DrawingCanvas(QWidget):
         painter.setPen(QPen(marker_color, 1.5))
         painter.setBrush(marker_color)
         painter.drawEllipse(mapped_point, 3.5, 3.5)
+        self._draw_coordinate_overlay_labels(painter, mapper)
 
-        label_text = f"X: {self._format_length(active_point.x)} cm | Y: {self._format_length(active_point.y)} cm"
+    def _draw_coordinate_overlay_labels(self, painter: QPainter, mapper: CanvasMapper) -> None:
+        labels = self._coordinate_overlay_labels()
+        if not labels:
+            return
+
+        viewport = self.rect().adjusted(6, 6, -6, -6)
         font = painter.font()
-        font.setPointSize(max(font.pointSize(), 9))
+        font.setPointSize(8)
+        painter.save()
         painter.setFont(font)
         metrics = QFontMetricsF(font)
-        label_rect = QRectF(
-            mapped_point.x() + 10.0,
-            mapped_point.y() - metrics.height() - 14.0,
-            metrics.horizontalAdvance(label_text) + 14.0,
-            metrics.height() + 8.0,
-        )
-        viewport = self.rect().adjusted(6, 6, -6, -6)
+        center_point = labels[0].domain_point
+        mapped_center = mapper.map_point(center_point)
+
+        for label in labels:
+            mapped_point = mapper.map_point(label.domain_point)
+            if label.kind == "active":
+                label_rect = self._coordinate_label_rect(
+                    mapped_point,
+                    mapped_center,
+                    metrics,
+                    self._coordinate_label_text(label.domain_point),
+                    viewport,
+                    mode="active",
+                )
+            else:
+                label_rect = self._coordinate_label_rect(
+                    mapped_point,
+                    mapped_center,
+                    metrics,
+                    self._coordinate_label_text(label.domain_point),
+                    viewport,
+                    mode="vertex",
+                )
+
+            background = QColor(18, 18, 18, 190 if label.kind == "vertex" else 215)
+            border = QColor(255, 255, 255, 90 if label.kind == "vertex" else 120)
+            painter.setPen(QPen(border, 0.8))
+            painter.setBrush(background)
+            painter.drawRoundedRect(label_rect, 4.0, 4.0)
+            painter.setPen(QColor(255, 255, 255))
+            painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, self._coordinate_label_text(label.domain_point))
+
+        painter.restore()
+
+    def _coordinate_label_rect(
+        self,
+        mapped_point: QPointF,
+        mapped_center: QPointF,
+        metrics: QFontMetricsF,
+        label_text: str,
+        viewport: QRectF,
+        *,
+        mode: str,
+    ) -> QRectF:
+        label_rect = QRectF(0.0, 0.0, metrics.horizontalAdvance(label_text) + 10.0, metrics.height() + 6.0)
+        if mode == "active":
+            label_rect.moveTopLeft(QPointF(mapped_point.x() + 10.0, mapped_point.y() - label_rect.height() - 12.0))
+            if label_rect.right() > viewport.right():
+                label_rect.moveRight(viewport.right())
+            if label_rect.left() < viewport.left():
+                label_rect.moveLeft(viewport.left())
+            if label_rect.top() < viewport.top():
+                label_rect.moveTop(mapped_point.y() + 10.0)
+            if label_rect.bottom() > viewport.bottom():
+                label_rect.moveBottom(viewport.bottom())
+            return label_rect
+
+        dx = mapped_point.x() - mapped_center.x()
+        dy = mapped_point.y() - mapped_center.y()
+        if abs(dx) < 0.5 and abs(dy) < 0.5:
+            dx, dy = 1.0, -1.0
+        length_px = hypot(dx, dy)
+        unit_x = dx / length_px
+        unit_y = dy / length_px
+        anchor = QPointF(mapped_point.x() + unit_x * 12.0, mapped_point.y() + unit_y * 12.0)
+        left = anchor.x() + 2.0 if unit_x >= 0 else anchor.x() - label_rect.width() - 2.0
+        top = anchor.y() + 2.0 if unit_y >= 0 else anchor.y() - label_rect.height() - 2.0
+        label_rect.moveTopLeft(QPointF(left, top))
+
         if label_rect.right() > viewport.right():
             label_rect.moveRight(viewport.right())
         if label_rect.left() < viewport.left():
             label_rect.moveLeft(viewport.left())
         if label_rect.top() < viewport.top():
-            label_rect.moveTop(mapped_point.y() + 10.0)
+            label_rect.moveTop(viewport.top())
         if label_rect.bottom() > viewport.bottom():
             label_rect.moveBottom(viewport.bottom())
-
-        background = self.palette().color(QPalette.ColorRole.Base)
-        background.setAlpha(230)
-        painter.setPen(QPen(marker_color, 1))
-        painter.setBrush(background)
-        painter.drawRoundedRect(label_rect, 4.0, 4.0)
-        painter.setPen(self.palette().color(QPalette.ColorRole.Text))
-        painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, label_text)
+        return label_rect
 
     def _draw_axis_indicator(self, painter: QPainter, mapper: CanvasMapper, outline: Polygon2D) -> None:
         bounds = outline.bounds()
