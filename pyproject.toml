@@ -1,7 +1,6 @@
 [project]
 name = "4dach"
 version = "0.1.0"
-dynamic = ["version"]
 optional-dependencies = { test = ["pytest>=8.0", "pytest-qt>=4.4"] }
 requires-python = ">=3.11"
 dependencies = [

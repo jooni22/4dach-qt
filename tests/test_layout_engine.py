@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from core.geometry import build_trapezoid_outline
-from core.layout_engine import generate_layout
+from core.layout_engine import EPSILON, generate_layout
 from core.models import Material, Point2D, Polygon2D, RoofPlane, almost_equal
 
 
@@ -223,3 +223,90 @@ def test_layout_engine_cutout_intersection_count():
     ]
     
     assert intersected_bands == [7, 8, 9, 10, 11]
+
+
+def test_partial_cutout_one_segment_annotated():
+    """Band partially covered by hole → 1 segment, cutout_interaction='partial'."""
+    # Outline: 100×1000, band width=50cm → band 0 is x=0..50
+    # Hole: x=10..40, y=400..600 — doesn't cover full band width (0..50)
+    plane = RoofPlane(
+        id="plane-1",
+        name="Partial",
+        outline=Polygon2D.rectangle(100, 1000),
+        holes=[Polygon2D.rectangle(30, 200, origin_x=10, origin_y=400)],
+    )
+    result = generate_layout(plane, _material(effective_width_cm=50, max_sheet_length_cm=2000))
+
+    # Band 0 should have 1 segment (partial cutout keeps it as one piece)
+    band0 = result.bands[0]
+    assert len(band0.segments) == 1
+    seg = band0.segments[0]
+    assert seg.cutout_interaction == "partial"
+    assert seg.partial_cut_line_y_cm == 400.0  # top edge of the hole
+
+
+def test_full_cutout_two_segments():
+    """Band fully covered by hole → 2 segments (above and below hole)."""
+    # Hole x=0..50 covers the entire band width
+    plane = RoofPlane(
+        id="plane-1",
+        name="Full",
+        outline=Polygon2D.rectangle(100, 1000),
+        holes=[Polygon2D.rectangle(50, 200, origin_x=0, origin_y=400)],
+    )
+    result = generate_layout(plane, _material(effective_width_cm=50, max_sheet_length_cm=2000))
+
+    band0 = result.bands[0]
+    assert len(band0.segments) == 2
+    for seg in band0.segments:
+        assert seg.cutout_interaction == "full"
+
+
+def test_partial_cutout_top_extra_applied():
+    """top_extra_cm from settings is reflected in final_length_cm of the sheet."""
+    from core.app_settings import AppSettings
+
+    plane = RoofPlane(
+        id="plane-1",
+        name="Extra",
+        outline=Polygon2D.rectangle(100, 1000),
+        holes=[Polygon2D.rectangle(30, 200, origin_x=10, origin_y=400)],
+    )
+    settings = AppSettings(partial_cutout_top_extra_cm=20.0)
+    result = generate_layout(plane, _material(effective_width_cm=50, max_sheet_length_cm=2000), settings=settings)
+
+    # Find the placement with split_reason="partial_cutout"
+    partial_placements = [p for p in result.placements if p.split_reason == "partial_cutout"]
+    assert len(partial_placements) == 1
+    p = partial_placements[0]
+    assert p.final_length_cm == p.raw_length_cm + 20.0
+
+
+def test_partial_cutout_top_extra_clamped():
+    """top_extra_cm cannot exceed the distance from segment top to cut line."""
+    from core.app_settings import AppSettings
+
+    # Hole starts at y=10 in a 1000-high outline → cut_y=10
+    # segment.y_top_cm = 0 → max_extra = 10 - 0 = 10
+    plane = RoofPlane(
+        id="plane-1",
+        name="Clamp",
+        outline=Polygon2D.rectangle(100, 1000),
+        holes=[Polygon2D.rectangle(30, 200, origin_x=10, origin_y=10)],
+    )
+    settings = AppSettings(partial_cutout_top_extra_cm=999.0)
+    result = generate_layout(plane, _material(effective_width_cm=50, max_sheet_length_cm=2000), settings=settings)
+
+    band0 = result.bands[0]
+    seg = band0.segments[0]
+    assert seg.cutout_interaction == "partial"
+    assert seg.top_extra_cm <= seg.partial_cut_line_y_cm - seg.y_top_cm + EPSILON
+
+
+def test_generate_layout_backward_compatible():
+    """generate_layout(plane, material) without settings still works."""
+    plane = RoofPlane(id="plane-1", name="Compat", outline=Polygon2D.rectangle(120, 200))
+    result = generate_layout(plane, _material())
+    assert len(result.placements) == 3
+    assert result.warnings == []
+

@@ -1,0 +1,39 @@
+"""core/app_settings.py — Central application-level settings.
+
+Stored under the 'app_settings' key in config.json.
+Kept separate from per-plane GenerationSettings on purpose:
+these are business-rule parameters, not per-project geometry choices.
+However, to ensure reproducibility of estimates, the value used
+during layout generation is always snapshotted per LayoutResult
+(see layout_engine.py) — so reloading a project with different
+app_settings does NOT retroactively change already-computed layouts.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+
+@dataclass
+class AppSettings:
+    """Central application-level settings.
+
+    Fields:
+        partial_cutout_top_extra_cm: Extra material added to the top portion
+            of a sheet when a cutout only partially covers the band width.
+            Defaults to 15.0 cm.  Must be >= 0.
+    """
+
+    partial_cutout_top_extra_cm: float = 15.0
+
+    @classmethod
+    def from_dict(cls, data: dict | None) -> "AppSettings":
+        d = data or {}
+        raw = d.get("partial_cutout_top_extra_cm", 15.0)
+        try:
+            value = float(raw)
+        except (TypeError, ValueError):
+            value = 15.0
+        return cls(partial_cutout_top_extra_cm=max(0.0, value))
+
+    def to_dict(self) -> dict:
+        return {"partial_cutout_top_extra_cm": self.partial_cutout_top_extra_cm}

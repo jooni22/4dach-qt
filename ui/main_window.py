@@ -162,6 +162,9 @@ class MainWindow(QMainWindow):
         ark.addSeparator()
         ark.addAction(act("Zmień rodzaj blachy", None, self._dlg_change_material))
 
+        ust = mb.addMenu("Ustawienia")
+        ust.addAction(act("Ustawienia aplikacji\u2026", None, self._dlg_settings))
+
     def _build_toolbar(self) -> None:
         from ui.toolbar import ToolbarController
         self._tb_ctrl = ToolbarController(self)
@@ -1040,6 +1043,19 @@ class MainWindow(QMainWindow):
                 self._set_company_title(company)
 
             self._edit(_apply_company_data, "Zaktualizowano dane firmy", label="Edycja danych firmy")
+
+    def _dlg_settings(self) -> None:
+        from ui.dialogs.settings_dialog import SettingsDialog
+        dlg = SettingsDialog(self.project_state.app_settings, parent=self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            new_settings = dlg.build_settings()
+            def _apply_settings() -> None:
+                self.project_state.app_settings = new_settings
+                for plane in self.project_state.roof_planes:
+                    if plane.outline is not None:
+                        plane.layout_dirty_reason = "settings_changed"
+            self._edit(_apply_settings, "Zaktualizowano ustawienia aplikacji",
+                       label="Zmiana ustawień aplikacji")
 
     # ------------------------------------------------------------------
     def closeEvent(self, event: QCloseEvent) -> None:

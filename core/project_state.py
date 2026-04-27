@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from core.app_settings import AppSettings
 from core.geometry import (
     delete_polygon_point,
     insert_polygon_point,
@@ -21,6 +22,7 @@ class ProjectState:
     roof_planes: list[RoofPlane] = field(default_factory=list)
     active_plane_id: str | None = None
     version: int = 1
+    app_settings: AppSettings = field(default_factory=AppSettings)
 
     @classmethod
     def from_config(cls, config_data: dict | None) -> "ProjectState":
@@ -67,12 +69,15 @@ class ProjectState:
         if active_plane_id is None and roof_planes:
             active_plane_id = roof_planes[0].id
 
+        app_settings = AppSettings.from_dict(payload.get("app_settings"))
+
         return cls(
             company_data=CompanyData.from_dict(payload.get("company_data")),
             materials=materials,
             roof_planes=roof_planes,
             active_plane_id=active_plane_id,
             version=project_payload.get("version", 1),
+            app_settings=app_settings,
         )
 
     def active_roof_plane(self) -> RoofPlane | None:
@@ -440,7 +445,7 @@ class ProjectState:
             raise ValueError("Brak aktywnego materiału dla połaci")
 
         plane.generation_settings.base_line_y_cm = self.resolve_base_line_y_cm(plane)
-        result = generate_layout(plane, material)
+        result = generate_layout(plane, material, settings=self.app_settings)
         plane.auto_sheet_placements = list(result.placements)
         plane.layout_bands = [band.to_dict() for band in result.bands]
         plane.layout_revision += 1
@@ -507,6 +512,7 @@ class ProjectState:
 
     def to_config_fragment(self) -> dict:
         return {
+            "app_settings": self.app_settings.to_dict(),
             "materials": [material.to_dict() for material in self.materials],
             "blachy": [material.to_dict() for material in self.materials],
             "project_state": {

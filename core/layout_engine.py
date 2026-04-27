@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from math import ceil
 
+from core.app_settings import AppSettings
 from core.geometry import validate_polygon, vertical_segments_for_band
 from core.models import Material, Point2D, Polygon2D, RoofPlane, SheetPlacement
 
@@ -39,6 +40,9 @@ class LayoutBandSegment:
     coverage_polygons: list[Polygon2D] = field(default_factory=list)
     placement_id: str | None = None
     split_reason: str | None = None
+    cutout_interaction: str | None = None
+    partial_cut_line_y_cm: float | None = None
+    top_extra_cm: float = 0.0
 
     def to_dict(self) -> dict:
         return {
@@ -51,6 +55,9 @@ class LayoutBandSegment:
             "coverage_polygons": [_polygon_to_dict(polygon) for polygon in self.coverage_polygons],
             "placement_id": self.placement_id,
             "split_reason": self.split_reason,
+            "cutout_interaction": self.cutout_interaction,
+            "partial_cut_line_y_cm": self.partial_cut_line_y_cm,
+            "top_extra_cm": self.top_extra_cm,
         }
 
 
@@ -140,7 +147,13 @@ class _UnionFind:
             self._parent[right_root] = left_root
 
 
-def generate_layout(plane: RoofPlane, material: Material) -> LayoutResult:
+def generate_layout(
+    plane: RoofPlane,
+    material: Material,
+    settings: AppSettings | None = None,
+) -> LayoutResult:
+    _settings = settings if settings is not None else AppSettings()
+
     result = LayoutResult()
     if plane.outline is None:
         result.warnings.append(
@@ -173,6 +186,17 @@ def generate_layout(plane: RoofPlane, material: Material) -> LayoutResult:
         band_segments = _build_band_segments(plane, band_index, x_left, x_right)
         layout_band = LayoutBand(band_index=band_index, x_left_cm=x_left, x_right_cm=x_right)
 
+        for band_segment in band_segments:
+            _detect_cutout_interaction(plane, x_left, x_right, band_segment)
+
+            if (
+                band_segment.cutout_interaction == "partial"
+                and band_segment.partial_cut_line_y_cm is not None
+            ):
+                raw_extra = _settings.partial_cutout_top_extra_cm
+                max_extra = band_segment.partial_cut_line_y_cm - band_segment.y_top_cm
+                band_segment.top_extra_cm = max(0.0, min(raw_extra, max_extra))
+
         for segment_index, band_segment in enumerate(band_segments):
             y_cursor = band_segment.y_bottom_cm
             y_top = band_segment.y_top_cm
@@ -183,7 +207,21 @@ def generate_layout(plane: RoofPlane, material: Material) -> LayoutResult:
                 sheet_height = min(max_len, y_cursor - y_top)
                 sheet_top = y_cursor - sheet_height
                 sheet_bottom = y_cursor
-                
+
+                # Determine if this sheet contains the partial cut line
+                extra = 0.0
+                split_reason = None
+                if (
+                    band_segment.cutout_interaction == "partial"
+                    and band_segment.partial_cut_line_y_cm is not None
+                    and band_segment.top_extra_cm > 0
+                    and sheet_top - EPSILON <= band_segment.partial_cut_line_y_cm <= sheet_bottom + EPSILON
+                ):
+                    extra = band_segment.top_extra_cm
+                    split_reason = "partial_cutout"
+
+                final_length = sheet_height + extra
+
                 if sheet_height >= material.min_sheet_length_cm - EPSILON:
                     placement_id = f"{plane.id}-b{band_index}-s{segment_index}-r{row_index}"
                     result.placements.append(
@@ -195,8 +233,8 @@ def generate_layout(plane: RoofPlane, material: Material) -> LayoutResult:
                             y_top_cm=sheet_top,
                             y_bottom_cm=sheet_bottom,
                             raw_length_cm=sheet_height,
-                            final_length_cm=sheet_height,
-                            split_reason=None,
+                            final_length_cm=final_length,
+                            split_reason=split_reason,
                         )
                     )
                 else:
@@ -211,7 +249,7 @@ def generate_layout(plane: RoofPlane, material: Material) -> LayoutResult:
                             reason=f"Arkusz za krótki: {sheet_height:.1f} cm (min. {material.min_sheet_length_cm:.1f} cm)",
                         )
                     )
-                
+
                 y_cursor -= sheet_height
                 row_index += 1
 
@@ -382,6 +420,54 @@ def _intervals_touch_or_overlap(left: tuple[float, float], right: tuple[float, f
     left_top, left_bottom = left
     right_top, right_bottom = right
     return min(left_bottom, right_bottom) >= max(left_top, right_top) - EPSILON
+
+
+def _detect_cutout_interaction(
+    plane: RoofPlane,
+    band_x_left: float,
+    band_x_right: float,
+    segment: LayoutBandSegment,
+) -> None:
+    """Inspect holes of *plane* against the band x-range and annotate
+    *segment* in-place with ``cutout_interaction`` and
+    ``partial_cut_line_y_cm``.
+
+    Does NOT apply ``top_extra_cm`` — that is done by the caller so the
+    caller controls the settings value.
+    """
+    for hole in plane.holes:
+        bounds = hole.bounds()
+        hole_min_x = bounds.min_x
+        hole_max_x = bounds.max_x
+        hole_min_y = bounds.min_y
+        hole_max_y = bounds.max_y
+
+        # Skip holes that don't touch this band's x-range
+        if hole_max_x <= band_x_left + EPSILON or hole_min_x >= band_x_right - EPSILON:
+            continue
+
+        # Full-width coverage?
+        full = hole_min_x <= band_x_left + EPSILON and hole_max_x >= band_x_right - EPSILON
+        if full:
+            segment.cutout_interaction = "full"
+            continue
+
+        # Partial coverage — check y-overlap with segment
+        overlap = (
+            hole_max_y > segment.y_top_cm - EPSILON
+            and hole_min_y < segment.y_bottom_cm + EPSILON
+        )
+        if not overlap:
+            continue
+
+        # The cut line is the top edge of the hole (where material must be cut)
+        cut_y = hole_min_y
+        if not (segment.y_top_cm - EPSILON < cut_y < segment.y_bottom_cm + EPSILON):
+            continue
+
+        segment.cutout_interaction = "partial"
+        segment.partial_cut_line_y_cm = cut_y
+        break  # one partial match per segment is sufficient
 
 
 def _polygon_to_dict(polygon: Polygon2D) -> list[dict[str, float]]:

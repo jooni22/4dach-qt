@@ -38,11 +38,11 @@ def test_mainwindow_exposes_expected_ui_contract(qtbot):
 
     actions = window.menuBar().actions()
     menu_titles = [action.text() for action in actions]
-    sheets_menu = actions[-1].menu()
+    sheets_menu = actions[4].menu()  # "Arkusze" is at index 4, "Ustawienia" is at index 5
     assert isinstance(sheets_menu, QMenu)
     sheets_actions = [action.text() for action in sheets_menu.actions() if not action.isSeparator()]
 
-    assert menu_titles == ["Plik", "Kształt", "Wycinki", "Katalog", "Arkusze"]
+    assert menu_titles == ["Plik", "Kształt", "Wycinki", "Katalog", "Arkusze", "Ustawienia"]
     assert window.workspace_tabs.count() >= 2
     assert window.variant_combo.count() >= 1
     assert window.variant_combo.currentText() == "PD510"

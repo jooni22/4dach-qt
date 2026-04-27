@@ -921,7 +921,26 @@ class DrawingCanvas(QWidget):
 
             self._draw_sheet_label(painter, mapped_polygons, item, text_color)
 
-        # Hint has been moved to the main label
+        # Draw partial-cutout split lines from serialized layout band data
+        if plane is not None and hasattr(plane, "layout_bands"):
+            for band_dict in plane.layout_bands:
+                for seg_dict in band_dict.get("segments", []):
+                    if seg_dict.get("cutout_interaction") != "partial":
+                        continue
+                    cut_y = seg_dict.get("partial_cut_line_y_cm")
+                    if cut_y is None:
+                        continue
+                    x_left = seg_dict["x_left_cm"]
+                    x_right = seg_dict["x_right_cm"]
+
+                    p1 = mapper.map_point(Point2D(x_left, cut_y))
+                    p2 = mapper.map_point(Point2D(x_right, cut_y))
+
+                    cut_pen = QPen(QColor(230, 140, 0))
+                    cut_pen.setWidthF(2.0)
+                    cut_pen.setStyle(Qt.PenStyle.DashDotLine)
+                    painter.setPen(cut_pen)
+                    painter.drawLine(p1, p2)
 
     def _draw_module_guides(
         self,
