@@ -132,6 +132,7 @@ class DrawingCanvas(QWidget):
         self._edit_overlay: _EditOverlayState | None = None
         self._origin_edit_enabled: bool = False
         self._dragging_origin: bool = False
+        self._origin_drag_reference_point: Point2D | None = None
         self._preview_origin_point: Point2D | None = None
         self._last_emitted_selection_state: bool = False
 
@@ -175,6 +176,7 @@ class DrawingCanvas(QWidget):
         self._origin_edit_enabled = enabled
         if not enabled:
             self._dragging_origin = False
+            self._origin_drag_reference_point = None
             self._preview_origin_point = None
         if self._mode == self.MODE_VIEW:
             self._sync_view_cursor()
@@ -202,6 +204,7 @@ class DrawingCanvas(QWidget):
         self.roof_plane = roof_plane
         self._cancel_geometry_drag()
         self._reset_selection(select_plane=bool(roof_plane is not None and roof_plane.outline is not None))
+        self._origin_drag_reference_point = None
         self._preview_origin_point = None
         self._check_selection_changed()
         self._sync_view_cursor()
@@ -776,6 +779,27 @@ class DrawingCanvas(QWidget):
     def _point_within_plane(self, point: Point2D, outline: Polygon2D) -> bool:
         return point_in_polygon(point, outline) or self._point_on_polygon_boundary(point, outline)
 
+    def _project_point_to_segment(self, point: Point2D, start: Point2D, end: Point2D) -> Point2D:
+        dx = end.x - start.x
+        dy = end.y - start.y
+        length_sq = dx * dx + dy * dy
+        if length_sq <= 1e-9:
+            return start
+        projection = ((point.x - start.x) * dx + (point.y - start.y) * dy) / length_sq
+        t = min(1.0, max(0.0, projection))
+        return Point2D(start.x + dx * t, start.y + dy * t)
+
+    def _closest_boundary_point(self, point: Point2D, polygon: Polygon2D) -> Point2D:
+        closest_point: Point2D | None = None
+        closest_distance_sq: float | None = None
+        for start, end in polygon_edges(polygon):
+            candidate = self._project_point_to_segment(point, start, end)
+            distance_sq = (candidate.x - point.x) ** 2 + (candidate.y - point.y) ** 2
+            if closest_distance_sq is None or distance_sq < closest_distance_sq:
+                closest_point = candidate
+                closest_distance_sq = distance_sq
+        return closest_point if closest_point is not None else point
+
     def _hit_test_origin_handle(self, pos: QPointF, mapper: CanvasMapper) -> bool:
         mapped_origin = mapper.map_point(self._origin_point())
         return self._distance(pos, mapped_origin) <= MIDPOINT_HANDLE_RADIUS + 6
@@ -783,8 +807,10 @@ class DrawingCanvas(QWidget):
     def _start_origin_drag(self, mapper: CanvasMapper) -> None:
         self._drag_mapper = mapper
         self._dragging_origin = True
-        self._preview_origin_point = self._origin_point()
+        self._origin_drag_reference_point = self._origin_point()
+        self._preview_origin_point = self._origin_drag_reference_point
         self._sync_view_cursor()
+        self.update()
 
     def _update_origin_drag(self, pos: QPointF) -> None:
         outline = self.display_outline()
@@ -801,7 +827,7 @@ class DrawingCanvas(QWidget):
             modifiers=self._current_modifiers(),
         )
         if not self._point_within_plane(domain_point, outline):
-            return
+            domain_point = self._closest_boundary_point(domain_point, outline)
         self._preview_origin_point = domain_point
         self.update()
 
@@ -811,6 +837,7 @@ class DrawingCanvas(QWidget):
         committed_origin = self._origin_point()
         self._dragging_origin = False
         self._drag_mapper = None
+        self._origin_drag_reference_point = None
         self._preview_origin_point = None
         self._sync_view_cursor()
         self.update()
@@ -819,6 +846,7 @@ class DrawingCanvas(QWidget):
     def _cancel_origin_drag(self) -> None:
         self._dragging_origin = False
         self._drag_mapper = None
+        self._origin_drag_reference_point = None
         self._preview_origin_point = None
         self._sync_view_cursor()
         self.update()
@@ -893,6 +921,18 @@ class DrawingCanvas(QWidget):
     def _coordinate_label_text(self, point: Point2D) -> str:
         relative_point = self._relative_coordinate_point(point)
         return f"X: {self._format_coordinate_value(relative_point.x)} | Y: {self._format_coordinate_value(relative_point.y)}"
+
+    def _origin_drag_label_text(self) -> str:
+        current_origin = self._origin_point()
+        reference_origin = self._origin_drag_reference_point or current_origin
+        relative_point = Point2D(
+            current_origin.x - reference_origin.x,
+            reference_origin.y - current_origin.y,
+        )
+        return f"X: {self._format_coordinate_value(relative_point.x)} | Y: {self._format_coordinate_value(relative_point.y)}"
+
+    def _grid_visible(self) -> bool:
+        return self._show_grid or self._dragging_origin
 
     def _coordinate_overlay_labels(self) -> list[_CoordinateOverlayLabel]:
         if self._edit_overlay is None:
@@ -1076,11 +1116,11 @@ class DrawingCanvas(QWidget):
         painter.drawRect(self.rect().adjusted(0, 0, -1, -1))
 
         if self.roof_plane is not None and self.display_outline() is not None:
-            if self._show_grid:
+            if self._grid_visible():
                 self._draw_grid(painter)
             self._draw_roof_plane(painter)
         else:
-            if self._show_grid:
+            if self._grid_visible():
                 self._draw_grid(painter)
             self._draw_empty_state(painter)
 
@@ -1089,6 +1129,10 @@ class DrawingCanvas(QWidget):
 
         if self._selected_sheet_id and self._mode == self.MODE_SELECT_SHEET:
             self._draw_selected_sheet_highlight(painter)
+
+        mapper = self._canvas_mapper()
+        if mapper is not None:
+            self._draw_origin_marker(painter, mapper)
 
     def _draw_grid(self, painter: QPainter) -> None:
         outline = self.display_outline()
@@ -1322,6 +1366,25 @@ class DrawingCanvas(QWidget):
             QPointF(mapped_origin.x(), mapped_origin.y() + 10.0),
         )
         painter.drawEllipse(mapped_origin, 4.0, 4.0)
+        if self._dragging_origin:
+            font = painter.font()
+            font.setPointSize(8)
+            painter.setFont(font)
+            label_text = self._origin_drag_label_text()
+            metrics = QFontMetricsF(font)
+            label_rect = self._coordinate_label_rect(
+                mapped_origin,
+                mapped_origin,
+                metrics,
+                label_text,
+                self.rect().adjusted(6, 6, -6, -6),
+                mode="active",
+            )
+            painter.setPen(QPen(QColor(255, 255, 255, 120), 0.8))
+            painter.setBrush(QColor(18, 18, 18, 215))
+            painter.drawRoundedRect(label_rect, 4.0, 4.0)
+            painter.setPen(QColor(255, 255, 255))
+            painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, label_text)
         painter.restore()
 
     def _axis_indicator_origin(self) -> QPointF:
@@ -1401,7 +1464,6 @@ class DrawingCanvas(QWidget):
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawPolygon(hole_polygon)
 
-        self._draw_origin_marker(painter, mapper)
         self._draw_axis_indicator(painter)
         self._draw_edit_overlay(painter, mapper, outline)
 

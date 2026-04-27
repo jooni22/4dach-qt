@@ -351,6 +351,8 @@ def test_mainwindow_toolbar_origin_toggle_enables_origin_edit_mode(qtbot):
 
     assert window.primary_canvas is not None
     assert window.primary_canvas._origin_edit_enabled is True
+    assert window._tb_ctrl.action_base_point_toggle.isChecked() is True
+    assert "QToolButton:checked" in window._tb_ctrl.toolbar.styleSheet()
 
 
 def test_mainwindow_settings_dialog_updates_grid_size_on_project_state_and_canvas(qtbot, monkeypatch):

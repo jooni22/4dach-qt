@@ -47,7 +47,9 @@ class ToolbarController:
         tb.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         tb.setStyleSheet(
             "QToolBar { spacing: 2px; padding: 1px; }"
-            "QToolButton { padding: 1px; margin: 0px; }"
+            "QToolButton { padding: 1px; margin: 0px; border: 1px solid transparent; border-radius: 4px; }"
+            "QToolButton:checked { background: rgba(90, 150, 255, 0.22); border-color: rgba(90, 150, 255, 0.75); }"
+            "QToolButton:pressed { background: rgba(90, 150, 255, 0.30); border-color: rgba(90, 150, 255, 0.85); }"
         )
         self._win.addToolBar(tb)
         return tb
