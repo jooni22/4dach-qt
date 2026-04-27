@@ -4,6 +4,7 @@ from __future__ import annotations
 import copy
 import json
 import sys
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 import tempfile
@@ -18,8 +19,7 @@ from PySide6.QtGui import QDesktopServices
 
 from app_icons import build_icon
 from persistence import load_config, save_config
-from core.canvas_mapper import CanvasMapper
-from core.models import Bounds2D, Point2D, Polygon2D, SheetPlacement
+from core.models import Point2D, Polygon2D, SheetPlacement
 from core.project_state import ProjectState
 from core.reporting import build_project_report, build_project_report_html
 from core.geometry import make_rectangle, make_trapezoid, make_triangle
@@ -935,14 +935,7 @@ class MainWindow(QMainWindow):
         canvas = self._workspace.primary_canvas
         if canvas is None:
             return
-        try:
-            canvas.polygon_closed.disconnect(self._on_polygon_closed)
-        except (RuntimeError, TypeError):
-            pass
-        try:
-            canvas.cutout_closed.disconnect(self._on_cutout_closed)
-        except (RuntimeError, TypeError):
-            pass
+        self._disconnect_canvas_capture_signals(canvas)
         canvas.set_mode(mode)
         if mode == canvas.MODE_DRAW_CUTOUT:
             canvas.cutout_closed.connect(handler)
@@ -951,12 +944,23 @@ class MainWindow(QMainWindow):
             canvas.polygon_closed.connect(handler)
             self.statusBar().showMessage("Kliknij, aby dodać wierzchołki. Enter lub klik na pkt 1 = zamknij. Esc = anuluj.", 0)
 
+    def _disconnect_canvas_capture_signals(self, canvas: DrawingCanvas | None) -> None:
+        if canvas is None:
+            return
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            try:
+                canvas.polygon_closed.disconnect(self._on_polygon_closed)
+            except (RuntimeError, TypeError):
+                pass
+            try:
+                canvas.cutout_closed.disconnect(self._on_cutout_closed)
+            except (RuntimeError, TypeError):
+                pass
+
     def _on_polygon_closed(self, pixel_points: list) -> None:
         canvas = self._workspace.primary_canvas
-        try:
-            canvas.polygon_closed.disconnect(self._on_polygon_closed)
-        except (RuntimeError, TypeError):
-            pass
+        self._disconnect_canvas_capture_signals(canvas)
         canvas.set_mode(canvas.MODE_VIEW)
 
         if len(pixel_points) < 3:
@@ -965,14 +969,7 @@ class MainWindow(QMainWindow):
 
         from PySide6.QtCore import QRectF
 
-        xs = [point.x() for point in pixel_points]
-        ys = [point.y() for point in pixel_points]
-        bounds_rect = QRectF(min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys))
-        if bounds_rect.isEmpty():
-            self.statusBar().showMessage("Nie udało się znormalizować szkicu.", 4000)
-            return
-
-        mapper = CanvasMapper(Bounds2D(0.0, 0.0, 1000.0, 1000.0), bounds_rect, margin=0.0)
+        mapper = DrawingCanvas.build_free_draw_mapper(QRectF(canvas.rect()))
         outline = Polygon2D([mapper.unmap_point(point) for point in pixel_points])
         self._set_active_plane_geometry(outline, "Ustawiono obrys z odręcznego rysowania")
 
@@ -981,10 +978,7 @@ class MainWindow(QMainWindow):
         plane = self.project_state.active_roof_plane()
         if canvas is None or plane is None:
             return
-        try:
-            canvas.cutout_closed.disconnect(self._on_cutout_closed)
-        except (RuntimeError, TypeError):
-            pass
+        self._disconnect_canvas_capture_signals(canvas)
         canvas.set_mode(canvas.MODE_VIEW)
 
         if len(pixel_points) < 3:

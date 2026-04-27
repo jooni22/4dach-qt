@@ -692,6 +692,42 @@ def test_mainwindow_freehand_outline_uses_canvas_mapper_instead_of_raw_pixels(qt
     assert first_outline.points == second_outline.points
 
 
+def test_mainwindow_freehand_outline_keeps_global_canvas_position_instead_of_bbox_normalization(qtbot):
+    window = MainWindow()
+    qtbot.addWidget(window)
+    canvas = window._workspace.primary_canvas
+    canvas.resize(640, 420)
+    canvas.polygon_closed.connect(window._on_polygon_closed)
+
+    window._on_polygon_closed(
+        [
+            QPointF(110, 80),
+            QPointF(310, 80),
+            QPointF(310, 240),
+            QPointF(110, 240),
+        ]
+    )
+    first_outline = window.project_state.active_roof_plane().outline
+
+    canvas.polygon_closed.connect(window._on_polygon_closed)
+    window._on_polygon_closed(
+        [
+            QPointF(160, 80),
+            QPointF(360, 80),
+            QPointF(360, 240),
+            QPointF(160, 240),
+        ]
+    )
+    second_outline = window.project_state.active_roof_plane().outline
+
+    assert first_outline is not None
+    assert second_outline is not None
+    assert second_outline.points[0].x > first_outline.points[0].x
+    assert second_outline.points[1].x > first_outline.points[1].x
+    assert second_outline.points[0].y == pytest.approx(first_outline.points[0].y, abs=0.1)
+    assert second_outline.points[2].y == pytest.approx(first_outline.points[2].y, abs=0.1)
+
+
 def test_mainwindow_open_project_resets_cached_report_and_company_title(qtbot, monkeypatch):
     initial_config = {
         "company_data": {"name": "Firma A"},

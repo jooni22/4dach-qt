@@ -88,6 +88,40 @@ def test_canvas_selects_vertex_handle_on_mouse_press(qtbot):
     assert canvas._dragging_vertex_index == 0
 
 
+def test_canvas_clicking_midpoint_inserts_new_vertex_and_starts_drag(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+
+    midpoint = _point_on_canvas(canvas, Point2D(150, 0))
+    QTest.mousePress(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, midpoint)
+
+    preview = canvas.display_outline()
+    assert preview is not None
+    assert len(preview.points) == 5
+    assert preview.points[1] == Point2D(150, 0)
+    assert canvas._active_vertex_index == 1
+    assert canvas._dragging_vertex_index == 1
+
+
+def test_canvas_dragging_inserted_midpoint_commits_split_edge_outline(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+
+    midpoint = _point_on_canvas(canvas, Point2D(150, 0))
+    target_domain = Point2D(150, 40)
+    target = _point_on_canvas(canvas, target_domain)
+
+    with qtbot.waitSignal(canvas.outline_edit_committed, timeout=1000) as blocker:
+        QTest.mousePress(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, midpoint)
+        _send_mouse_move(canvas, target, buttons=Qt.MouseButton.LeftButton)
+        QTest.mouseRelease(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, target)
+
+    committed_outline = blocker.args[0]
+    assert len(committed_outline.points) == 5
+    assert committed_outline.points[1].x == pytest.approx(target_domain.x, abs=1.5)
+    assert committed_outline.points[1].y == pytest.approx(target_domain.y, abs=1.5)
+
+
 def test_canvas_dragging_vertex_updates_preview_geometry_live(qtbot):
     outline = Polygon2D.rectangle(300, 200)
     canvas = _make_canvas(qtbot, outline)
@@ -366,6 +400,37 @@ def test_canvas_dragging_origin_forces_grid_visibility_only_during_drag(qtbot):
 
     assert canvas._dragging_origin is False
     assert canvas._grid_visible() is False
+
+
+def test_canvas_draw_outline_mode_shows_grid_immediately(qtbot):
+    canvas = DrawingCanvas()
+    canvas.resize(640, 420)
+    qtbot.addWidget(canvas)
+    canvas.show()
+    qtbot.waitExposed(canvas)
+
+    canvas.set_mode(DrawingCanvas.MODE_DRAW_OUTLINE)
+
+    assert canvas._grid_visible() is True
+
+
+def test_canvas_draw_outline_mode_uses_global_free_draw_mapper(qtbot):
+    canvas = DrawingCanvas()
+    canvas.resize(640, 420)
+    qtbot.addWidget(canvas)
+    canvas.show()
+    qtbot.waitExposed(canvas)
+    canvas.set_mode(DrawingCanvas.MODE_DRAW_OUTLINE)
+    mapper = canvas._free_draw_mapper()
+    bounds = canvas._free_draw_bounds()
+
+    bottom_left = mapper.unmap_point(QPointF(mapper.map_x(bounds.min_x), mapper.map_y(bounds.max_y)))
+    top_left = mapper.unmap_point(QPointF(mapper.map_x(bounds.min_x), mapper.map_y(bounds.min_y)))
+
+    assert bottom_left.x == pytest.approx(0.0, abs=0.1)
+    assert bottom_left.y == pytest.approx(bounds.max_y, abs=0.1)
+    assert top_left.x == pytest.approx(0.0, abs=0.1)
+    assert top_left.y == pytest.approx(0.0, abs=0.1)
 
 
 def test_canvas_dragging_origin_projects_to_nearest_boundary_when_cursor_leaves_shape(qtbot):
