@@ -4,6 +4,7 @@ import pytest
 
 from core.geometry import (
     delete_polygon_point,
+    horizontal_segments_for_range,
     insert_polygon_point,
     replace_polygon_point,
     translate_polygon,
@@ -56,3 +57,12 @@ def test_delete_polygon_point_rejects_triangle_reduction():
 
     with pytest.raises(ValueError):
         delete_polygon_point(triangle, 1)
+
+
+def test_horizontal_segments_for_range_subtracts_hole_intervals():
+    outline = Polygon2D.rectangle(300, 200)
+    hole = Polygon2D.rectangle(80, 60, origin_x=100, origin_y=70)
+
+    segments = horizontal_segments_for_range(outline, [hole], 100.0, 100.0)
+
+    assert segments == [(0.0, 100.0), (180.0, 300.0)]

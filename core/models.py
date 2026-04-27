@@ -8,6 +8,7 @@ from typing import Literal
 MaterialType = Literal["dachówkowa", "trapezowa"]
 SheetSource = Literal["auto", "manual"]
 LayoutOrigin = Literal["left", "right"]
+DivisionOrientation = Literal["vertical", "horizontal"]
 
 
 @dataclass(slots=True, frozen=True)
@@ -226,6 +227,7 @@ class GenerationSettings:
     base_line_y_cm: float | None = None
     origin_x_cm: float | None = None
     origin_y_cm: float | None = None
+    sheet_division_lines: list["SheetDivisionLine"] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, data: dict | None) -> "GenerationSettings":
@@ -238,6 +240,14 @@ class GenerationSettings:
             base_line_y_cm=None if base_line_y_cm in (None, "") else float(base_line_y_cm),
             origin_x_cm=None if origin_x_cm in (None, "") else float(origin_x_cm),
             origin_y_cm=None if origin_y_cm in (None, "") else float(origin_y_cm),
+            sheet_division_lines=[
+                line
+                for line in (
+                    SheetDivisionLine.from_dict(entry)
+                    for entry in payload.get("sheet_division_lines", payload.get("division_lines", []))
+                )
+                if line is not None
+            ],
         )
 
     def to_dict(self) -> dict:
@@ -246,6 +256,32 @@ class GenerationSettings:
             "base_line_y_cm": self.base_line_y_cm,
             "origin_x_cm": self.origin_x_cm,
             "origin_y_cm": self.origin_y_cm,
+            "sheet_division_lines": [line.to_dict() for line in self.sheet_division_lines],
+        }
+
+
+@dataclass(slots=True)
+class SheetDivisionLine:
+    id: str
+    orientation: DivisionOrientation
+    position_cm: float
+
+    @classmethod
+    def from_dict(cls, data: object) -> "SheetDivisionLine | None":
+        if isinstance(data, dict):
+            line_id = str(data.get("id", "")).strip()
+            orientation = str(data.get("orientation", "")).strip()
+            position = data.get("position_cm")
+            if not line_id or orientation not in {"vertical", "horizontal"} or position is None:
+                return None
+            return cls(id=line_id, orientation=orientation, position_cm=float(position))
+        return None
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "orientation": self.orientation,
+            "position_cm": self.position_cm,
         }
 
 

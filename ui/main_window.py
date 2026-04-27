@@ -19,7 +19,7 @@ from PySide6.QtGui import QDesktopServices
 
 from app_icons import build_icon
 from persistence import load_config, save_config
-from core.models import Point2D, Polygon2D, SheetPlacement
+from core.models import Point2D, Polygon2D, SheetDivisionLine, SheetPlacement
 from core.project_state import ProjectState
 from core.reporting import build_project_report, build_project_report_html
 from core.geometry import make_rectangle, make_trapezoid, make_triangle
@@ -60,6 +60,8 @@ class MainWindow(QMainWindow):
         self._base_window_title = ""
         self._snap_to_grid_enabled = True
         self._sheets_visible = True
+        self._sheet_division_tool_mode: str | None = None
+        self._sheet_division_insert_orientation: str = "vertical"
         self._project_file_path: Path | None = Path(__file__).resolve().parent.parent / "config.json"
 
         self._status_label = QLabel("")
@@ -166,6 +168,12 @@ class MainWindow(QMainWindow):
         # ark.addAction(act("Podgląd arkuszy", "Ctrl+A", self._dlg_sheet_preview))
         # ark.addAction(act("Aktywne arkusze", None, self._dlg_active_sheets))
         ark.addAction(act("Przelicz aktywną połać", "F5", self._recalculate))
+        ark.addSeparator()
+        ark.addAction(act("Linia arkusza: wstaw pionową", None, lambda: self._set_sheet_division_tool_mode("insert", "vertical")))
+        ark.addAction(act("Linia arkusza: wstaw poziomą", None, lambda: self._set_sheet_division_tool_mode("insert", "horizontal")))
+        ark.addAction(act("Linia arkusza: przesuń", None, lambda: self._set_sheet_division_tool_mode("move")))
+        ark.addAction(act("Linia arkusza: usuń", None, lambda: self._set_sheet_division_tool_mode("delete")))
+        ark.addAction(act("Linia arkusza: wyłącz narzędzie", None, lambda: self._set_sheet_division_tool_mode(None)))
         ark.addSeparator()
         ark.addAction(act("Zmień rodzaj blachy", None, self._dlg_change_material))
 
@@ -480,6 +488,27 @@ class MainWindow(QMainWindow):
             except TypeError:
                 pass
             try:
+                candidate.sheet_division_line_inserted.connect(
+                    self._on_sheet_division_line_inserted,
+                    Qt.ConnectionType.UniqueConnection,
+                )
+            except TypeError:
+                pass
+            try:
+                candidate.sheet_division_line_moved.connect(
+                    self._on_sheet_division_line_moved,
+                    Qt.ConnectionType.UniqueConnection,
+                )
+            except TypeError:
+                pass
+            try:
+                candidate.sheet_division_line_deleted.connect(
+                    self._on_sheet_division_line_deleted,
+                    Qt.ConnectionType.UniqueConnection,
+                )
+            except TypeError:
+                pass
+            try:
                 candidate.selection_changed.connect(
                     self._on_selection_changed,
                     Qt.ConnectionType.UniqueConnection,
@@ -503,6 +532,7 @@ class MainWindow(QMainWindow):
             self.primary_canvas.set_app_settings(self.project_state.app_settings)
             self.primary_canvas.set_snap_to_grid_enabled(self._snap_to_grid_enabled)
         self._apply_origin_edit_mode_to_canvases()
+        self._apply_sheet_division_tool_mode_to_canvases()
             
         if self.primary_canvas:
             is_selected = self.primary_canvas._plane_selected or self.primary_canvas._selected_hole_index is not None
@@ -632,6 +662,22 @@ class MainWindow(QMainWindow):
         if self._workspace.primary_canvas is not None and active_plane_id is None:
             self._workspace.primary_canvas.set_origin_edit_enabled(False)
 
+    def _apply_sheet_division_tool_mode_to_canvases(self) -> None:
+        active_plane = self.project_state.active_roof_plane()
+        active_plane_id = active_plane.id if active_plane is not None else None
+        for plane in self.project_state.roof_planes:
+            canvas = self._workspace.canvas_for_plane(plane.id)
+            if canvas is not None:
+                canvas.set_sheet_division_tool_mode(
+                    self._sheet_division_tool_mode if plane.id == active_plane_id else None,
+                    insert_orientation=self._sheet_division_insert_orientation,
+                )
+        if self._workspace.primary_canvas is not None and active_plane_id is None:
+            self._workspace.primary_canvas.set_sheet_division_tool_mode(
+                self._sheet_division_tool_mode,
+                insert_orientation=self._sheet_division_insert_orientation,
+            )
+
     def _restore_canvas_selection(self, plane_id: str | None, selection_snapshot) -> None:
         canvas = self._workspace.canvas_for_plane(plane_id) if plane_id is not None else self.primary_canvas
         if canvas is None:
@@ -728,6 +774,7 @@ class MainWindow(QMainWindow):
             self._refresh_material_combo()
             self._refresh_report()
             self._apply_origin_edit_mode_to_canvases()
+            self._apply_sheet_division_tool_mode_to_canvases()
             
             if self.primary_canvas:
                 is_selected = self.primary_canvas._plane_selected or self.primary_canvas._selected_hole_index is not None
@@ -842,6 +889,40 @@ class MainWindow(QMainWindow):
             label=f"Zmiana punktu zerowego {plane.name}",
         )
 
+    def _on_sheet_division_line_inserted(self, orientation: str, position_cm: float) -> None:
+        plane = self.project_state.active_roof_plane()
+        if plane is None:
+            return
+        line_id = f"{plane.id}-div-{plane.layout_revision + len(plane.generation_settings.sheet_division_lines) + 1}"
+        self._edit(
+            lambda: self.project_state.add_sheet_division_line(
+                SheetDivisionLine(id=line_id, orientation=orientation, position_cm=position_cm),
+                plane.id,
+            ),
+            f"Dodano linię podziału do połaci {plane.name}",
+            label=f"Dodanie linii podziału {plane.name}",
+        )
+
+    def _on_sheet_division_line_moved(self, line_id: str, position_cm: float) -> None:
+        plane = self.project_state.active_roof_plane()
+        if plane is None:
+            return
+        self._edit(
+            lambda: self.project_state.move_sheet_division_line(line_id, position_cm, plane.id),
+            f"Przesunięto linię podziału w połaci {plane.name}",
+            label=f"Przesunięcie linii podziału {plane.name}",
+        )
+
+    def _on_sheet_division_line_deleted(self, line_id: str) -> None:
+        plane = self.project_state.active_roof_plane()
+        if plane is None:
+            return
+        self._edit(
+            lambda: self.project_state.remove_sheet_division_line(line_id, plane.id),
+            f"Usunięto linię podziału z połaci {plane.name}",
+            label=f"Usunięcie linii podziału {plane.name}",
+        )
+
     def _on_outline_edit_rejected(self, message: str) -> None:
         QMessageBox.warning(self, "Nieprawidłowa geometria", message)
         self.statusBar().showMessage("Odrzucono zmianę geometrii połaci", 4000)
@@ -868,11 +949,33 @@ class MainWindow(QMainWindow):
             self._tb_ctrl.action_base_point_toggle.setChecked(False)
             self._tb_ctrl.action_base_point_toggle.blockSignals(False)
             checked = False
+        if checked:
+            self._set_sheet_division_tool_mode(None)
         self._apply_origin_edit_mode_to_canvases()
         if checked:
             self.statusBar().showMessage("Przeciągnij punkt zerowy po połaci, aby ustawić nowe (0,0).", 4000)
         else:
             self.statusBar().showMessage("Wyłączono ustawianie punktu zerowego.", 2500)
+
+    def _set_sheet_division_tool_mode(self, mode: str | None, orientation: str | None = None) -> None:
+        self._sheet_division_tool_mode = mode
+        if orientation in {"vertical", "horizontal"}:
+            self._sheet_division_insert_orientation = orientation
+        if mode is not None and hasattr(self, "_tb_ctrl"):
+            self._tb_ctrl.action_base_point_toggle.blockSignals(True)
+            self._tb_ctrl.action_base_point_toggle.setChecked(False)
+            self._tb_ctrl.action_base_point_toggle.blockSignals(False)
+            self._apply_origin_edit_mode_to_canvases()
+        self._apply_sheet_division_tool_mode_to_canvases()
+        if mode == "insert":
+            axis = "pionową" if self._sheet_division_insert_orientation == "vertical" else "poziomą"
+            self.statusBar().showMessage(f"Tryb linii arkusza: kliknij, aby dodać linię {axis}.", 4000)
+        elif mode == "move":
+            self.statusBar().showMessage("Tryb linii arkusza: przeciągnij istniejącą linię.", 4000)
+        elif mode == "delete":
+            self.statusBar().showMessage("Tryb linii arkusza: kliknij linię, aby ją usunąć.", 4000)
+        else:
+            self.statusBar().showMessage("Wyłączono narzędzie linii arkusza.", 2500)
 
     def _on_from_left_toggled(self, checked: bool) -> None:
         if not checked:

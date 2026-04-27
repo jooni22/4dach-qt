@@ -35,6 +35,7 @@ from core.app_settings import (
 )
 from core.canvas_mapper import CanvasMapper
 from core.geometry import (
+    horizontal_segments_for_range,
     insert_polygon_point,
     point_in_polygon,
     polygon_edges,
@@ -42,6 +43,7 @@ from core.geometry import (
     segment_length,
     validate_hole_polygon,
     validate_polygon,
+    vertical_segments_for_band,
 )
 from core.models import Bounds2D, Point2D, Polygon2D
 
@@ -94,6 +96,15 @@ class _SelectionSnapshot:
     vertex_index: int | None = None
 
 
+@dataclass(slots=True, frozen=True)
+class _RenderedDivisionLine:
+    id: str
+    orientation: str
+    position_cm: float
+    start: Point2D
+    end: Point2D
+
+
 class DrawingCanvas(QWidget):
     """Interactive canvas for displaying and drawing roof planes."""
 
@@ -107,6 +118,9 @@ class DrawingCanvas(QWidget):
     outline_edit_committed = Signal(object)
     hole_edit_committed = Signal(int, object)
     origin_edit_committed = Signal(object)
+    sheet_division_line_inserted = Signal(str, float)
+    sheet_division_line_moved = Signal(str, float)
+    sheet_division_line_deleted = Signal(str)
     outline_edit_rejected = Signal(str)
     selection_changed = Signal(bool)
     delete_requested = Signal()
@@ -148,6 +162,11 @@ class DrawingCanvas(QWidget):
         self._dragging_origin: bool = False
         self._origin_drag_reference_point: Point2D | None = None
         self._preview_origin_point: Point2D | None = None
+        self._sheet_division_tool_mode: str | None = None
+        self._sheet_division_insert_orientation: str = "vertical"
+        self._active_sheet_division_line_id: str | None = None
+        self._dragging_sheet_division_line_id: str | None = None
+        self._dragging_sheet_division_original_position: float | None = None
         self._last_emitted_selection_state: bool = False
 
         self.setMouseTracking(True)
@@ -200,6 +219,17 @@ class DrawingCanvas(QWidget):
             self._dragging_origin = False
             self._origin_drag_reference_point = None
             self._preview_origin_point = None
+        if self._mode == self.MODE_VIEW:
+            self._sync_view_cursor()
+        self.update()
+
+    def set_sheet_division_tool_mode(self, mode: str | None, *, insert_orientation: str = "vertical") -> None:
+        self._sheet_division_tool_mode = mode
+        if insert_orientation in {"vertical", "horizontal"}:
+            self._sheet_division_insert_orientation = insert_orientation
+        self._dragging_sheet_division_line_id = None
+        self._dragging_sheet_division_original_position = None
+        self._active_sheet_division_line_id = None
         if self._mode == self.MODE_VIEW:
             self._sync_view_cursor()
         self.update()
@@ -310,6 +340,12 @@ class DrawingCanvas(QWidget):
             return
         if self._dragging_origin:
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
+        elif self._sheet_division_tool_mode == "delete":
+            self.setCursor(Qt.CursorShape.ForbiddenCursor)
+        elif self._sheet_division_tool_mode == "insert":
+            self.setCursor(Qt.CursorShape.CrossCursor)
+        elif self._sheet_division_tool_mode == "move":
+            self.setCursor(Qt.CursorShape.OpenHandCursor)
         elif self._origin_edit_enabled:
             self.setCursor(Qt.CursorShape.OpenHandCursor)
         else:
@@ -880,6 +916,63 @@ class DrawingCanvas(QWidget):
     def _point_within_plane(self, point: Point2D, outline: Polygon2D) -> bool:
         return point_in_polygon(point, outline) or self._point_on_polygon_boundary(point, outline)
 
+    def _sheet_division_lines(self) -> list:
+        if self.roof_plane is None:
+            return []
+        return list(self.roof_plane.generation_settings.sheet_division_lines)
+
+    def _sheet_division_line_by_id(self, line_id: str | None):
+        if line_id is None:
+            return None
+        return next((line for line in self._sheet_division_lines() if line.id == line_id), None)
+
+    def _rendered_sheet_division_lines(self) -> list[_RenderedDivisionLine]:
+        outline = self.display_outline()
+        if outline is None:
+            return []
+        holes = self.display_holes()
+        rendered: list[_RenderedDivisionLine] = []
+        for line in self._sheet_division_lines():
+            if line.orientation == "vertical":
+                for y_top, y_bottom in vertical_segments_for_band(outline, holes, line.position_cm, line.position_cm):
+                    rendered.append(
+                        _RenderedDivisionLine(
+                            id=line.id,
+                            orientation=line.orientation,
+                            position_cm=line.position_cm,
+                            start=Point2D(line.position_cm, y_top),
+                            end=Point2D(line.position_cm, y_bottom),
+                        )
+                    )
+            else:
+                for x_left, x_right in horizontal_segments_for_range(outline, holes, line.position_cm, line.position_cm):
+                    rendered.append(
+                        _RenderedDivisionLine(
+                            id=line.id,
+                            orientation=line.orientation,
+                            position_cm=line.position_cm,
+                            start=Point2D(x_left, line.position_cm),
+                            end=Point2D(x_right, line.position_cm),
+                        )
+                    )
+        return rendered
+
+    def _hit_test_sheet_division_line(self, pos: QPointF, mapper: CanvasMapper) -> str | None:
+        for line in self._rendered_sheet_division_lines():
+            start = mapper.map_point(line.start)
+            end = mapper.map_point(line.end)
+            if line.orientation == "vertical":
+                if min(start.y(), end.y()) - 6 <= pos.y() <= max(start.y(), end.y()) + 6 and abs(pos.x() - start.x()) <= 6:
+                    return line.id
+            else:
+                if min(start.x(), end.x()) - 6 <= pos.x() <= max(start.x(), end.x()) + 6 and abs(pos.y() - start.y()) <= 6:
+                    return line.id
+        return None
+
+    def _sheet_division_line_position_from_pointer(self, pos: QPointF, mapper: CanvasMapper, orientation: str) -> float:
+        domain_point = self._snap_domain_point(mapper.unmap_point(pos))
+        return domain_point.x if orientation == "vertical" else domain_point.y
+
     def _project_point_to_segment(self, point: Point2D, start: Point2D, end: Point2D) -> Point2D:
         dx = end.x - start.x
         dy = end.y - start.y
@@ -1095,6 +1188,32 @@ class DrawingCanvas(QWidget):
                 outline = self.display_outline()
                 mapper = self._canvas_mapper()
                 if outline is not None and mapper is not None:
+                    if self._sheet_division_tool_mode is not None:
+                        line_id = self._hit_test_sheet_division_line(pos, mapper)
+                        self._active_sheet_division_line_id = line_id
+                        if self._sheet_division_tool_mode == "insert":
+                            self.sheet_division_line_inserted.emit(
+                                self._sheet_division_insert_orientation,
+                                self._sheet_division_line_position_from_pointer(
+                                    pos,
+                                    mapper,
+                                    self._sheet_division_insert_orientation,
+                                ),
+                            )
+                            return
+                        if self._sheet_division_tool_mode == "delete":
+                            if line_id is not None:
+                                self.sheet_division_line_deleted.emit(line_id)
+                            return
+                        if self._sheet_division_tool_mode == "move":
+                            if line_id is not None:
+                                self._drag_mapper = mapper
+                                self._dragging_sheet_division_line_id = line_id
+                                line = self._sheet_division_line_by_id(line_id)
+                                self._dragging_sheet_division_original_position = None if line is None else line.position_cm
+                                self.setCursor(Qt.CursorShape.ClosedHandCursor)
+                            return
+
                     if self._origin_edit_enabled:
                         self._clear_edit_overlay()
                         if self._hit_test_origin_handle(pos, mapper):
@@ -1180,16 +1299,44 @@ class DrawingCanvas(QWidget):
         elif self._mode == self.MODE_VIEW and self._dragging_origin:
             self._update_origin_drag(event.position())
             return
+        elif self._mode == self.MODE_VIEW and self._dragging_sheet_division_line_id is not None and self._drag_mapper is not None:
+            line = self._sheet_division_line_by_id(self._dragging_sheet_division_line_id)
+            if line is not None:
+                line.position_cm = self._sheet_division_line_position_from_pointer(
+                    event.position(),
+                    self._drag_mapper,
+                    line.orientation,
+                )
+                self.update()
+            return
         elif self._mode == self.MODE_VIEW and (self._dragging_vertex_index is not None or self._dragging_hole_center_index is not None):
             self._update_geometry_drag(event.position(), event.modifiers())
             return
         elif self._mode == self.MODE_VIEW and not self._origin_edit_enabled:
+            if self._sheet_division_tool_mode in {"move", "delete"}:
+                mapper = self._canvas_mapper()
+                hovered_id = None if mapper is None else self._hit_test_sheet_division_line(event.position(), mapper)
+                if hovered_id != self._active_sheet_division_line_id:
+                    self._active_sheet_division_line_id = hovered_id
+                    self.update()
+                return
             self._update_edit_overlay_hover(event.position())
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         if self._mode == self.MODE_VIEW and event.button() == Qt.MouseButton.LeftButton and self._dragging_origin:
             self._commit_origin_drag()
+            return
+        if self._mode == self.MODE_VIEW and event.button() == Qt.MouseButton.LeftButton and self._dragging_sheet_division_line_id is not None:
+            line = self._sheet_division_line_by_id(self._dragging_sheet_division_line_id)
+            line_id = self._dragging_sheet_division_line_id
+            self._dragging_sheet_division_line_id = None
+            self._dragging_sheet_division_original_position = None
+            self._drag_mapper = None
+            self._sync_view_cursor()
+            self.update()
+            if line is not None:
+                self.sheet_division_line_moved.emit(line_id, line.position_cm)
             return
         if self._mode == self.MODE_VIEW and event.button() == Qt.MouseButton.LeftButton and (self._dragging_vertex_index is not None or self._dragging_hole_center_index is not None):
             self._commit_geometry_drag()
@@ -1201,8 +1348,13 @@ class DrawingCanvas(QWidget):
             self.preview_point = None
             self._snap_active = False
             self.update()
-        elif self._mode == self.MODE_VIEW and self._clear_edit_overlay():
-            self.update()
+        elif self._mode == self.MODE_VIEW:
+            changed = self._clear_edit_overlay()
+            if self._active_sheet_division_line_id is not None:
+                self._active_sheet_division_line_id = None
+                changed = True
+            if changed:
+                self.update()
         super().leaveEvent(event)
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
@@ -1223,6 +1375,16 @@ class DrawingCanvas(QWidget):
                     return
             if event.key() == Qt.Key.Key_Escape and self._dragging_origin:
                 self._cancel_origin_drag()
+                return
+            if event.key() == Qt.Key.Key_Escape and self._dragging_sheet_division_line_id is not None:
+                line = self._sheet_division_line_by_id(self._dragging_sheet_division_line_id)
+                if line is not None and self._dragging_sheet_division_original_position is not None:
+                    line.position_cm = self._dragging_sheet_division_original_position
+                self._dragging_sheet_division_line_id = None
+                self._dragging_sheet_division_original_position = None
+                self._drag_mapper = None
+                self._sync_view_cursor()
+                self.update()
                 return
             if event.key() == Qt.Key.Key_Escape and (self._dragging_vertex_index is not None or self._dragging_hole_center_index is not None):
                 self._cancel_geometry_drag()
@@ -1659,9 +1821,18 @@ class DrawingCanvas(QWidget):
             radius = MIDPOINT_HANDLE_RADIUS + (2 if is_active else 0)
             painter.drawEllipse(mapped_center, radius, radius)
 
-        if self._show_sheet_placements:
-            self._draw_edge_measurements(painter, mapper, outline, text_color, outline_color)
+        if not self._show_sheet_placements:
+            self._draw_wireframe_edge_measurements(
+                painter,
+                mapper,
+                outline,
+                holes,
+                text_color=text_color,
+                outline_color=outline_color,
+                hole_color=hole_color,
+            )
         self._draw_axis_indicator(painter)
+        self._draw_sheet_division_lines(painter, mapper)
         self._draw_edit_overlay(painter, mapper, outline)
 
     def _draw_vertex_handles(
@@ -1691,24 +1862,53 @@ class DrawingCanvas(QWidget):
             radius = MIDPOINT_HANDLE_RADIUS + (1 if is_active else 0)
             painter.drawEllipse(midpoint, radius, radius)
 
-    def _draw_edge_measurements(
+    def _draw_wireframe_edge_measurements(
         self,
         painter: QPainter,
         mapper: CanvasMapper,
         outline: Polygon2D,
+        holes: list[Polygon2D],
+        *,
         text_color: QColor,
         outline_color: QColor,
+        hole_color: QColor,
+    ) -> None:
+        self._draw_polygon_edge_measurements(
+            painter,
+            mapper,
+            outline,
+            text_color=text_color,
+            edge_color=outline_color,
+        )
+        for hole in holes:
+            self._draw_polygon_edge_measurements(
+                painter,
+                mapper,
+                hole,
+                text_color=text_color,
+                edge_color=hole_color,
+            )
+
+    def _draw_polygon_edge_measurements(
+        self,
+        painter: QPainter,
+        mapper: CanvasMapper,
+        polygon: Polygon2D,
+        *,
+        text_color: QColor,
+        edge_color: QColor,
     ) -> None:
         is_light = self.palette().color(QPalette.ColorRole.Base).lightness() > 128
-        label_pen = QPen(outline_color if is_light else text_color)
-        guide_pen = QPen(outline_color)
+        label_pen = QPen(edge_color if is_light else text_color)
+        guide_pen = QPen(edge_color)
         guide_pen.setStyle(Qt.PenStyle.DotLine)
         guide_pen.setWidthF(1.0)
-        painter.setFont(painter.font())
-        
-        polygon_f = QPolygonF([mapper.map_point(point) for point in outline.points])
-        
-        for start, end in polygon_edges(outline):
+        polygon_f = QPolygonF([mapper.map_point(point) for point in polygon.points])
+        label_font = painter.font()
+        label_font.setPointSizeF(self._edge_label_font_size(mapper))
+        painter.setFont(label_font)
+
+        for start, end in polygon_edges(polygon):
             start_point = mapper.map_point(start)
             end_point = mapper.map_point(end)
             dx = end_point.x() - start_point.x()
@@ -1732,16 +1932,31 @@ class DrawingCanvas(QWidget):
             painter.setPen(guide_pen)
             painter.drawLine(QPointF(mid_x, mid_y), label_anchor)
 
-            label_rect = QRectF(label_anchor.x() - 30.0, label_anchor.y() - 11.0, 60.0, 22.0)
+            label_text = self._edge_measurement_text(start, end)
+            metrics = QFontMetricsF(label_font)
+            text_width = metrics.horizontalAdvance(label_text)
+            text_height = metrics.height()
+            label_width = max(44.0, text_width + 12.0)
+            label_height = max(18.0, text_height + 6.0)
+            label_rect = QRectF(
+                label_anchor.x() - label_width / 2.0,
+                label_anchor.y() - label_height / 2.0,
+                label_width,
+                label_height,
+            )
             background = self.palette().color(QPalette.ColorRole.Base)
             background.setAlpha(220)
             painter.setPen(label_pen)
             painter.setBrush(background)
             painter.drawRoundedRect(label_rect, 4.0, 4.0)
+            painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, label_text)
 
-            length_cm = segment_length(start, end)
-            length_int = int(round(length_cm))
-            painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, str(length_int))
+    def _edge_label_font_size(self, mapper: CanvasMapper) -> float:
+        # Keep labels readable at different zoom levels without dominating the wireframe.
+        return min(12.0, max(8.0, mapper.map_length(28.0) / 10.0))
+
+    def _edge_measurement_text(self, start: Point2D, end: Point2D) -> str:
+        return self._format_length(segment_length(start, end))
 
     def _draw_sheet_placements(self, painter: QPainter, plane, mapper: CanvasMapper, text_color: QColor) -> None:
         if not self._show_sheet_placements:
@@ -1873,6 +2088,21 @@ class DrawingCanvas(QWidget):
         painter.setFont(font)
         
         painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, label_text)
+
+    def _draw_sheet_division_lines(self, painter: QPainter, mapper: CanvasMapper) -> None:
+        lines = self._rendered_sheet_division_lines()
+        if not lines:
+            return
+        normal = QColor("#db8a00")
+        active = QColor("#e65a5a")
+        for line in lines:
+            mapped_start = mapper.map_point(line.start)
+            mapped_end = mapper.map_point(line.end)
+            color = active if line.id == self._active_sheet_division_line_id else normal
+            pen = QPen(color, 2.0 if line.id == self._active_sheet_division_line_id else 1.4)
+            pen.setStyle(Qt.PenStyle.DashLine)
+            painter.setPen(pen)
+            painter.drawLine(mapped_start, mapped_end)
 
     def _sheet_label_text(self, item: _SheetRenderItem) -> str:
         module_length_cm = self._material.module_length_cm if self._material is not None else None

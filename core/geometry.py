@@ -263,6 +263,48 @@ def vertical_intersections(polygon: Polygon2D, x: float) -> list[float]:
     return ys
 
 
+def horizontal_intersections(polygon: Polygon2D, y: float) -> list[float]:
+    xs: list[float] = []
+    points = polygon.points
+    if not points:
+        return []
+
+    poly_max_y = max(p.y for p in points)
+    is_max = isclose(y, poly_max_y, abs_tol=EPSILON)
+
+    for index, start in enumerate(points):
+        end = points[(index + 1) % len(points)]
+        min_y = min(start.y, end.y)
+        max_y = max(start.y, end.y)
+
+        if isclose(start.y, end.y, abs_tol=EPSILON):
+            if is_max and isclose(y, start.y, abs_tol=EPSILON):
+                xs.extend([start.x, end.x])
+            continue
+
+        if y < min_y - EPSILON:
+            continue
+
+        if y >= max_y - EPSILON:
+            if not (is_max and isclose(max_y, poly_max_y, abs_tol=EPSILON)):
+                continue
+
+        ratio = (y - start.y) / (end.y - start.y)
+        x = start.x + ratio * (end.x - start.x)
+        xs.append(x)
+
+    xs.sort()
+
+    if is_max:
+        unique_xs = []
+        for x in xs:
+            if not unique_xs or not isclose(x, unique_xs[-1], abs_tol=EPSILON):
+                unique_xs.append(x)
+        return unique_xs
+
+    return xs
+
+
 def segments_from_intersections(intersections: list[float]) -> list[tuple[float, float]]:
     if len(intersections) < 2:
         return []
@@ -322,6 +364,20 @@ def vertical_segments_for_band(outline: Polygon2D, holes: list[Polygon2D], x_lef
     result = outline_segments
     for hole in holes:
         hole_segments = segments_from_intersections(vertical_intersections(hole, x_sample))
+        if hole_segments:
+            result = subtract_segments(result, hole_segments)
+    return result
+
+
+def horizontal_segments_for_range(outline: Polygon2D, holes: list[Polygon2D], y_top: float, y_bottom: float) -> list[tuple[float, float]]:
+    y_sample = y_top + (y_bottom - y_top) / 2.0
+    outline_segments = segments_from_intersections(horizontal_intersections(outline, y_sample))
+    if not outline_segments:
+        return []
+
+    result = outline_segments
+    for hole in holes:
+        hole_segments = segments_from_intersections(horizontal_intersections(hole, y_sample))
         if hole_segments:
             result = subtract_segments(result, hole_segments)
     return result

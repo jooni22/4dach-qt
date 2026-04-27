@@ -13,7 +13,16 @@ from core.geometry import (
     validate_polygon,
 )
 from core.layout_engine import LayoutResult, generate_layout
-from core.models import CompanyData, GenerationSettings, Material, Point2D, Polygon2D, RoofPlane, SheetPlacement
+from core.models import (
+    CompanyData,
+    GenerationSettings,
+    Material,
+    Point2D,
+    Polygon2D,
+    RoofPlane,
+    SheetDivisionLine,
+    SheetPlacement,
+)
 
 
 @dataclass(slots=True)
@@ -434,6 +443,51 @@ class ProjectState:
         plane.layout_dirty_reason = "manual_override"
         return manual_placement
 
+    def add_sheet_division_line(self, line: SheetDivisionLine, plane_id: str | None = None) -> SheetDivisionLine:
+        plane = self._require_plane(plane_id)
+        outline = self._require_plane_outline(plane)
+        position_cm = self._clamp_division_line_position(outline, line.orientation, line.position_cm)
+        if any(item.id == line.id for item in plane.generation_settings.sheet_division_lines):
+            raise ValueError("Linia podziału o podanym identyfikatorze już istnieje")
+        if any(
+            item.orientation == line.orientation and abs(item.position_cm - position_cm) < 1e-6
+            for item in plane.generation_settings.sheet_division_lines
+        ):
+            raise ValueError("Linia podziału w tej pozycji już istnieje")
+        created = SheetDivisionLine(id=line.id, orientation=line.orientation, position_cm=position_cm)
+        plane.generation_settings.sheet_division_lines.append(created)
+        self._mark_layout_inputs_changed(plane, "geometry_changed")
+        return created
+
+    def move_sheet_division_line(self, line_id: str, position_cm: float, plane_id: str | None = None) -> SheetDivisionLine:
+        plane = self._require_plane(plane_id)
+        outline = self._require_plane_outline(plane)
+        for line in plane.generation_settings.sheet_division_lines:
+            if line.id != line_id:
+                continue
+            clamped = self._clamp_division_line_position(outline, line.orientation, position_cm)
+            if any(
+                other.id != line_id
+                and other.orientation == line.orientation
+                and abs(other.position_cm - clamped) < 1e-6
+                for other in plane.generation_settings.sheet_division_lines
+            ):
+                raise ValueError("Linia podziału w tej pozycji już istnieje")
+            line.position_cm = clamped
+            self._mark_layout_inputs_changed(plane, "geometry_changed")
+            return line
+        raise ValueError("Nie znaleziono linii podziału")
+
+    def remove_sheet_division_line(self, line_id: str, plane_id: str | None = None) -> None:
+        plane = self._require_plane(plane_id)
+        for index, line in enumerate(plane.generation_settings.sheet_division_lines):
+            if line.id != line_id:
+                continue
+            del plane.generation_settings.sheet_division_lines[index]
+            self._mark_layout_inputs_changed(plane, "geometry_changed")
+            return
+        raise ValueError("Nie znaleziono linii podziału")
+
     def remove_sheet_placement(self, sheet_id: str, plane_id: str | None = None) -> None:
         plane = self.roof_plane_by_id(plane_id or self.active_plane_id)
         if plane is None:
@@ -527,6 +581,13 @@ class ProjectState:
         plane.manually_removed_auto_sheet_ids.clear()
         plane.generation_settings.base_line_y_cm = self.resolve_base_line_y_cm(plane)
         plane.layout_dirty_reason = reason
+
+    @staticmethod
+    def _clamp_division_line_position(outline: Polygon2D, orientation: str, position_cm: float) -> float:
+        bounds = outline.bounds()
+        if orientation == "vertical":
+            return min(max(position_cm, bounds.min_x), bounds.max_x)
+        return min(max(position_cm, bounds.min_y), bounds.max_y)
 
     def _mark_planes_using_material_dirty(self, material_id: str) -> None:
         for plane in self.roof_planes:
@@ -662,16 +723,31 @@ def _serialize_generation_settings(settings: GenerationSettings) -> dict:
         payload["x"] = settings.origin_x_cm
     if settings.origin_y_cm is not None:
         payload["y"] = settings.origin_y_cm
+    if settings.sheet_division_lines:
+        payload["dl"] = [
+            [line.id, line.orientation, line.position_cm]
+            for line in settings.sheet_division_lines
+        ]
     return payload
 
 
 def _deserialize_generation_settings(payload: object) -> GenerationSettings:
     if isinstance(payload, dict) and "o" in payload:
+        division_lines = []
+        for entry in payload.get("dl", []):
+            if not isinstance(entry, (list, tuple)) or len(entry) < 3:
+                continue
+            line = SheetDivisionLine.from_dict(
+                {"id": entry[0], "orientation": entry[1], "position_cm": entry[2]}
+            )
+            if line is not None:
+                division_lines.append(line)
         return GenerationSettings.from_dict(
             {
                 "layout_origin": payload.get("o", "left"),
                 "origin_x_cm": payload.get("x"),
                 "origin_y_cm": payload.get("y"),
+                "sheet_division_lines": [line.to_dict() for line in division_lines],
             }
         )
     return GenerationSettings.from_dict(payload if isinstance(payload, dict) else None)

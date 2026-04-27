@@ -6,7 +6,7 @@ import pytest
 
 from core.app_settings import AppSettings
 from core.geometry import build_rectangle_outline
-from core.models import Material, Point2D, Polygon2D
+from core.models import Material, Point2D, Polygon2D, SheetDivisionLine
 from core.project_state import ProjectState
 
 pytest.importorskip("PySide6")
@@ -517,6 +517,77 @@ def test_mainwindow_commits_canvas_origin_edit_to_project_state(qtbot):
 
     assert plane.generation_settings.origin_x_cm == pytest.approx(35.0)
     assert plane.generation_settings.origin_y_cm == pytest.approx(170.0)
+
+
+def test_mainwindow_commits_sheet_division_line_insert_to_project_state(qtbot):
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.project_state = ProjectState(materials=window.project_state.materials)
+    window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
+    plane = window.project_state.add_roof_plane(build_rectangle_outline(320, 180), selected_material_id="PD510")
+    window._refresh_canvas_from_state()
+
+    canvas = window._workspace.canvas_for_plane(plane.id)
+    assert canvas is not None
+
+    canvas.sheet_division_line_inserted.emit("vertical", 125.0)
+
+    assert [(line.orientation, line.position_cm) for line in plane.generation_settings.sheet_division_lines] == [
+        ("vertical", pytest.approx(125.0, abs=0.1))
+    ]
+    assert plane.layout_dirty_reason is None
+    assert len(plane.layout_bands) > 0
+
+
+def test_mainwindow_commits_sheet_division_line_move_and_delete_to_project_state(qtbot):
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.project_state = ProjectState(materials=window.project_state.materials)
+    window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
+    plane = window.project_state.add_roof_plane(build_rectangle_outline(320, 180), selected_material_id="PD510")
+    plane.generation_settings.sheet_division_lines = [SheetDivisionLine(id="v-1", orientation="vertical", position_cm=80.0)]
+    window.project_state.generate_layout_for_plane(plane.id)
+    window._refresh_canvas_from_state()
+
+    canvas = window._workspace.canvas_for_plane(plane.id)
+    assert canvas is not None
+
+    canvas.sheet_division_line_moved.emit("v-1", 140.0)
+    assert plane.generation_settings.sheet_division_lines[0].position_cm == pytest.approx(140.0)
+    assert plane.layout_dirty_reason is None
+
+    canvas.sheet_division_line_deleted.emit("v-1")
+    assert plane.generation_settings.sheet_division_lines == []
+    assert plane.layout_dirty_reason is None
+
+
+def test_mainwindow_sheet_division_tool_follows_active_tab(qtbot):
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.project_state = ProjectState(materials=window.project_state.materials)
+    window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
+    first = window.project_state.add_roof_plane(build_rectangle_outline(320, 180), name="Front", selected_material_id="PD510")
+    second = window.project_state.add_roof_plane(build_rectangle_outline(210, 140), name="Back", selected_material_id="PD510")
+    window.project_state.set_active_plane(first.id)
+    window._refresh_canvas_from_state()
+
+    first_canvas = window._workspace.canvas_for_plane(first.id)
+    second_canvas = window._workspace.canvas_for_plane(second.id)
+    assert first_canvas is not None
+    assert second_canvas is not None
+
+    window._set_sheet_division_tool_mode("move")
+    assert first_canvas._sheet_division_tool_mode == "move"
+    assert second_canvas._sheet_division_tool_mode is None
+
+    second_index = window._workspace.tab_index_for_plane(second.id)
+    window._on_tab_changed(second_index)
+
+    assert first_canvas._sheet_division_tool_mode is None
+    assert second_canvas._sheet_division_tool_mode == "move"
 
 
 def test_mainwindow_material_catalog_edit_updates_project_state_and_dependent_workspace(qtbot, monkeypatch):

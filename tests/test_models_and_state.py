@@ -14,7 +14,7 @@ from core.geometry import (
     make_triangle,
 )
 from core.layout_engine import generate_layout
-from core.models import CompanyData, Material, Point2D, Polygon2D, RoofPlane, SheetPlacement, almost_equal
+from core.models import CompanyData, Material, Point2D, Polygon2D, RoofPlane, SheetDivisionLine, SheetPlacement, almost_equal
 from core.project_state import ProjectState
 
 
@@ -121,8 +121,7 @@ def test_layout_engine_splits_band_by_hole_and_flags_long_sheet():
 
     result = generate_layout(plane, material)
 
-    assert len(result.placements) == 11
-    # Check that sheets are properly stacked without exceeding max length
+    assert len(result.placements) == 14
     assert all(placement.raw_length_cm <= 40 for placement in result.placements)
 
 
@@ -205,6 +204,40 @@ def test_project_state_round_trip_preserves_custom_coordinate_origin():
     assert reloaded_plane is not None
     assert almost_equal(reloaded_plane.generation_settings.origin_x_cm or 0.0, 45.5)
     assert almost_equal(reloaded_plane.generation_settings.origin_y_cm or 0.0, 188.0)
+
+
+def test_project_state_round_trip_preserves_sheet_division_lines():
+    state = ProjectState(
+        materials=[
+            Material(
+                id="PD510",
+                nazwa="PD510",
+                type="dachówkowa",
+                effective_width_cm=51,
+                module_length_cm=25,
+                bottom_margin_cm=10,
+                top_margin_cm=80,
+                min_sheet_length_cm=20,
+            )
+        ]
+    )
+
+    plane = state.add_roof_plane(build_rectangle_outline(300, 200))
+    state.add_sheet_division_line(SheetDivisionLine(id="v-1", orientation="vertical", position_cm=125.0), plane.id)
+    state.add_sheet_division_line(SheetDivisionLine(id="h-1", orientation="horizontal", position_cm=75.0), plane.id)
+
+    payload = {"blachy": [material.to_dict() for material in state.materials]}
+    state.apply_to_config(payload)
+    plane_payload = _compact_plane_payload(payload, plane.id)
+    reloaded = ProjectState.from_config(payload)
+    reloaded_plane = reloaded.active_roof_plane()
+
+    assert plane_payload["g"]["dl"] == [["v-1", "vertical", 125.0], ["h-1", "horizontal", 75.0]]
+    assert reloaded_plane is not None
+    assert [(line.id, line.orientation, line.position_cm) for line in reloaded_plane.generation_settings.sheet_division_lines] == [
+        ("v-1", "vertical", 125.0),
+        ("h-1", "horizontal", 75.0),
+    ]
 
 
 def test_project_state_can_switch_active_plane_explicitly():
@@ -438,12 +471,12 @@ def test_project_state_generates_layout_for_active_plane_and_persists_auto_place
     fragment = state.to_config_fragment()
     plane_payload = _compact_plane_payload(fragment, plane.id)
 
-    assert len(result.placements) == 4
+    assert len(result.placements) == 9
     assert len(result.bands) == 3
-    assert len(result.bands[1].segments) == 1
-    assert len(result.bands[1].segments[0].coverage_polygons) == 4
-    assert result.bands[1].segments[0].cutout_interaction == "partial"
-    assert len(plane.auto_sheet_placements) == 4
+    assert len(result.bands[1].segments) == 3
+    assert len(result.bands[1].segments[1].coverage_polygons) == 2
+    assert result.bands[1].segments[1].cutout_interaction == "partial"
+    assert len(plane.auto_sheet_placements) == 9
     assert almost_equal(plane.generation_settings.base_line_y_cm or 0.0, 200.0)
     assert plane.layout_revision == 2
     assert "auto_sheet_placements" not in plane_payload

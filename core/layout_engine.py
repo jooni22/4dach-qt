@@ -330,20 +330,27 @@ def _iter_band_ranges(plane: RoofPlane, band_width_cm: float) -> list[tuple[floa
         return []
 
     bounds = outline.bounds()
-    bands: list[tuple[float, float]] = []
+    boundaries = [bounds.min_x, bounds.max_x]
     if plane.generation_settings.layout_origin == "right":
         x_cursor = bounds.max_x
         while x_cursor > bounds.min_x + EPSILON:
-            x_left = max(bounds.min_x, x_cursor - band_width_cm)
-            bands.append((x_left, x_cursor))
+            boundaries.append(max(bounds.min_x, x_cursor - band_width_cm))
             x_cursor -= band_width_cm
-        return bands
+    else:
+        x_cursor = bounds.min_x
+        while x_cursor < bounds.max_x - EPSILON:
+            boundaries.append(min(bounds.max_x, x_cursor + band_width_cm))
+            x_cursor += band_width_cm
 
-    x_cursor = bounds.min_x
-    while x_cursor < bounds.max_x - EPSILON:
-        x_right = min(bounds.max_x, x_cursor + band_width_cm)
-        bands.append((x_cursor, x_right))
-        x_cursor += band_width_cm
+    boundaries.extend(
+        line.position_cm
+        for line in plane.generation_settings.sheet_division_lines
+        if line.orientation == "vertical" and bounds.min_x + EPSILON < line.position_cm < bounds.max_x - EPSILON
+    )
+    ordered = _unique_sorted(boundaries)
+    bands = [(left, right) for left, right in zip(ordered, ordered[1:]) if right - left > EPSILON]
+    if plane.generation_settings.layout_origin == "right":
+        return list(reversed(bands))
     return bands
 
 
@@ -371,36 +378,69 @@ def _build_band_segments(plane: RoofPlane, band_index: int, x_left: float, x_rig
     for piece in pieces:
         groups.setdefault(union_find.find(piece.piece_index), []).append(piece)
 
-    band_segments: list[LayoutBandSegment] = []
-    for segment_index, component in enumerate(
-        sorted(
-            groups.values(),
-            key=lambda group: (
-                min(piece.x_left_cm for piece in group),
-                min(piece.y_top_cm for piece in group),
-                max(piece.y_bottom_cm for piece in group),
-            ),
-        )
+    raw_segments: list[LayoutBandSegment] = []
+    for component in sorted(
+        groups.values(),
+        key=lambda group: (
+            min(piece.x_left_cm for piece in group),
+            min(piece.y_top_cm for piece in group),
+            max(piece.y_bottom_cm for piece in group),
+        ),
     ):
+        raw_segments.extend(_split_component_into_segments(plane, component))
+
+    band_segments: list[LayoutBandSegment] = []
+    for segment_index, segment in enumerate(sorted(raw_segments, key=lambda item: (item.y_top_cm, item.x_left_cm, item.y_bottom_cm))):
+        segment.segment_index = segment_index
+        band_segments.append(segment)
+    return band_segments
+
+
+def _split_component_into_segments(plane: RoofPlane, component: list[_BandPiece]) -> list[LayoutBandSegment]:
+    x_left_cm = min(piece.x_left_cm for piece in component)
+    x_right_cm = max(piece.x_right_cm for piece in component)
+    y_top_cm = min(piece.y_top_cm for piece in component)
+    y_bottom_cm = max(piece.y_bottom_cm for piece in component)
+    y_guides = [y_top_cm, y_bottom_cm]
+    y_guides.extend(
+        point.y
+        for polygon in [plane.outline, *plane.holes]
+        if polygon is not None
+        for point in polygon.points
+        if y_top_cm + EPSILON < point.y < y_bottom_cm - EPSILON
+    )
+    y_guides.extend(
+        line.position_cm
+        for line in plane.generation_settings.sheet_division_lines
+        if line.orientation == "horizontal" and y_top_cm + EPSILON < line.position_cm < y_bottom_cm - EPSILON
+    )
+    ordered_guides = _unique_sorted(y_guides)
+
+    segments: list[LayoutBandSegment] = []
+    ordered_pieces = sorted(component, key=lambda item: (item.x_left_cm, item.y_top_cm, item.piece_index))
+    for slice_top, slice_bottom in zip(ordered_guides, ordered_guides[1:]):
+        if slice_bottom - slice_top <= EPSILON:
+            continue
         coverage_polygons = [
-            piece.polygon
-            for piece in sorted(component, key=lambda item: (item.x_left_cm, item.y_top_cm, item.piece_index))
+            clipped
+            for piece in ordered_pieces
+            for clipped in [_clip_polygon_to_y_range(piece.polygon, slice_top, slice_bottom)]
+            if clipped is not None
         ]
-        y_top_cm = min(piece.y_top_cm for piece in component)
-        y_bottom_cm = max(piece.y_bottom_cm for piece in component)
-        band_segments.append(
+        if not coverage_polygons:
+            continue
+        segments.append(
             LayoutBandSegment(
-                segment_index=segment_index,
-                x_left_cm=min(piece.x_left_cm for piece in component),
-                x_right_cm=max(piece.x_right_cm for piece in component),
-                y_top_cm=y_top_cm,
-                y_bottom_cm=y_bottom_cm,
-                raw_length_cm=y_bottom_cm - y_top_cm,
+                segment_index=0,
+                x_left_cm=x_left_cm,
+                x_right_cm=x_right_cm,
+                y_top_cm=slice_top,
+                y_bottom_cm=slice_bottom,
+                raw_length_cm=slice_bottom - slice_top,
                 coverage_polygons=coverage_polygons,
             )
         )
-
-    return band_segments
+    return segments
 
 
 def _band_pieces_for_range(plane: RoofPlane, x_left: float, x_right: float) -> list[_BandPiece]:
@@ -578,3 +618,57 @@ def _point_on_edge_at_x(start: Point2D, end: Point2D, x_value: float) -> Point2D
 
 def _polygon_to_dict(polygon: Polygon2D) -> list[dict[str, float]]:
     return [{"x": point.x, "y": point.y} for point in polygon.points]
+
+
+def _clip_polygon_to_y_range(polygon: Polygon2D, y_min: float, y_max: float) -> Polygon2D | None:
+    clipped = _clip_polygon_against_horizontal_boundary(polygon.points, y_min, keep_above=True)
+    clipped = _clip_polygon_against_horizontal_boundary(clipped, y_max, keep_above=False)
+    if len(clipped) < 3:
+        return None
+    return Polygon2D(clipped)
+
+
+def _clip_polygon_against_horizontal_boundary(
+    points: list[Point2D],
+    boundary_y: float,
+    *,
+    keep_above: bool,
+) -> list[Point2D]:
+    if not points:
+        return []
+
+    def inside(point: Point2D) -> bool:
+        if keep_above:
+            return point.y >= boundary_y - EPSILON
+        return point.y <= boundary_y + EPSILON
+
+    def intersection(start: Point2D, end: Point2D) -> Point2D:
+        if abs(end.y - start.y) <= EPSILON:
+            return Point2D(end.x, boundary_y)
+        ratio = (boundary_y - start.y) / (end.y - start.y)
+        return Point2D(start.x + ratio * (end.x - start.x), boundary_y)
+
+    output: list[Point2D] = []
+    prev = points[-1]
+    prev_inside = inside(prev)
+    for current in points:
+        current_inside = inside(current)
+        if current_inside:
+            if not prev_inside:
+                output.append(intersection(prev, current))
+            output.append(current)
+        elif prev_inside:
+            output.append(intersection(prev, current))
+        prev = current
+        prev_inside = current_inside
+    return _dedupe_polygon_points(output)
+
+
+def _dedupe_polygon_points(points: list[Point2D]) -> list[Point2D]:
+    unique: list[Point2D] = []
+    for point in points:
+        if not unique or abs(point.x - unique[-1].x) > EPSILON or abs(point.y - unique[-1].y) > EPSILON:
+            unique.append(point)
+    if len(unique) > 1 and abs(unique[0].x - unique[-1].x) <= EPSILON and abs(unique[0].y - unique[-1].y) <= EPSILON:
+        unique.pop()
+    return unique

@@ -13,7 +13,7 @@ from PySide6.QtWidgets import QApplication
 from core.app_settings import AppSettings
 from core.geometry import segment_length
 from core.layout_engine import generate_layout
-from core.models import Material, Point2D, Polygon2D, RoofPlane
+from core.models import Material, Point2D, Polygon2D, RoofPlane, SheetDivisionLine
 from ui.drawing_canvas import AXIS_WIDGET_PADDING_PX, DrawingCanvas
 
 
@@ -494,6 +494,94 @@ def test_canvas_draws_origin_marker_after_edit_handles(qtbot, monkeypatch):
     assert calls[-1] == "origin"
 
 
+def test_canvas_sheet_division_insert_emits_snapped_vertical_position(qtbot):
+    plane = RoofPlane(id="plane-1", name="1", outline=Polygon2D.rectangle(300, 200))
+    canvas = _make_canvas(qtbot, plane.outline)
+    canvas.set_app_settings(AppSettings(grid_size_cm=25.0))
+    canvas.set_sheet_division_tool_mode("insert", insert_orientation="vertical")
+
+    click = _point_on_canvas(canvas, Point2D(113, 90))
+
+    with qtbot.waitSignal(canvas.sheet_division_line_inserted, timeout=1000) as blocker:
+        QTest.mouseClick(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, click)
+
+    assert blocker.args[0] == "vertical"
+    assert blocker.args[1] == pytest.approx(125.0, abs=1.5)
+
+
+def test_canvas_sheet_division_move_updates_preview_and_emits_snapped_position(qtbot):
+    plane = RoofPlane(
+        id="plane-1",
+        name="1",
+        outline=Polygon2D.rectangle(300, 200),
+    )
+    plane.generation_settings.sheet_division_lines = [SheetDivisionLine(id="v-1", orientation="vertical", position_cm=100.0)]
+    canvas = DrawingCanvas()
+    canvas.resize(640, 420)
+    canvas.set_roof_plane(plane)
+    canvas.set_app_settings(AppSettings(grid_size_cm=25.0))
+    qtbot.addWidget(canvas)
+    canvas.show()
+    qtbot.waitExposed(canvas)
+    canvas.set_sheet_division_tool_mode("move")
+
+    start = _point_on_canvas(canvas, Point2D(100, 100))
+    target = _point_on_canvas(canvas, Point2D(138, 100))
+
+    with qtbot.waitSignal(canvas.sheet_division_line_moved, timeout=1000) as blocker:
+        QTest.mousePress(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, start)
+        _send_mouse_move(canvas, target, buttons=Qt.MouseButton.LeftButton)
+        assert plane.generation_settings.sheet_division_lines[0].position_cm == pytest.approx(150.0, abs=1.5)
+        QTest.mouseRelease(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, target)
+
+    assert blocker.args[0] == "v-1"
+    assert blocker.args[1] == pytest.approx(150.0, abs=1.5)
+
+
+def test_canvas_sheet_division_escape_restores_original_position(qtbot):
+    plane = RoofPlane(id="plane-1", name="1", outline=Polygon2D.rectangle(300, 200))
+    plane.generation_settings.sheet_division_lines = [SheetDivisionLine(id="v-1", orientation="vertical", position_cm=100.0)]
+    canvas = DrawingCanvas()
+    canvas.resize(640, 420)
+    canvas.set_roof_plane(plane)
+    canvas.set_app_settings(AppSettings(grid_size_cm=25.0))
+    qtbot.addWidget(canvas)
+    canvas.show()
+    qtbot.waitExposed(canvas)
+    canvas.set_sheet_division_tool_mode("move")
+
+    start = _point_on_canvas(canvas, Point2D(100, 100))
+    target = _point_on_canvas(canvas, Point2D(163, 100))
+
+    QTest.mousePress(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, start)
+    _send_mouse_move(canvas, target, buttons=Qt.MouseButton.LeftButton)
+    assert plane.generation_settings.sheet_division_lines[0].position_cm == pytest.approx(175.0, abs=1.5)
+
+    QTest.keyClick(canvas, Qt.Key.Key_Escape)
+
+    assert plane.generation_settings.sheet_division_lines[0].position_cm == pytest.approx(100.0, abs=1.5)
+    assert canvas._dragging_sheet_division_line_id is None
+
+
+def test_canvas_sheet_division_delete_emits_line_id(qtbot):
+    plane = RoofPlane(id="plane-1", name="1", outline=Polygon2D.rectangle(300, 200))
+    plane.generation_settings.sheet_division_lines = [SheetDivisionLine(id="h-1", orientation="horizontal", position_cm=100.0)]
+    canvas = DrawingCanvas()
+    canvas.resize(640, 420)
+    canvas.set_roof_plane(plane)
+    qtbot.addWidget(canvas)
+    canvas.show()
+    qtbot.waitExposed(canvas)
+    canvas.set_sheet_division_tool_mode("delete")
+
+    click = _point_on_canvas(canvas, Point2D(150, 100))
+
+    with qtbot.waitSignal(canvas.sheet_division_line_deleted, timeout=1000) as blocker:
+        QTest.mouseClick(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, click)
+
+    assert blocker.args == ["h-1"]
+
+
 def test_canvas_dragging_vertex_snaps_to_configured_grid_size(qtbot):
     outline = Polygon2D.rectangle(300, 200)
     canvas = _make_canvas(qtbot, outline)
@@ -823,10 +911,14 @@ def test_canvas_render_items_preserve_cutout_exclusions(qtbot):
     items = canvas._sheet_render_items()
 
     assert [(item.band_index, item.final_length_cm) for item in items] == [
-        (0, 100.0),
+        (0, 30.0),
+        (0, 40.0),
+        (0, 30.0),
         (1, 30.0),
         (1, 30.0),
-        (2, 100.0),
+        (2, 30.0),
+        (2, 40.0),
+        (2, 30.0),
     ]
     image = canvas.grab().toImage()
     hole_color = image.pixelColor(_point_on_canvas(canvas, Point2D(40, 45)))
@@ -851,7 +943,7 @@ def test_canvas_render_items_follow_layout_direction_change(qtbot):
     assert right_items[0].polygons[0].bounds().min_x == pytest.approx(70.0)
 
 
-def test_canvas_partial_cutout_top_sheet_uses_final_length_for_visual_height(qtbot):
+def test_canvas_projected_partial_slices_use_their_current_visual_height(qtbot):
     outline = Polygon2D.rectangle(1000, 1000)
     hole = Polygon2D.rectangle(300, 300, origin_x=0, origin_y=300)
     plane = RoofPlane(id="plane-1", name="PartialVisual", outline=outline, holes=[hole])
@@ -860,17 +952,15 @@ def test_canvas_partial_cutout_top_sheet_uses_final_length_for_visual_height(qtb
     _apply_layout(canvas, plane, _material(effective_width_cm=510, max_sheet_length_cm=1000, module_length_cm=0))
 
     items = canvas._sheet_render_items()
-    top_item = next(item for item in items if item.split_reason == "partial_cutout_top")
-    polygon_bounds = top_item.polygons[0].bounds()
-
-    assert top_item.raw_length_cm == pytest.approx(300.0)
-    assert top_item.final_length_cm == pytest.approx(315.0)
-    assert polygon_bounds.min_y == pytest.approx(-15.0)
-    assert polygon_bounds.max_y == pytest.approx(300.0)
-    assert polygon_bounds.height == pytest.approx(315.0)
-
-    protruding_point = canvas._canvas_mapper().map_point(Point2D(100, -10))
-    assert canvas._hit_test_sheet(QPointF(protruding_point)) == top_item.placement_id
+    assert all(item.split_reason is None for item in items)
+    assert [(item.band_index, item.raw_length_cm, item.final_length_cm) for item in items if item.band_index == 0] == [
+        (0, 300.0, 300.0),
+        (0, 300.0, 300.0),
+        (0, 400.0, 400.0),
+    ]
+    for item in items:
+        polygon_bounds = item.polygons[0].bounds()
+        assert polygon_bounds.height == pytest.approx(item.final_length_cm)
 
 
 def test_canvas_updates_render_items_after_geometry_edit_and_relayout(qtbot):
@@ -905,3 +995,68 @@ def test_canvas_hides_sheet_rendering_in_wireframe_mode(qtbot):
     canvas.set_sheet_visibility(False)
 
     assert canvas._hit_test_sheet(QPointF(10.0, 10.0)) is None
+
+
+def test_canvas_wireframe_draws_edge_measurements_for_outline_and_cutouts(qtbot, monkeypatch):
+    outline = Polygon2D.rectangle(300, 200)
+    hole = Polygon2D.rectangle(80, 60, origin_x=100, origin_y=70)
+    canvas = _make_canvas(qtbot, outline, holes=[hole])
+    calls: list[Polygon2D] = []
+
+    monkeypatch.setattr(
+        canvas,
+        "_draw_polygon_edge_measurements",
+        lambda painter, mapper, polygon, **kwargs: calls.append(polygon),
+    )
+
+    canvas.set_sheet_visibility(False)
+    canvas.grab()
+    QApplication.processEvents()
+
+    assert calls == [outline, hole]
+
+
+def test_canvas_sheet_view_hides_wireframe_edge_measurements(qtbot, monkeypatch):
+    outline = Polygon2D.rectangle(300, 200)
+    hole = Polygon2D.rectangle(80, 60, origin_x=100, origin_y=70)
+    canvas = _make_canvas(qtbot, outline, holes=[hole])
+    calls: list[Polygon2D] = []
+
+    monkeypatch.setattr(
+        canvas,
+        "_draw_polygon_edge_measurements",
+        lambda painter, mapper, polygon, **kwargs: calls.append(polygon),
+    )
+
+    canvas.set_sheet_visibility(True)
+    canvas.grab()
+    QApplication.processEvents()
+
+    assert calls == []
+
+
+def test_canvas_wireframe_edge_measurements_follow_preview_geometry_during_drag(qtbot, monkeypatch):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+    captured_polygons: list[Polygon2D] = []
+
+    def capture_polygon(painter, mapper, polygon, **kwargs):
+        captured_polygons.append(polygon)
+
+    monkeypatch.setattr(canvas, "_draw_polygon_edge_measurements", capture_polygon)
+    canvas.set_sheet_visibility(False)
+
+    start = _point_on_canvas(canvas, outline.points[1])
+    target_domain = Point2D(260, 30)
+    target = _point_on_canvas(canvas, target_domain)
+
+    QTest.mousePress(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, start)
+    _send_mouse_move(canvas, target, buttons=Qt.MouseButton.LeftButton)
+
+    canvas.grab()
+    QApplication.processEvents()
+
+    assert captured_polygons
+    preview_outline = captured_polygons[-1]
+    assert preview_outline.points[1].x == pytest.approx(target_domain.x, abs=1.5)
+    assert preview_outline.points[1].y == pytest.approx(target_domain.y, abs=1.5)
