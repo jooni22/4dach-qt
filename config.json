@@ -54,7 +54,7 @@
   },
   "project_state": {
     "version": 1,
-    "active_plane_id": "plane-5",
+    "active_plane_id": "plane-3",
     "roof_planes": [
       {
         "id": "plane-1",
@@ -62,7 +62,7 @@
         "selected_material_id": "PD510",
         "generation_settings": {
           "layout_origin": "left",
-          "base_line_y_cm": 800
+          "base_line_y_cm": 800.0
         },
         "auto_sheet_placements": [
           {
@@ -621,7 +621,7 @@
             "id": "plane-1-b19-s0-r0",
             "band_index": 19,
             "x_left_cm": 969.0,
-            "x_right_cm": 1000,
+            "x_right_cm": 1000.0,
             "y_top_cm": 552.0,
             "y_bottom_cm": 800.0,
             "raw_length_cm": 248.0,
@@ -5185,24 +5185,48 @@
             "band_index": 9,
             "x_left_cm": 490.0,
             "x_right_cm": 541.0,
-            "y_top_cm": 0.0,
+            "y_top_cm": 111.31851897850822,
             "y_bottom_cm": 300.0,
-            "raw_length_cm": 300.0,
-            "final_length_cm": 300.0,
+            "raw_length_cm": 188.68148102149178,
+            "final_length_cm": 188.68148102149178,
             "source": "auto",
             "split_reason": null
+          },
+          {
+            "id": "plane-3-b9-s0-r1",
+            "band_index": 9,
+            "x_left_cm": 490.0,
+            "x_right_cm": 541.0,
+            "y_top_cm": 0.0,
+            "y_bottom_cm": 111.31851897850821,
+            "raw_length_cm": 111.31851897850821,
+            "final_length_cm": 126.31851897850821,
+            "source": "auto",
+            "split_reason": "partial_cutout_top"
           },
           {
             "id": "plane-3-b10-s0-r0",
             "band_index": 10,
             "x_left_cm": 439.0,
             "x_right_cm": 490.0,
-            "y_top_cm": 0.0,
+            "y_top_cm": 111.31851897850822,
             "y_bottom_cm": 300.0,
-            "raw_length_cm": 300.0,
-            "final_length_cm": 300.0,
+            "raw_length_cm": 188.68148102149178,
+            "final_length_cm": 188.68148102149178,
             "source": "auto",
             "split_reason": null
+          },
+          {
+            "id": "plane-3-b10-s0-r1",
+            "band_index": 10,
+            "x_left_cm": 439.0,
+            "x_right_cm": 490.0,
+            "y_top_cm": 0.0,
+            "y_bottom_cm": 111.31851897850821,
+            "raw_length_cm": 111.31851897850821,
+            "final_length_cm": 126.31851897850821,
+            "source": "auto",
+            "split_reason": "partial_cutout_top"
           },
           {
             "id": "plane-3-b11-s0-r0",
@@ -5257,24 +5281,12 @@
             "band_index": 15,
             "x_left_cm": 184.0,
             "x_right_cm": 235.0,
-            "y_top_cm": 100.16732379283488,
+            "y_top_cm": 0.0,
             "y_bottom_cm": 300.0,
-            "raw_length_cm": 199.83267620716512,
-            "final_length_cm": 199.83267620716512,
+            "raw_length_cm": 300.0,
+            "final_length_cm": 300.0,
             "source": "auto",
             "split_reason": null
-          },
-          {
-            "id": "plane-3-b15-s0-r1",
-            "band_index": 15,
-            "x_left_cm": 184.0,
-            "x_right_cm": 235.0,
-            "y_top_cm": 0.0,
-            "y_bottom_cm": 100.16732379283488,
-            "raw_length_cm": 100.16732379283488,
-            "final_length_cm": 115.16732379283488,
-            "source": "auto",
-            "split_reason": "partial_cutout_top"
           },
           {
             "id": "plane-3-b16-s0-r0",
@@ -5282,21 +5294,9 @@
             "x_left_cm": 133.0,
             "x_right_cm": 184.0,
             "y_top_cm": 0.0,
-            "y_bottom_cm": 100.87212041895009,
-            "raw_length_cm": 100.87212041895009,
-            "final_length_cm": 100.87212041895009,
-            "source": "auto",
-            "split_reason": null
-          },
-          {
-            "id": "plane-3-b16-s1-r0",
-            "band_index": 16,
-            "x_left_cm": 133.0,
-            "x_right_cm": 184.0,
-            "y_top_cm": 200.16732379283488,
             "y_bottom_cm": 300.0,
-            "raw_length_cm": 99.83267620716512,
-            "final_length_cm": 99.83267620716512,
+            "raw_length_cm": 300.0,
+            "final_length_cm": 300.0,
             "source": "auto",
             "split_reason": null
           },
@@ -5305,24 +5305,12 @@
             "band_index": 17,
             "x_left_cm": 82.0,
             "x_right_cm": 133.0,
-            "y_top_cm": 100.16732379283488,
+            "y_top_cm": 0.0,
             "y_bottom_cm": 300.0,
-            "raw_length_cm": 199.83267620716512,
-            "final_length_cm": 199.83267620716512,
+            "raw_length_cm": 300.0,
+            "final_length_cm": 300.0,
             "source": "auto",
             "split_reason": null
-          },
-          {
-            "id": "plane-3-b17-s0-r1",
-            "band_index": 17,
-            "x_left_cm": 82.0,
-            "x_right_cm": 133.0,
-            "y_top_cm": 0.0,
-            "y_bottom_cm": 100.16732379283488,
-            "raw_length_cm": 100.16732379283488,
-            "final_length_cm": 115.16732379283488,
-            "source": "auto",
-            "split_reason": "partial_cutout_top"
           },
           {
             "id": "plane-3-b18-s0-r0",
@@ -5729,6 +5717,78 @@
                       "y": 0.0
                     },
                     {
+                      "x": 492.17588135380953,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 492.17588135380953,
+                      "y": 129.39473992700067
+                    },
+                    {
+                      "x": 490.0,
+                      "y": 128.1522706068817
+                    }
+                  ],
+                  [
+                    {
+                      "x": 490.0,
+                      "y": 230.0584760929303
+                    },
+                    {
+                      "x": 492.17588135380953,
+                      "y": 229.49670190585414
+                    },
+                    {
+                      "x": 492.17588135380953,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 490.0,
+                      "y": 300.0
+                    }
+                  ],
+                  [
+                    {
+                      "x": 492.17588135380953,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 492.25154619720496,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 492.25154619720496,
+                      "y": 179.4359532524382
+                    },
+                    {
+                      "x": 492.17588135380953,
+                      "y": 129.39473992700067
+                    }
+                  ],
+                  [
+                    {
+                      "x": 492.17588135380953,
+                      "y": 229.49670190585414
+                    },
+                    {
+                      "x": 492.25154619720496,
+                      "y": 229.48693424186493
+                    },
+                    {
+                      "x": 492.25154619720496,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 492.17588135380953,
+                      "y": 300.0
+                    }
+                  ],
+                  [
+                    {
+                      "x": 492.25154619720496,
+                      "y": 0.0
+                    },
+                    {
                       "x": 541.0,
                       "y": 0.0
                     },
@@ -5737,16 +5797,16 @@
                       "y": 300.0
                     },
                     {
-                      "x": 490.0,
+                      "x": 492.25154619720496,
                       "y": 300.0
                     }
                   ]
                 ],
                 "placement_id": "plane-3-b9-s0-r0",
                 "split_reason": null,
-                "cutout_interaction": null,
-                "partial_cut_line_y_cm": null,
-                "top_extra_cm": 0.0
+                "cutout_interaction": "partial",
+                "partial_cut_line_y_cm": 111.31851897850821,
+                "top_extra_cm": 15.0
               }
             ]
           },
@@ -5769,24 +5829,96 @@
                       "y": 0.0
                     },
                     {
-                      "x": 490.0,
+                      "x": 460.51979820368393,
                       "y": 0.0
                     },
                     {
-                      "x": 490.0,
+                      "x": 460.51979820368393,
                       "y": 300.0
                     },
                     {
                       "x": 439.0,
                       "y": 300.0
                     }
+                  ],
+                  [
+                    {
+                      "x": 460.51979820368393,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 460.54065443798044,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 460.54065443798044,
+                      "y": 111.33042828192737
+                    },
+                    {
+                      "x": 460.51979820368393,
+                      "y": 111.3244736302178
+                    }
+                  ],
+                  [
+                    {
+                      "x": 460.51979820368393,
+                      "y": 174.49143924389764
+                    },
+                    {
+                      "x": 460.54065443798044,
+                      "y": 237.6643595092871
+                    },
+                    {
+                      "x": 460.54065443798044,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 460.51979820368393,
+                      "y": 300.0
+                    }
+                  ],
+                  [
+                    {
+                      "x": 460.54065443798044,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 490.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 490.0,
+                      "y": 128.1522706068817
+                    },
+                    {
+                      "x": 460.54065443798044,
+                      "y": 111.33042828192737
+                    }
+                  ],
+                  [
+                    {
+                      "x": 460.54065443798044,
+                      "y": 237.6643595092871
+                    },
+                    {
+                      "x": 490.0,
+                      "y": 230.0584760929303
+                    },
+                    {
+                      "x": 490.0,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 460.54065443798044,
+                      "y": 300.0
+                    }
                   ]
                 ],
                 "placement_id": "plane-3-b10-s0-r0",
                 "split_reason": null,
-                "cutout_interaction": null,
-                "partial_cut_line_y_cm": null,
-                "top_extra_cm": 0.0
+                "cutout_interaction": "partial",
+                "partial_cut_line_y_cm": 111.31851897850821,
+                "top_extra_cm": 15.0
               }
             ]
           },
@@ -5969,78 +6101,6 @@
                       "y": 0.0
                     },
                     {
-                      "x": 220.79105821651095,
-                      "y": 0.0
-                    },
-                    {
-                      "x": 220.79105821651095,
-                      "y": 101.26976854807172
-                    },
-                    {
-                      "x": 184.0,
-                      "y": 100.87212041895009
-                    }
-                  ],
-                  [
-                    {
-                      "x": 184.0,
-                      "y": 200.16732379283488
-                    },
-                    {
-                      "x": 220.79105821651095,
-                      "y": 200.16732379283488
-                    },
-                    {
-                      "x": 220.79105821651095,
-                      "y": 300.0
-                    },
-                    {
-                      "x": 184.0,
-                      "y": 300.0
-                    }
-                  ],
-                  [
-                    {
-                      "x": 220.79105821651095,
-                      "y": 0.0
-                    },
-                    {
-                      "x": 221.5853777258567,
-                      "y": 0.0
-                    },
-                    {
-                      "x": 221.5853777258567,
-                      "y": 101.27406116266515
-                    },
-                    {
-                      "x": 220.79105821651095,
-                      "y": 101.26976854807172
-                    }
-                  ],
-                  [
-                    {
-                      "x": 220.79105821651095,
-                      "y": 200.16732379283488
-                    },
-                    {
-                      "x": 221.5853777258567,
-                      "y": 150.7228387850485
-                    },
-                    {
-                      "x": 221.5853777258567,
-                      "y": 300.0
-                    },
-                    {
-                      "x": 220.79105821651095,
-                      "y": 300.0
-                    }
-                  ],
-                  [
-                    {
-                      "x": 221.5853777258567,
-                      "y": 0.0
-                    },
-                    {
                       "x": 235.0,
                       "y": 0.0
                     },
@@ -6049,16 +6109,16 @@
                       "y": 300.0
                     },
                     {
-                      "x": 221.5853777258567,
+                      "x": 184.0,
                       "y": 300.0
                     }
                   ]
                 ],
                 "placement_id": "plane-3-b15-s0-r0",
                 "split_reason": null,
-                "cutout_interaction": "partial",
-                "partial_cut_line_y_cm": 100.16732379283488,
-                "top_extra_cm": 15.0
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
@@ -6072,8 +6132,8 @@
                 "x_left_cm": 133.0,
                 "x_right_cm": 184.0,
                 "y_top_cm": 0.0,
-                "y_bottom_cm": 100.87212041895009,
-                "raw_length_cm": 100.87212041895009,
+                "y_bottom_cm": 300.0,
+                "raw_length_cm": 300.0,
                 "coverage_polygons": [
                   [
                     {
@@ -6086,48 +6146,15 @@
                     },
                     {
                       "x": 184.0,
-                      "y": 100.87212041895009
+                      "y": 300.0
                     },
                     {
                       "x": 133.0,
-                      "y": 100.32089804133167
+                      "y": 300.0
                     }
                   ]
                 ],
                 "placement_id": "plane-3-b16-s0-r0",
-                "split_reason": null,
-                "cutout_interaction": "full",
-                "partial_cut_line_y_cm": null,
-                "top_extra_cm": 0.0
-              },
-              {
-                "segment_index": 1,
-                "x_left_cm": 133.0,
-                "x_right_cm": 184.0,
-                "y_top_cm": 200.16732379283488,
-                "y_bottom_cm": 300.0,
-                "raw_length_cm": 99.83267620716512,
-                "coverage_polygons": [
-                  [
-                    {
-                      "x": 133.0,
-                      "y": 200.16732379283488
-                    },
-                    {
-                      "x": 184.0,
-                      "y": 200.16732379283488
-                    },
-                    {
-                      "x": 184.0,
-                      "y": 300.0
-                    },
-                    {
-                      "x": 133.0,
-                      "y": 300.0
-                    }
-                  ]
-                ],
-                "placement_id": "plane-3-b16-s1-r0",
                 "split_reason": null,
                 "cutout_interaction": null,
                 "partial_cut_line_y_cm": null,
@@ -6154,60 +6181,24 @@
                       "y": 0.0
                     },
                     {
-                      "x": 118.79105821651095,
+                      "x": 133.0,
                       "y": 0.0
                     },
                     {
-                      "x": 118.79105821651095,
+                      "x": 133.0,
                       "y": 300.0
                     },
                     {
                       "x": 82.0,
                       "y": 300.0
                     }
-                  ],
-                  [
-                    {
-                      "x": 118.79105821651095,
-                      "y": 0.0
-                    },
-                    {
-                      "x": 133.0,
-                      "y": 0.0
-                    },
-                    {
-                      "x": 133.0,
-                      "y": 100.32089804133167
-                    },
-                    {
-                      "x": 118.79105821651095,
-                      "y": 100.16732379283488
-                    }
-                  ],
-                  [
-                    {
-                      "x": 118.79105821651095,
-                      "y": 200.16732379283488
-                    },
-                    {
-                      "x": 133.0,
-                      "y": 200.16732379283488
-                    },
-                    {
-                      "x": 133.0,
-                      "y": 300.0
-                    },
-                    {
-                      "x": 118.79105821651095,
-                      "y": 300.0
-                    }
                   ]
                 ],
                 "placement_id": "plane-3-b17-s0-r0",
                 "split_reason": null,
-                "cutout_interaction": "partial",
-                "partial_cut_line_y_cm": 100.16732379283488,
-                "top_extra_cm": 15.0
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
@@ -6294,7 +6285,7 @@
         ],
         "manual_sheet_placements": [],
         "manually_removed_auto_sheet_ids": [],
-        "layout_revision": 43,
+        "layout_revision": 79,
         "layout_dirty_reason": null,
         "outline": [
           {
@@ -6317,20 +6308,20 @@
         "holes": [
           [
             {
-              "x": 118.79105821651095,
-              "y": 100.16732379283488
+              "x": 460.51979820368393,
+              "y": 111.31851897850821
             },
             {
-              "x": 221.5853777258567,
-              "y": 101.27835377725859
+              "x": 492.17588135380953,
+              "y": 129.39473992700067
             },
             {
-              "x": 220.79105821651095,
-              "y": 200.16732379283488
+              "x": 492.25154619720496,
+              "y": 229.47716657787575
             },
             {
-              "x": 118.79105821651095,
-              "y": 200.16732379283488
+              "x": 460.54065443798044,
+              "y": 237.6643595092871
             }
           ]
         ]
@@ -7023,10 +7014,10 @@
             "band_index": 0,
             "x_left_cm": 0.0,
             "x_right_cm": 51.0,
-            "y_top_cm": 0.0,
+            "y_top_cm": -9.967020943527189,
             "y_bottom_cm": 300.0,
-            "raw_length_cm": 300.0,
-            "final_length_cm": 300.0,
+            "raw_length_cm": 309.9670209435272,
+            "final_length_cm": 309.9670209435272,
             "source": "auto",
             "split_reason": null
           },
@@ -7035,10 +7026,10 @@
             "band_index": 1,
             "x_left_cm": 51.0,
             "x_right_cm": 102.0,
-            "y_top_cm": 0.0,
+            "y_top_cm": -19.934041887054377,
             "y_bottom_cm": 300.0,
-            "raw_length_cm": 300.0,
-            "final_length_cm": 300.0,
+            "raw_length_cm": 319.9340418870544,
+            "final_length_cm": 319.9340418870544,
             "source": "auto",
             "split_reason": null
           },
@@ -7047,22 +7038,46 @@
             "band_index": 2,
             "x_left_cm": 102.0,
             "x_right_cm": 153.0,
-            "y_top_cm": 0.0,
+            "y_top_cm": 41.531557237132915,
             "y_bottom_cm": 300.0,
-            "raw_length_cm": 300.0,
-            "final_length_cm": 300.0,
+            "raw_length_cm": 258.4684427628671,
+            "final_length_cm": 258.4684427628671,
             "source": "auto",
             "split_reason": null
+          },
+          {
+            "id": "plane-5-b2-s0-r1",
+            "band_index": 2,
+            "x_left_cm": 102.0,
+            "x_right_cm": 153.0,
+            "y_top_cm": -29.90106283058155,
+            "y_bottom_cm": 41.5315572371329,
+            "raw_length_cm": 71.43262006771445,
+            "final_length_cm": 86.43262006771445,
+            "source": "auto",
+            "split_reason": "partial_cutout_top"
           },
           {
             "id": "plane-5-b3-s0-r0",
             "band_index": 3,
             "x_left_cm": 153.0,
             "x_right_cm": 204.0,
-            "y_top_cm": 0.0,
+            "y_top_cm": -39.868083774108754,
+            "y_bottom_cm": 116.8570959850295,
+            "raw_length_cm": 156.72517975913826,
+            "final_length_cm": 156.72517975913826,
+            "source": "auto",
+            "split_reason": null
+          },
+          {
+            "id": "plane-5-b3-s1-r0",
+            "band_index": 3,
+            "x_left_cm": 153.0,
+            "x_right_cm": 204.0,
+            "y_top_cm": 187.9644375405821,
             "y_bottom_cm": 300.0,
-            "raw_length_cm": 300.0,
-            "final_length_cm": 300.0,
+            "raw_length_cm": 112.03556245941789,
+            "final_length_cm": 112.03556245941789,
             "source": "auto",
             "split_reason": null
           },
@@ -7071,10 +7086,22 @@
             "band_index": 4,
             "x_left_cm": 204.0,
             "x_right_cm": 255.0,
-            "y_top_cm": 0.0,
+            "y_top_cm": -49.83510471763593,
+            "y_bottom_cm": 55.96679436406505,
+            "raw_length_cm": 105.80189908170098,
+            "final_length_cm": 105.80189908170098,
+            "source": "auto",
+            "split_reason": null
+          },
+          {
+            "id": "plane-5-b4-s1-r0",
+            "band_index": 4,
+            "x_left_cm": 204.0,
+            "x_right_cm": 255.0,
+            "y_top_cm": 173.2454224731185,
             "y_bottom_cm": 300.0,
-            "raw_length_cm": 300.0,
-            "final_length_cm": 300.0,
+            "raw_length_cm": 126.75457752688149,
+            "final_length_cm": 126.75457752688149,
             "source": "auto",
             "split_reason": null
           },
@@ -7083,10 +7110,10 @@
             "band_index": 5,
             "x_left_cm": 255.0,
             "x_right_cm": 306.0,
-            "y_top_cm": 100.1118201335878,
+            "y_top_cm": 41.531557237132915,
             "y_bottom_cm": 300.0,
-            "raw_length_cm": 199.8881798664122,
-            "final_length_cm": 199.8881798664122,
+            "raw_length_cm": 258.4684427628671,
+            "final_length_cm": 258.4684427628671,
             "source": "auto",
             "split_reason": null
           },
@@ -7095,10 +7122,10 @@
             "band_index": 5,
             "x_left_cm": 255.0,
             "x_right_cm": 306.0,
-            "y_top_cm": 0.0,
-            "y_bottom_cm": 100.11182013358778,
-            "raw_length_cm": 100.11182013358778,
-            "final_length_cm": 115.11182013358778,
+            "y_top_cm": -59.80212566116312,
+            "y_bottom_cm": 41.5315572371329,
+            "raw_length_cm": 101.33368289829602,
+            "final_length_cm": 116.33368289829602,
             "source": "auto",
             "split_reason": "partial_cutout_top"
           },
@@ -7107,22 +7134,10 @@
             "band_index": 6,
             "x_left_cm": 306.0,
             "x_right_cm": 357.0,
-            "y_top_cm": 0.0,
-            "y_bottom_cm": 100.46304693816793,
-            "raw_length_cm": 100.46304693816793,
-            "final_length_cm": 100.46304693816793,
-            "source": "auto",
-            "split_reason": null
-          },
-          {
-            "id": "plane-5-b6-s1-r0",
-            "band_index": 6,
-            "x_left_cm": 306.0,
-            "x_right_cm": 357.0,
-            "y_top_cm": 229.94543177480904,
+            "y_top_cm": -69.76914660469032,
             "y_bottom_cm": 300.0,
-            "raw_length_cm": 70.05456822519096,
-            "final_length_cm": 70.05456822519096,
+            "raw_length_cm": 369.7691466046903,
+            "final_length_cm": 369.7691466046903,
             "source": "auto",
             "split_reason": null
           },
@@ -7131,34 +7146,22 @@
             "band_index": 7,
             "x_left_cm": 357.0,
             "x_right_cm": 408.0,
-            "y_top_cm": 100.1118201335878,
+            "y_top_cm": -79.73616754821751,
             "y_bottom_cm": 300.0,
-            "raw_length_cm": 199.8881798664122,
-            "final_length_cm": 199.8881798664122,
+            "raw_length_cm": 379.7361675482175,
+            "final_length_cm": 379.7361675482175,
             "source": "auto",
             "split_reason": null
-          },
-          {
-            "id": "plane-5-b7-s0-r1",
-            "band_index": 7,
-            "x_left_cm": 357.0,
-            "x_right_cm": 408.0,
-            "y_top_cm": 0.0,
-            "y_bottom_cm": 100.11182013358778,
-            "raw_length_cm": 100.11182013358778,
-            "final_length_cm": 115.11182013358778,
-            "source": "auto",
-            "split_reason": "partial_cutout_top"
           },
           {
             "id": "plane-5-b8-s0-r0",
             "band_index": 8,
             "x_left_cm": 408.0,
             "x_right_cm": 459.0,
-            "y_top_cm": 0.0,
+            "y_top_cm": -89.70318849174464,
             "y_bottom_cm": 300.0,
-            "raw_length_cm": 300.0,
-            "final_length_cm": 300.0,
+            "raw_length_cm": 389.70318849174464,
+            "final_length_cm": 389.70318849174464,
             "source": "auto",
             "split_reason": null
           },
@@ -7167,10 +7170,10 @@
             "band_index": 9,
             "x_left_cm": 459.0,
             "x_right_cm": 510.0,
-            "y_top_cm": 0.0,
+            "y_top_cm": -99.67020943527189,
             "y_bottom_cm": 300.0,
-            "raw_length_cm": 300.0,
-            "final_length_cm": 300.0,
+            "raw_length_cm": 399.6702094352719,
+            "final_length_cm": 399.6702094352719,
             "source": "auto",
             "split_reason": null
           },
@@ -7179,10 +7182,10 @@
             "band_index": 10,
             "x_left_cm": 510.0,
             "x_right_cm": 561.0,
-            "y_top_cm": 0.0,
+            "y_top_cm": -109.63723037879902,
             "y_bottom_cm": 300.0,
-            "raw_length_cm": 300.0,
-            "final_length_cm": 300.0,
+            "raw_length_cm": 409.637230378799,
+            "final_length_cm": 409.637230378799,
             "source": "auto",
             "split_reason": null
           },
@@ -7191,10 +7194,10 @@
             "band_index": 11,
             "x_left_cm": 561.0,
             "x_right_cm": 612.0,
-            "y_top_cm": 0.0,
+            "y_top_cm": -119.6042513223262,
             "y_bottom_cm": 300.0,
-            "raw_length_cm": 300.0,
-            "final_length_cm": 300.0,
+            "raw_length_cm": 419.6042513223262,
+            "final_length_cm": 419.6042513223262,
             "source": "auto",
             "split_reason": null
           },
@@ -7203,10 +7206,10 @@
             "band_index": 12,
             "x_left_cm": 612.0,
             "x_right_cm": 663.0,
-            "y_top_cm": 0.0,
+            "y_top_cm": -129.5712722658534,
             "y_bottom_cm": 300.0,
-            "raw_length_cm": 300.0,
-            "final_length_cm": 300.0,
+            "raw_length_cm": 429.5712722658534,
+            "final_length_cm": 429.5712722658534,
             "source": "auto",
             "split_reason": null
           },
@@ -7215,10 +7218,10 @@
             "band_index": 13,
             "x_left_cm": 663.0,
             "x_right_cm": 714.0,
-            "y_top_cm": 0.0,
+            "y_top_cm": -139.53829320938064,
             "y_bottom_cm": 300.0,
-            "raw_length_cm": 300.0,
-            "final_length_cm": 300.0,
+            "raw_length_cm": 439.53829320938064,
+            "final_length_cm": 439.53829320938064,
             "source": "auto",
             "split_reason": null
           },
@@ -7227,10 +7230,10 @@
             "band_index": 14,
             "x_left_cm": 714.0,
             "x_right_cm": 765.0,
-            "y_top_cm": 0.0,
+            "y_top_cm": -149.50531415290777,
             "y_bottom_cm": 300.0,
-            "raw_length_cm": 300.0,
-            "final_length_cm": 300.0,
+            "raw_length_cm": 449.5053141529078,
+            "final_length_cm": 449.5053141529078,
             "source": "auto",
             "split_reason": null
           },
@@ -7239,10 +7242,10 @@
             "band_index": 15,
             "x_left_cm": 765.0,
             "x_right_cm": 816.0,
-            "y_top_cm": 0.0,
+            "y_top_cm": -159.47233509643502,
             "y_bottom_cm": 300.0,
-            "raw_length_cm": 300.0,
-            "final_length_cm": 300.0,
+            "raw_length_cm": 459.472335096435,
+            "final_length_cm": 459.472335096435,
             "source": "auto",
             "split_reason": null
           },
@@ -7251,10 +7254,10 @@
             "band_index": 16,
             "x_left_cm": 816.0,
             "x_right_cm": 867.0,
-            "y_top_cm": 0.0,
+            "y_top_cm": -169.43935603996215,
             "y_bottom_cm": 300.0,
-            "raw_length_cm": 300.0,
-            "final_length_cm": 300.0,
+            "raw_length_cm": 469.43935603996215,
+            "final_length_cm": 469.43935603996215,
             "source": "auto",
             "split_reason": null
           },
@@ -7263,10 +7266,10 @@
             "band_index": 17,
             "x_left_cm": 867.0,
             "x_right_cm": 918.0,
-            "y_top_cm": 0.0,
+            "y_top_cm": -175.8953065362595,
             "y_bottom_cm": 300.0,
-            "raw_length_cm": 300.0,
-            "final_length_cm": 300.0,
+            "raw_length_cm": 475.8953065362595,
+            "final_length_cm": 475.8953065362595,
             "source": "auto",
             "split_reason": null
           },
@@ -7275,10 +7278,10 @@
             "band_index": 18,
             "x_left_cm": 918.0,
             "x_right_cm": 969.0,
-            "y_top_cm": 0.0,
+            "y_top_cm": -90.36801443720225,
             "y_bottom_cm": 300.0,
-            "raw_length_cm": 300.0,
-            "final_length_cm": 300.0,
+            "raw_length_cm": 390.36801443720225,
+            "final_length_cm": 390.36801443720225,
             "source": "auto",
             "split_reason": null
           },
@@ -7287,10 +7290,10 @@
             "band_index": 19,
             "x_left_cm": 969.0,
             "x_right_cm": 1000.0,
-            "y_top_cm": 0.0,
+            "y_top_cm": 152.42184820056985,
             "y_bottom_cm": 300.0,
-            "raw_length_cm": 300.0,
-            "final_length_cm": 300.0,
+            "raw_length_cm": 147.57815179943015,
+            "final_length_cm": 147.57815179943015,
             "source": "auto",
             "split_reason": null
           }
@@ -7305,9 +7308,9 @@
                 "segment_index": 0,
                 "x_left_cm": 0.0,
                 "x_right_cm": 51.0,
-                "y_top_cm": 0.0,
+                "y_top_cm": -9.967020943527187,
                 "y_bottom_cm": 300.0,
-                "raw_length_cm": 300.0,
+                "raw_length_cm": 309.9670209435272,
                 "coverage_polygons": [
                   [
                     {
@@ -7316,7 +7319,7 @@
                     },
                     {
                       "x": 51.0,
-                      "y": 0.0
+                      "y": -9.967020943527187
                     },
                     {
                       "x": 51.0,
@@ -7345,18 +7348,18 @@
                 "segment_index": 0,
                 "x_left_cm": 51.0,
                 "x_right_cm": 102.0,
-                "y_top_cm": 0.0,
+                "y_top_cm": -19.934041887054374,
                 "y_bottom_cm": 300.0,
-                "raw_length_cm": 300.0,
+                "raw_length_cm": 319.9340418870544,
                 "coverage_polygons": [
                   [
                     {
                       "x": 51.0,
-                      "y": 0.0
+                      "y": -9.967020943527187
                     },
                     {
                       "x": 102.0,
-                      "y": 0.0
+                      "y": -19.934041887054374
                     },
                     {
                       "x": 102.0,
@@ -7385,34 +7388,70 @@
                 "segment_index": 0,
                 "x_left_cm": 102.0,
                 "x_right_cm": 153.0,
-                "y_top_cm": 0.0,
+                "y_top_cm": -29.901062830581555,
                 "y_bottom_cm": 300.0,
-                "raw_length_cm": 300.0,
+                "raw_length_cm": 329.90106283058157,
                 "coverage_polygons": [
                   [
                     {
                       "x": 102.0,
-                      "y": 0.0
+                      "y": -19.934041887054374
                     },
                     {
-                      "x": 153.0,
-                      "y": 0.0
+                      "x": 136.540247396365,
+                      "y": -26.68430402811673
                     },
                     {
-                      "x": 153.0,
+                      "x": 136.540247396365,
                       "y": 300.0
                     },
                     {
                       "x": 102.0,
                       "y": 300.0
                     }
+                  ],
+                  [
+                    {
+                      "x": 136.540247396365,
+                      "y": -28.29268342934914
+                    },
+                    {
+                      "x": 153.0,
+                      "y": -29.901062830581555
+                    },
+                    {
+                      "x": 153.0,
+                      "y": 116.8570959850295
+                    },
+                    {
+                      "x": 136.540247396365,
+                      "y": 162.14548357673013
+                    }
+                  ],
+                  [
+                    {
+                      "x": 136.540247396365,
+                      "y": 205.05866188823816
+                    },
+                    {
+                      "x": 153.0,
+                      "y": 202.68345260804574
+                    },
+                    {
+                      "x": 153.0,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 136.540247396365,
+                      "y": 300.0
+                    }
                   ]
                 ],
                 "placement_id": "plane-5-b2-s0-r0",
                 "split_reason": null,
-                "cutout_interaction": null,
-                "partial_cut_line_y_cm": null,
-                "top_extra_cm": 0.0
+                "cutout_interaction": "partial",
+                "partial_cut_line_y_cm": 41.5315572371329,
+                "top_extra_cm": 15.0
               }
             ]
           },
@@ -7425,32 +7464,101 @@
                 "segment_index": 0,
                 "x_left_cm": 153.0,
                 "x_right_cm": 204.0,
-                "y_top_cm": 0.0,
-                "y_bottom_cm": 300.0,
-                "raw_length_cm": 300.0,
+                "y_top_cm": -39.86808377410875,
+                "y_bottom_cm": 116.8570959850295,
+                "raw_length_cm": 156.72517975913826,
                 "coverage_polygons": [
                   [
                     {
                       "x": 153.0,
-                      "y": 0.0
+                      "y": -29.901062830581555
+                    },
+                    {
+                      "x": 162.43273463084438,
+                      "y": -31.744518980000382
+                    },
+                    {
+                      "x": 162.43273463084438,
+                      "y": 64.94946987441656
+                    },
+                    {
+                      "x": 153.0,
+                      "y": 116.8570959850295
+                    }
+                  ],
+                  [
+                    {
+                      "x": 162.43273463084438,
+                      "y": -31.744518980000382
                     },
                     {
                       "x": 204.0,
-                      "y": 0.0
+                      "y": -39.86808377410875
                     },
                     {
                       "x": 204.0,
+                      "y": 55.96679436406505
+                    },
+                    {
+                      "x": 162.43273463084438,
+                      "y": 64.94946987441656
+                    }
+                  ]
+                ],
+                "placement_id": "plane-5-b3-s0-r0",
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
+              },
+              {
+                "segment_index": 1,
+                "x_left_cm": 153.0,
+                "x_right_cm": 204.0,
+                "y_top_cm": 187.9644375405821,
+                "y_bottom_cm": 300.0,
+                "raw_length_cm": 112.03556245941789,
+                "coverage_polygons": [
+                  [
+                    {
+                      "x": 153.0,
+                      "y": 202.68345260804574
+                    },
+                    {
+                      "x": 162.43273463084438,
+                      "y": 199.96108862454017
+                    },
+                    {
+                      "x": 162.43273463084438,
                       "y": 300.0
                     },
                     {
                       "x": 153.0,
                       "y": 300.0
                     }
+                  ],
+                  [
+                    {
+                      "x": 162.43273463084438,
+                      "y": 199.96108862454017
+                    },
+                    {
+                      "x": 204.0,
+                      "y": 187.9644375405821
+                    },
+                    {
+                      "x": 204.0,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 162.43273463084438,
+                      "y": 300.0
+                    }
                   ]
                 ],
-                "placement_id": "plane-5-b3-s0-r0",
+                "placement_id": "plane-5-b3-s1-r0",
                 "split_reason": null,
-                "cutout_interaction": null,
+                "cutout_interaction": "full",
                 "partial_cut_line_y_cm": null,
                 "top_extra_cm": 0.0
               }
@@ -7465,18 +7573,51 @@
                 "segment_index": 0,
                 "x_left_cm": 204.0,
                 "x_right_cm": 255.0,
-                "y_top_cm": 0.0,
-                "y_bottom_cm": 300.0,
-                "raw_length_cm": 300.0,
+                "y_top_cm": -49.83510471763593,
+                "y_bottom_cm": 55.96679436406505,
+                "raw_length_cm": 105.80189908170098,
                 "coverage_polygons": [
                   [
                     {
                       "x": 204.0,
-                      "y": 0.0
+                      "y": -39.86808377410875
                     },
                     {
                       "x": 255.0,
-                      "y": 0.0
+                      "y": -49.83510471763593
+                    },
+                    {
+                      "x": 255.0,
+                      "y": 44.945707290873415
+                    },
+                    {
+                      "x": 204.0,
+                      "y": 55.96679436406505
+                    }
+                  ]
+                ],
+                "placement_id": "plane-5-b4-s0-r0",
+                "split_reason": null,
+                "cutout_interaction": "full",
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
+              },
+              {
+                "segment_index": 1,
+                "x_left_cm": 204.0,
+                "x_right_cm": 255.0,
+                "y_top_cm": 173.2454224731185,
+                "y_bottom_cm": 300.0,
+                "raw_length_cm": 126.75457752688149,
+                "coverage_polygons": [
+                  [
+                    {
+                      "x": 204.0,
+                      "y": 187.9644375405821
+                    },
+                    {
+                      "x": 255.0,
+                      "y": 173.2454224731185
                     },
                     {
                       "x": 255.0,
@@ -7488,9 +7629,9 @@
                     }
                   ]
                 ],
-                "placement_id": "plane-5-b4-s0-r0",
+                "placement_id": "plane-5-b4-s1-r0",
                 "split_reason": null,
-                "cutout_interaction": null,
+                "cutout_interaction": "full",
                 "partial_cut_line_y_cm": null,
                 "top_extra_cm": 0.0
               }
@@ -7505,21 +7646,39 @@
                 "segment_index": 0,
                 "x_left_cm": 255.0,
                 "x_right_cm": 306.0,
-                "y_top_cm": 0.0,
+                "y_top_cm": -59.80212566116311,
                 "y_bottom_cm": 300.0,
-                "raw_length_cm": 300.0,
+                "raw_length_cm": 359.80212566116313,
                 "coverage_polygons": [
                   [
                     {
                       "x": 255.0,
-                      "y": 0.0
+                      "y": -49.83510471763593
                     },
                     {
-                      "x": 276.08092795801525,
-                      "y": 0.0
+                      "x": 261.51490149941844,
+                      "y": -51.108323535081425
                     },
                     {
-                      "x": 276.08092795801525,
+                      "x": 261.51490149941844,
+                      "y": 43.53783872816053
+                    },
+                    {
+                      "x": 255.0,
+                      "y": 44.945707290873415
+                    }
+                  ],
+                  [
+                    {
+                      "x": 255.0,
+                      "y": 173.2454224731185
+                    },
+                    {
+                      "x": 261.51490149941844,
+                      "y": 171.36516887835415
+                    },
+                    {
+                      "x": 261.51490149941844,
                       "y": 300.0
                     },
                     {
@@ -7529,73 +7688,55 @@
                   ],
                   [
                     {
-                      "x": 276.08092795801525,
-                      "y": 0.0
+                      "x": 261.51490149941844,
+                      "y": -51.108323535081425
                     },
                     {
-                      "x": 283.27618082061065,
-                      "y": 0.0
+                      "x": 270.79895445743375,
+                      "y": -52.01552304756528
                     },
                     {
-                      "x": 283.27618082061065,
-                      "y": 100.55525110687023
+                      "x": 270.79895445743375,
+                      "y": 42.53469798264672
                     },
                     {
-                      "x": 276.08092795801525,
-                      "y": 100.56984883587786
+                      "x": 261.51490149941844,
+                      "y": 43.53783872816053
                     }
                   ],
                   [
                     {
-                      "x": 276.08092795801525,
-                      "y": 165.26493916984674
+                      "x": 261.51490149941844,
+                      "y": 171.36516887835415
                     },
                     {
-                      "x": 283.27618082061065,
-                      "y": 229.94543177480904
+                      "x": 270.79895445743375,
+                      "y": 106.44836305774352
                     },
                     {
-                      "x": 283.27618082061065,
+                      "x": 270.79895445743375,
                       "y": 300.0
                     },
                     {
-                      "x": 276.08092795801525,
+                      "x": 261.51490149941844,
                       "y": 300.0
                     }
                   ],
                   [
                     {
-                      "x": 283.27618082061065,
-                      "y": 0.0
+                      "x": 270.79895445743375,
+                      "y": -52.922722560049145
                     },
                     {
                       "x": 306.0,
-                      "y": 0.0
-                    },
-                    {
-                      "x": 306.0,
-                      "y": 100.46304693816793
-                    },
-                    {
-                      "x": 283.27618082061065,
-                      "y": 100.55525110687023
-                    }
-                  ],
-                  [
-                    {
-                      "x": 283.27618082061065,
-                      "y": 229.94543177480904
-                    },
-                    {
-                      "x": 306.0,
-                      "y": 229.94543177480904
+                      "y": -59.80212566116311
                     },
                     {
                       "x": 306.0,
                       "y": 300.0
                     },
                     {
-                      "x": 283.27618082061065,
+                      "x": 270.79895445743375,
                       "y": 300.0
                     }
                   ]
@@ -7603,7 +7744,7 @@
                 "placement_id": "plane-5-b5-s0-r0",
                 "split_reason": null,
                 "cutout_interaction": "partial",
-                "partial_cut_line_y_cm": 100.11182013358778,
+                "partial_cut_line_y_cm": 41.5315572371329,
                 "top_extra_cm": 15.0
               }
             ]
@@ -7617,63 +7758,30 @@
                 "segment_index": 0,
                 "x_left_cm": 306.0,
                 "x_right_cm": 357.0,
-                "y_top_cm": 0.0,
-                "y_bottom_cm": 100.46304693816793,
-                "raw_length_cm": 100.46304693816793,
+                "y_top_cm": -69.7691466046903,
+                "y_bottom_cm": 300.0,
+                "raw_length_cm": 369.7691466046903,
                 "coverage_polygons": [
                   [
                     {
                       "x": 306.0,
-                      "y": 0.0
+                      "y": -59.80212566116311
                     },
                     {
                       "x": 357.0,
-                      "y": 0.0
+                      "y": -69.7691466046903
                     },
                     {
                       "x": 357.0,
-                      "y": 100.25610933816793
+                      "y": 300.0
                     },
                     {
                       "x": 306.0,
-                      "y": 100.46304693816793
+                      "y": 300.0
                     }
                   ]
                 ],
                 "placement_id": "plane-5-b6-s0-r0",
-                "split_reason": null,
-                "cutout_interaction": "full",
-                "partial_cut_line_y_cm": null,
-                "top_extra_cm": 0.0
-              },
-              {
-                "segment_index": 1,
-                "x_left_cm": 306.0,
-                "x_right_cm": 357.0,
-                "y_top_cm": 229.94543177480904,
-                "y_bottom_cm": 300.0,
-                "raw_length_cm": 70.05456822519096,
-                "coverage_polygons": [
-                  [
-                    {
-                      "x": 306.0,
-                      "y": 229.94543177480904
-                    },
-                    {
-                      "x": 357.0,
-                      "y": 229.94543177480904
-                    },
-                    {
-                      "x": 357.0,
-                      "y": 300.0
-                    },
-                    {
-                      "x": 306.0,
-                      "y": 300.0
-                    }
-                  ]
-                ],
-                "placement_id": "plane-5-b6-s1-r0",
                 "split_reason": null,
                 "cutout_interaction": null,
                 "partial_cut_line_y_cm": null,
@@ -7690,106 +7798,34 @@
                 "segment_index": 0,
                 "x_left_cm": 357.0,
                 "x_right_cm": 408.0,
-                "y_top_cm": 0.0,
+                "y_top_cm": -79.7361675482175,
                 "y_bottom_cm": 300.0,
-                "raw_length_cm": 300.0,
+                "raw_length_cm": 379.7361675482175,
                 "coverage_polygons": [
                   [
                     {
                       "x": 357.0,
-                      "y": 0.0
-                    },
-                    {
-                      "x": 383.27618082061065,
-                      "y": 0.0
-                    },
-                    {
-                      "x": 383.27618082061065,
-                      "y": 100.14949110687023
-                    },
-                    {
-                      "x": 357.0,
-                      "y": 100.25610933816793
-                    }
-                  ],
-                  [
-                    {
-                      "x": 357.0,
-                      "y": 229.94543177480904
-                    },
-                    {
-                      "x": 383.27618082061065,
-                      "y": 229.94543177480904
-                    },
-                    {
-                      "x": 383.27618082061065,
-                      "y": 300.0
-                    },
-                    {
-                      "x": 357.0,
-                      "y": 300.0
-                    }
-                  ],
-                  [
-                    {
-                      "x": 383.27618082061065,
-                      "y": 0.0
-                    },
-                    {
-                      "x": 392.56023377862596,
-                      "y": 0.0
-                    },
-                    {
-                      "x": 392.56023377862596,
-                      "y": 100.130655620229
-                    },
-                    {
-                      "x": 383.27618082061065,
-                      "y": 100.14949110687023
-                    }
-                  ],
-                  [
-                    {
-                      "x": 383.27618082061065,
-                      "y": 229.94543177480904
-                    },
-                    {
-                      "x": 392.56023377862596,
-                      "y": 165.0286259541984
-                    },
-                    {
-                      "x": 392.56023377862596,
-                      "y": 300.0
-                    },
-                    {
-                      "x": 383.27618082061065,
-                      "y": 300.0
-                    }
-                  ],
-                  [
-                    {
-                      "x": 392.56023377862596,
-                      "y": 0.0
+                      "y": -69.7691466046903
                     },
                     {
                       "x": 408.0,
-                      "y": 0.0
+                      "y": -79.7361675482175
                     },
                     {
                       "x": 408.0,
                       "y": 300.0
                     },
                     {
-                      "x": 392.56023377862596,
+                      "x": 357.0,
                       "y": 300.0
                     }
                   ]
                 ],
                 "placement_id": "plane-5-b7-s0-r0",
                 "split_reason": null,
-                "cutout_interaction": "partial",
-                "partial_cut_line_y_cm": 100.11182013358778,
-                "top_extra_cm": 15.0
+                "cutout_interaction": null,
+                "partial_cut_line_y_cm": null,
+                "top_extra_cm": 0.0
               }
             ]
           },
@@ -7802,18 +7838,18 @@
                 "segment_index": 0,
                 "x_left_cm": 408.0,
                 "x_right_cm": 459.0,
-                "y_top_cm": 0.0,
+                "y_top_cm": -89.70318849174467,
                 "y_bottom_cm": 300.0,
-                "raw_length_cm": 300.0,
+                "raw_length_cm": 389.70318849174464,
                 "coverage_polygons": [
                   [
                     {
                       "x": 408.0,
-                      "y": 0.0
+                      "y": -79.7361675482175
                     },
                     {
                       "x": 459.0,
-                      "y": 0.0
+                      "y": -89.70318849174467
                     },
                     {
                       "x": 459.0,
@@ -7842,18 +7878,18 @@
                 "segment_index": 0,
                 "x_left_cm": 459.0,
                 "x_right_cm": 510.0,
-                "y_top_cm": 0.0,
+                "y_top_cm": -99.67020943527186,
                 "y_bottom_cm": 300.0,
-                "raw_length_cm": 300.0,
+                "raw_length_cm": 399.6702094352719,
                 "coverage_polygons": [
                   [
                     {
                       "x": 459.0,
-                      "y": 0.0
+                      "y": -89.70318849174467
                     },
                     {
                       "x": 510.0,
-                      "y": 0.0
+                      "y": -99.67020943527186
                     },
                     {
                       "x": 510.0,
@@ -7882,18 +7918,18 @@
                 "segment_index": 0,
                 "x_left_cm": 510.0,
                 "x_right_cm": 561.0,
-                "y_top_cm": 0.0,
+                "y_top_cm": -109.63723037879903,
                 "y_bottom_cm": 300.0,
-                "raw_length_cm": 300.0,
+                "raw_length_cm": 409.637230378799,
                 "coverage_polygons": [
                   [
                     {
                       "x": 510.0,
-                      "y": 0.0
+                      "y": -99.67020943527186
                     },
                     {
                       "x": 561.0,
-                      "y": 0.0
+                      "y": -109.63723037879903
                     },
                     {
                       "x": 561.0,
@@ -7922,18 +7958,18 @@
                 "segment_index": 0,
                 "x_left_cm": 561.0,
                 "x_right_cm": 612.0,
-                "y_top_cm": 0.0,
+                "y_top_cm": -119.60425132232622,
                 "y_bottom_cm": 300.0,
-                "raw_length_cm": 300.0,
+                "raw_length_cm": 419.6042513223262,
                 "coverage_polygons": [
                   [
                     {
                       "x": 561.0,
-                      "y": 0.0
+                      "y": -109.63723037879903
                     },
                     {
                       "x": 612.0,
-                      "y": 0.0
+                      "y": -119.60425132232622
                     },
                     {
                       "x": 612.0,
@@ -7962,18 +7998,18 @@
                 "segment_index": 0,
                 "x_left_cm": 612.0,
                 "x_right_cm": 663.0,
-                "y_top_cm": 0.0,
+                "y_top_cm": -129.5712722658534,
                 "y_bottom_cm": 300.0,
-                "raw_length_cm": 300.0,
+                "raw_length_cm": 429.5712722658534,
                 "coverage_polygons": [
                   [
                     {
                       "x": 612.0,
-                      "y": 0.0
+                      "y": -119.60425132232622
                     },
                     {
                       "x": 663.0,
-                      "y": 0.0
+                      "y": -129.5712722658534
                     },
                     {
                       "x": 663.0,
@@ -8002,18 +8038,18 @@
                 "segment_index": 0,
                 "x_left_cm": 663.0,
                 "x_right_cm": 714.0,
-                "y_top_cm": 0.0,
+                "y_top_cm": -139.5382932093806,
                 "y_bottom_cm": 300.0,
-                "raw_length_cm": 300.0,
+                "raw_length_cm": 439.53829320938064,
                 "coverage_polygons": [
                   [
                     {
                       "x": 663.0,
-                      "y": 0.0
+                      "y": -129.5712722658534
                     },
                     {
                       "x": 714.0,
-                      "y": 0.0
+                      "y": -139.5382932093806
                     },
                     {
                       "x": 714.0,
@@ -8042,18 +8078,18 @@
                 "segment_index": 0,
                 "x_left_cm": 714.0,
                 "x_right_cm": 765.0,
-                "y_top_cm": 0.0,
+                "y_top_cm": -149.50531415290777,
                 "y_bottom_cm": 300.0,
-                "raw_length_cm": 300.0,
+                "raw_length_cm": 449.5053141529078,
                 "coverage_polygons": [
                   [
                     {
                       "x": 714.0,
-                      "y": 0.0
+                      "y": -139.5382932093806
                     },
                     {
                       "x": 765.0,
-                      "y": 0.0
+                      "y": -149.50531415290777
                     },
                     {
                       "x": 765.0,
@@ -8082,18 +8118,18 @@
                 "segment_index": 0,
                 "x_left_cm": 765.0,
                 "x_right_cm": 816.0,
-                "y_top_cm": 0.0,
+                "y_top_cm": -159.472335096435,
                 "y_bottom_cm": 300.0,
-                "raw_length_cm": 300.0,
+                "raw_length_cm": 459.472335096435,
                 "coverage_polygons": [
                   [
                     {
                       "x": 765.0,
-                      "y": 0.0
+                      "y": -149.50531415290777
                     },
                     {
                       "x": 816.0,
-                      "y": 0.0
+                      "y": -159.472335096435
                     },
                     {
                       "x": 816.0,
@@ -8122,18 +8158,18 @@
                 "segment_index": 0,
                 "x_left_cm": 816.0,
                 "x_right_cm": 867.0,
-                "y_top_cm": 0.0,
+                "y_top_cm": -169.43935603996215,
                 "y_bottom_cm": 300.0,
-                "raw_length_cm": 300.0,
+                "raw_length_cm": 469.43935603996215,
                 "coverage_polygons": [
                   [
                     {
                       "x": 816.0,
-                      "y": 0.0
+                      "y": -159.472335096435
                     },
                     {
                       "x": 867.0,
-                      "y": 0.0
+                      "y": -169.43935603996215
                     },
                     {
                       "x": 867.0,
@@ -8162,25 +8198,43 @@
                 "segment_index": 0,
                 "x_left_cm": 867.0,
                 "x_right_cm": 918.0,
-                "y_top_cm": 0.0,
+                "y_top_cm": -175.8953065362595,
                 "y_bottom_cm": 300.0,
-                "raw_length_cm": 300.0,
+                "raw_length_cm": 475.8953065362595,
                 "coverage_polygons": [
                   [
                     {
                       "x": 867.0,
-                      "y": 0.0
+                      "y": -169.43935603996215
+                    },
+                    {
+                      "x": 900.0342915076335,
+                      "y": -175.8953065362595
+                    },
+                    {
+                      "x": 900.0342915076335,
+                      "y": 300.0
+                    },
+                    {
+                      "x": 867.0,
+                      "y": 300.0
+                    }
+                  ],
+                  [
+                    {
+                      "x": 900.0342915076335,
+                      "y": -175.8953065362595
                     },
                     {
                       "x": 918.0,
-                      "y": 0.0
+                      "y": -90.36801443720226
                     },
                     {
                       "x": 918.0,
                       "y": 300.0
                     },
                     {
-                      "x": 867.0,
+                      "x": 900.0342915076335,
                       "y": 300.0
                     }
                   ]
@@ -8202,18 +8256,18 @@
                 "segment_index": 0,
                 "x_left_cm": 918.0,
                 "x_right_cm": 969.0,
-                "y_top_cm": 0.0,
+                "y_top_cm": -90.36801443720226,
                 "y_bottom_cm": 300.0,
-                "raw_length_cm": 300.0,
+                "raw_length_cm": 390.36801443720225,
                 "coverage_polygons": [
                   [
                     {
                       "x": 918.0,
-                      "y": 0.0
+                      "y": -90.36801443720226
                     },
                     {
                       "x": 969.0,
-                      "y": 0.0
+                      "y": 152.42184820056985
                     },
                     {
                       "x": 969.0,
@@ -8242,18 +8296,18 @@
                 "segment_index": 0,
                 "x_left_cm": 969.0,
                 "x_right_cm": 1000.0,
-                "y_top_cm": 0.0,
+                "y_top_cm": 152.42184820056985,
                 "y_bottom_cm": 300.0,
-                "raw_length_cm": 300.0,
+                "raw_length_cm": 147.57815179943015,
                 "coverage_polygons": [
                   [
                     {
                       "x": 969.0,
-                      "y": 0.0
+                      "y": 152.42184820056985
                     },
                     {
                       "x": 1000.0,
-                      "y": 0.0
+                      "y": 226.21092410028496
                     },
                     {
                       "x": 1000.0,
@@ -8276,7 +8330,7 @@
         ],
         "manual_sheet_placements": [],
         "manually_removed_auto_sheet_ids": [],
-        "layout_revision": 204,
+        "layout_revision": 235,
         "layout_dirty_reason": null,
         "outline": [
           {
@@ -8284,8 +8338,8 @@
             "y": 0.0
           },
           {
-            "x": 1000.0,
-            "y": 0.0
+            "x": 900.0342915076335,
+            "y": -175.8953065362595
           },
           {
             "x": 1000.0,
@@ -8299,20 +8353,20 @@
         "holes": [
           [
             {
-              "x": 276.08092795801525,
-              "y": 100.5844465648855
+              "x": 162.43273463084438,
+              "y": 64.94946987441656
             },
             {
-              "x": 392.56023377862596,
-              "y": 100.11182013358778
+              "x": 270.79895445743375,
+              "y": 41.5315572371329
             },
             {
-              "x": 383.27618082061065,
-              "y": 229.94543177480904
+              "x": 261.51490149941844,
+              "y": 171.36516887835415
             },
             {
-              "x": 283.27618082061065,
-              "y": 229.94543177480904
+              "x": 136.540247396365,
+              "y": 207.43387116843058
             }
           ]
         ]
