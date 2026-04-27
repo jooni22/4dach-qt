@@ -62,6 +62,25 @@ class SettingsDialog(QDialog):
 
         root.addWidget(grp_cutouts)
 
+        grp_grid = QGroupBox("Siatka i przyciąganie")
+        grid_form = QFormLayout(grp_grid)
+        grid_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+
+        self._spin_grid_size = QDoubleSpinBox()
+        self._spin_grid_size.setRange(1.0, 1000.0)
+        self._spin_grid_size.setSingleStep(1.0)
+        self._spin_grid_size.setDecimals(1)
+        self._spin_grid_size.setSuffix(" cm")
+        self._spin_grid_size.setToolTip(
+            "Rozmiar oczka siatki używanego do rysowania siatki roboczej\n"
+            "oraz przyciągania punktów podczas przeciągania geometrii."
+        )
+        grid_label = QLabel("Rozmiar oczka siatki:")
+        grid_label.setWordWrap(True)
+        grid_form.addRow(grid_label, self._spin_grid_size)
+
+        root.addWidget(grp_grid)
+
         # --- Przyciski ---
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok
@@ -73,11 +92,13 @@ class SettingsDialog(QDialog):
 
     def _load_values(self, settings: AppSettings) -> None:
         self._spin_top_extra.setValue(settings.partial_cutout_top_extra_cm)
+        self._spin_grid_size.setValue(settings.grid_size_cm)
 
     def get_values(self) -> dict:
         """Return current dialog values as a dict matching AppSettings fields."""
         return {
             "partial_cutout_top_extra_cm": self._spin_top_extra.value(),
+            "grid_size_cm": self._spin_grid_size.value(),
         }
 
     def build_settings(self) -> AppSettings:

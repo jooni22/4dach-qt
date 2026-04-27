@@ -28,6 +28,7 @@ from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QFontMetricsF, QKeyEvent, QMouseEvent, QPainter, QPainterPath, QPalette, QPen, QPolygonF
 from PySide6.QtWidgets import QWidget
 
+from core.app_settings import AppSettings
 from core.canvas_mapper import CanvasMapper
 from core.geometry import point_in_polygon, polygon_edges, replace_polygon_point, segment_length, validate_hole_polygon, validate_polygon
 from core.models import Point2D, Polygon2D
@@ -73,6 +74,13 @@ class _CoordinateOverlayLabel:
     domain_point: Point2D
 
 
+@dataclass(slots=True, frozen=True)
+class _SelectionSnapshot:
+    kind: str | None
+    hole_index: int | None = None
+    vertex_index: int | None = None
+
+
 class DrawingCanvas(QWidget):
     """Interactive canvas for displaying and drawing roof planes."""
 
@@ -85,6 +93,7 @@ class DrawingCanvas(QWidget):
     cutout_closed = Signal(list)
     outline_edit_committed = Signal(object)
     hole_edit_committed = Signal(int, object)
+    origin_edit_committed = Signal(object)
     outline_edit_rejected = Signal(str)
     selection_changed = Signal(bool)
     delete_requested = Signal()
@@ -98,6 +107,7 @@ class DrawingCanvas(QWidget):
 
         self.roof_plane = None
         self._material = None
+        self._app_settings = AppSettings()
 
         self._mode: str = self.MODE_VIEW
         self._selected_sheet_id: str | None = None
@@ -119,6 +129,9 @@ class DrawingCanvas(QWidget):
         self._preview_hole: Polygon2D | None = None
         self._drag_mapper: CanvasMapper | None = None
         self._edit_overlay: _EditOverlayState | None = None
+        self._origin_edit_enabled: bool = False
+        self._dragging_origin: bool = False
+        self._preview_origin_point: Point2D | None = None
         self._last_emitted_selection_state: bool = False
 
         self.setMouseTracking(True)
@@ -144,25 +157,44 @@ class DrawingCanvas(QWidget):
         self._show_module_count = not self._show_module_count if enabled is None else enabled
         self.update()
 
+    def set_app_settings(self, settings: AppSettings | None) -> None:
+        self._app_settings = settings or AppSettings()
+        self.update()
+
+    def set_origin_edit_enabled(self, enabled: bool) -> None:
+        self._origin_edit_enabled = enabled
+        if not enabled:
+            self._dragging_origin = False
+            self._preview_origin_point = None
+        if self._mode == self.MODE_VIEW:
+            self._sync_view_cursor()
+        self.update()
+
     def set_mode(self, mode: str) -> None:
         self._mode = mode
         self.user_points.clear()
         self.preview_point = None
         self._snap_active = False
         self._cancel_geometry_drag()
+        if mode != self.MODE_VIEW:
+            self._reset_selection()
+            self._clear_edit_overlay()
+            self._check_selection_changed()
         if mode in {self.MODE_DRAW_OUTLINE, self.MODE_DRAW_CUTOUT}:
             self.setCursor(Qt.CursorShape.CrossCursor)
         elif mode == self.MODE_SELECT_SHEET:
             self.setCursor(Qt.CursorShape.PointingHandCursor)
         else:
-            self.setCursor(Qt.CursorShape.ArrowCursor)
+            self._sync_view_cursor()
         self.update()
 
     def set_roof_plane(self, roof_plane) -> None:
         self.roof_plane = roof_plane
         self._cancel_geometry_drag()
         self._reset_selection(select_plane=bool(roof_plane is not None and roof_plane.outline is not None))
+        self._preview_origin_point = None
         self._check_selection_changed()
+        self._sync_view_cursor()
         self.update()
 
     def set_material(self, material) -> None:
@@ -203,6 +235,50 @@ class DrawingCanvas(QWidget):
         if outline is None:
             return []
         return [segment_length(start, end) for start, end in polygon_edges(outline)]
+
+    def selection_snapshot(self) -> _SelectionSnapshot:
+        return _SelectionSnapshot(
+            kind=self.selected_geometry_kind(),
+            hole_index=self._selected_hole_index,
+            vertex_index=self._active_hole_vertex_index if self._selected_hole_index is not None else self._active_vertex_index,
+        )
+
+    def restore_selection(self, snapshot: _SelectionSnapshot | None) -> None:
+        self._reset_selection()
+        if snapshot is None or snapshot.kind is None:
+            self._check_selection_changed()
+            self.update()
+            return
+
+        outline = self.display_outline()
+        holes = self.display_holes()
+        if snapshot.kind == "cutout_vertex" and snapshot.hole_index is not None:
+            if 0 <= snapshot.hole_index < len(holes):
+                self._selected_hole_index = snapshot.hole_index
+                if snapshot.vertex_index is not None and 0 <= snapshot.vertex_index < len(holes[snapshot.hole_index].points):
+                    self._active_hole_vertex_index = snapshot.vertex_index
+        elif snapshot.kind == "cutout_polygon" and snapshot.hole_index is not None:
+            if 0 <= snapshot.hole_index < len(holes):
+                self._selected_hole_index = snapshot.hole_index
+        elif snapshot.kind == "main_polygon_vertex" and outline is not None:
+            self._plane_selected = True
+            if snapshot.vertex_index is not None and 0 <= snapshot.vertex_index < len(outline.points):
+                self._active_vertex_index = snapshot.vertex_index
+        elif snapshot.kind == "main_polygon" and outline is not None:
+            self._plane_selected = True
+
+        self._check_selection_changed()
+        self.update()
+
+    def _sync_view_cursor(self) -> None:
+        if self._mode != self.MODE_VIEW:
+            return
+        if self._dragging_origin:
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
+        elif self._origin_edit_enabled:
+            self.setCursor(Qt.CursorShape.OpenHandCursor)
+        else:
+            self.setCursor(Qt.CursorShape.ArrowCursor)
 
     # ------------------------------------------------------------------
     # Helpers
@@ -391,12 +467,13 @@ class DrawingCanvas(QWidget):
     def _update_geometry_drag(self, pos: QPointF) -> None:
         if self._drag_mapper is None:
             return
-        domain_point = self._drag_mapper.unmap_point(pos)
+        domain_point = self._snap_domain_point(self._drag_mapper.unmap_point(pos))
         
         if self._dragging_hole_center_index is not None and self._drag_start_pos is not None:
-            dx = domain_point.x - self._drag_start_pos.x
-            dy = domain_point.y - self._drag_start_pos.y
             if self._drag_start_hole is not None:
+                start_center = self._hole_center_point(self._drag_start_hole)
+                dx = domain_point.x - start_center.x
+                dy = domain_point.y - start_center.y
                 new_points = [Point2D(p.x + dx, p.y + dy) for p in self._drag_start_hole.points]
                 self._preview_hole = Polygon2D(new_points)
                 self._set_edit_overlay(
@@ -477,7 +554,7 @@ class DrawingCanvas(QWidget):
         self._drag_mapper = None
         self._clear_edit_overlay()
         if self._mode == self.MODE_VIEW:
-            self.setCursor(Qt.CursorShape.ArrowCursor)
+            self._sync_view_cursor()
 
     def _select_plane_at(self, pos: QPointF, outline: Polygon2D, mapper: CanvasMapper) -> None:
         domain_point = mapper.unmap_point(pos)
@@ -594,6 +671,95 @@ class DrawingCanvas(QWidget):
         bounds = hole.bounds()
         return Point2D((bounds.min_x + bounds.max_x) / 2.0, (bounds.min_y + bounds.max_y) / 2.0)
 
+    def _default_origin_point(self, outline: Polygon2D) -> Point2D:
+        bounds = outline.bounds()
+        return Point2D(bounds.min_x, bounds.max_y)
+
+    def _origin_point(self) -> Point2D:
+        if self._preview_origin_point is not None:
+            return self._preview_origin_point
+        outline = self.display_outline()
+        if outline is None:
+            return Point2D(0.0, 0.0)
+        if self.roof_plane is not None:
+            settings = self.roof_plane.generation_settings
+            if settings.origin_x_cm is not None and settings.origin_y_cm is not None:
+                return Point2D(settings.origin_x_cm, settings.origin_y_cm)
+        return self._default_origin_point(outline)
+
+    def _relative_coordinate_point(self, point: Point2D) -> Point2D:
+        origin = self._origin_point()
+        return Point2D(point.x - origin.x, origin.y - point.y)
+
+    def _grid_step_cm(self) -> float:
+        return max(0.1, self._app_settings.grid_size_cm)
+
+    def _snap_domain_point(self, point: Point2D, *, origin: Point2D | None = None) -> Point2D:
+        step_cm = self._grid_step_cm()
+        anchor = self._origin_point() if origin is None else origin
+        snapped_x = anchor.x + round((point.x - anchor.x) / step_cm) * step_cm
+        snapped_y = anchor.y - round((anchor.y - point.y) / step_cm) * step_cm
+        return Point2D(snapped_x, snapped_y)
+
+    def _point_on_polygon_boundary(self, point: Point2D, polygon: Polygon2D) -> bool:
+        tolerance = 1e-6
+        for start, end in polygon_edges(polygon):
+            cross = (end.x - start.x) * (point.y - start.y) - (end.y - start.y) * (point.x - start.x)
+            if abs(cross) > tolerance:
+                continue
+            if (
+                min(start.x, end.x) - tolerance <= point.x <= max(start.x, end.x) + tolerance
+                and min(start.y, end.y) - tolerance <= point.y <= max(start.y, end.y) + tolerance
+            ):
+                return True
+        return False
+
+    def _point_within_plane(self, point: Point2D, outline: Polygon2D) -> bool:
+        return point_in_polygon(point, outline) or self._point_on_polygon_boundary(point, outline)
+
+    def _hit_test_origin_handle(self, pos: QPointF, mapper: CanvasMapper) -> bool:
+        mapped_origin = mapper.map_point(self._origin_point())
+        return self._distance(pos, mapped_origin) <= MIDPOINT_HANDLE_RADIUS + 6
+
+    def _start_origin_drag(self, mapper: CanvasMapper) -> None:
+        self._drag_mapper = mapper
+        self._dragging_origin = True
+        self._preview_origin_point = self._origin_point()
+        self._sync_view_cursor()
+
+    def _update_origin_drag(self, pos: QPointF) -> None:
+        outline = self.display_outline()
+        if self._drag_mapper is None or outline is None:
+            return
+        base_origin = self._default_origin_point(outline)
+        if self.roof_plane is not None:
+            settings = self.roof_plane.generation_settings
+            if settings.origin_x_cm is not None and settings.origin_y_cm is not None:
+                base_origin = Point2D(settings.origin_x_cm, settings.origin_y_cm)
+        domain_point = self._snap_domain_point(self._drag_mapper.unmap_point(pos), origin=base_origin)
+        if not self._point_within_plane(domain_point, outline):
+            return
+        self._preview_origin_point = domain_point
+        self.update()
+
+    def _commit_origin_drag(self) -> None:
+        if not self._dragging_origin:
+            return
+        committed_origin = self._origin_point()
+        self._dragging_origin = False
+        self._drag_mapper = None
+        self._preview_origin_point = None
+        self._sync_view_cursor()
+        self.update()
+        self.origin_edit_committed.emit(committed_origin)
+
+    def _cancel_origin_drag(self) -> None:
+        self._dragging_origin = False
+        self._drag_mapper = None
+        self._preview_origin_point = None
+        self._sync_view_cursor()
+        self.update()
+
     def _update_edit_overlay_hover(self, pos: QPointF) -> None:
         outline = self.display_outline()
         mapper = self._canvas_mapper()
@@ -662,7 +828,8 @@ class DrawingCanvas(QWidget):
         return f"{value_cm:.1f}"
 
     def _coordinate_label_text(self, point: Point2D) -> str:
-        return f"X: {self._format_coordinate_value(point.x)} | Y: {self._format_coordinate_value(point.y)}"
+        relative_point = self._relative_coordinate_point(point)
+        return f"X: {self._format_coordinate_value(relative_point.x)} | Y: {self._format_coordinate_value(relative_point.y)}"
 
     def _coordinate_overlay_labels(self) -> list[_CoordinateOverlayLabel]:
         if self._edit_overlay is None:
@@ -704,6 +871,13 @@ class DrawingCanvas(QWidget):
                 outline = self.display_outline()
                 mapper = self._canvas_mapper()
                 if outline is not None and mapper is not None:
+                    if self._origin_edit_enabled:
+                        self._clear_edit_overlay()
+                        if self._hit_test_origin_handle(pos, mapper):
+                            self._start_origin_drag(mapper)
+                            return
+                        return
+
                     self._clear_edit_overlay()
                     hole_center_index = self._hit_test_hole_center(pos, mapper)
                     if hole_center_index is not None:
@@ -772,14 +946,20 @@ class DrawingCanvas(QWidget):
                 cursor = Qt.CursorShape.PointingHandCursor if near else Qt.CursorShape.CrossCursor
                 self.setCursor(cursor)
             self.update()
+        elif self._mode == self.MODE_VIEW and self._dragging_origin:
+            self._update_origin_drag(event.position())
+            return
         elif self._mode == self.MODE_VIEW and (self._dragging_vertex_index is not None or self._dragging_hole_center_index is not None):
             self._update_geometry_drag(event.position())
             return
-        elif self._mode == self.MODE_VIEW:
+        elif self._mode == self.MODE_VIEW and not self._origin_edit_enabled:
             self._update_edit_overlay_hover(event.position())
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        if self._mode == self.MODE_VIEW and event.button() == Qt.MouseButton.LeftButton and self._dragging_origin:
+            self._commit_origin_drag()
+            return
         if self._mode == self.MODE_VIEW and event.button() == Qt.MouseButton.LeftButton and (self._dragging_vertex_index is not None or self._dragging_hole_center_index is not None):
             self._commit_geometry_drag()
             return
@@ -810,6 +990,9 @@ class DrawingCanvas(QWidget):
                 if self._plane_selected or self._selected_hole_index is not None:
                     self.delete_requested.emit()
                     return
+            if event.key() == Qt.Key.Key_Escape and self._dragging_origin:
+                self._cancel_origin_drag()
+                return
             if event.key() == Qt.Key.Key_Escape and (self._dragging_vertex_index is not None or self._dragging_hole_center_index is not None):
                 self._cancel_geometry_drag()
                 self.update()
@@ -845,6 +1028,12 @@ class DrawingCanvas(QWidget):
             self._draw_selected_sheet_highlight(painter)
 
     def _draw_grid(self, painter: QPainter) -> None:
+        outline = self.display_outline()
+        mapper = self._canvas_mapper()
+        if outline is not None and mapper is not None:
+            self._draw_domain_grid(painter, mapper, outline.bounds())
+            return
+
         grid_color = self.palette().color(QPalette.ColorRole.Mid)
         grid_color.setAlpha(60)
         painter.setPen(QPen(grid_color, 0.5))
@@ -900,15 +1089,12 @@ class DrawingCanvas(QWidget):
             painter.drawEllipse(int(point.x()) - 3, int(point.y()) - 3, 6, 6)
 
     def _edit_overlay_grid_step_cm(self, mapper: CanvasMapper) -> float:
-        min_spacing_px = 36.0
-        for step_cm in (5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0):
-            if mapper.map_length(step_cm) >= min_spacing_px:
-                return step_cm
-        return 1000.0
+        return self._grid_step_cm()
 
     def _draw_domain_grid(self, painter: QPainter, mapper: CanvasMapper, bounds) -> None:
         domain_rect = mapper.map_rect(bounds.min_x, bounds.max_x, bounds.min_y, bounds.max_y)
         step_cm = self._edit_overlay_grid_step_cm(mapper)
+        origin = self._origin_point()
         grid_color = self.palette().color(QPalette.ColorRole.Mid)
         grid_color.setAlpha(50)
 
@@ -916,16 +1102,16 @@ class DrawingCanvas(QWidget):
         painter.setClipRect(domain_rect.adjusted(-1, -1, 1, 1))
         painter.setPen(QPen(grid_color, 0.75))
 
-        x_start = int(floor(bounds.min_x / step_cm))
-        x_end = int(ceil(bounds.max_x / step_cm))
+        x_start = int(floor((bounds.min_x - origin.x) / step_cm))
+        x_end = int(ceil((bounds.max_x - origin.x) / step_cm))
         for index in range(x_start, x_end + 1):
-            x = mapper.map_x(index * step_cm)
+            x = mapper.map_x(origin.x + index * step_cm)
             painter.drawLine(QPointF(x, domain_rect.top()), QPointF(x, domain_rect.bottom()))
 
-        y_start = int(floor(bounds.min_y / step_cm))
-        y_end = int(ceil(bounds.max_y / step_cm))
+        y_start = int(floor((origin.y - bounds.max_y) / step_cm))
+        y_end = int(ceil((origin.y - bounds.min_y) / step_cm))
         for index in range(y_start, y_end + 1):
-            y = mapper.map_y(index * step_cm)
+            y = mapper.map_y(origin.y - index * step_cm)
             painter.drawLine(QPointF(domain_rect.left(), y), QPointF(domain_rect.right(), y))
 
         painter.restore()
@@ -1054,13 +1240,36 @@ class DrawingCanvas(QWidget):
             label_rect.moveBottom(viewport.bottom())
         return label_rect
 
-    def _draw_axis_indicator(self, painter: QPainter, mapper: CanvasMapper, outline: Polygon2D) -> None:
-        bounds = outline.bounds()
-        domain_rect = mapper.map_rect(bounds.min_x, bounds.max_x, bounds.min_y, bounds.max_y)
-        origin = QPointF(
-            domain_rect.left() + AXIS_WIDGET_PADDING_PX,
-            domain_rect.bottom() - AXIS_WIDGET_PADDING_PX,
+    def _draw_origin_marker(self, painter: QPainter, mapper: CanvasMapper) -> None:
+        if not self._origin_edit_enabled:
+            return
+
+        mapped_origin = mapper.map_point(self._origin_point())
+        marker_color = QColor(255, 120, 120, 230)
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(QPen(marker_color, 1.6))
+        painter.setBrush(QColor(18, 18, 18, 190))
+        painter.drawLine(
+            QPointF(mapped_origin.x() - 10.0, mapped_origin.y()),
+            QPointF(mapped_origin.x() + 10.0, mapped_origin.y()),
         )
+        painter.drawLine(
+            QPointF(mapped_origin.x(), mapped_origin.y() - 10.0),
+            QPointF(mapped_origin.x(), mapped_origin.y() + 10.0),
+        )
+        painter.drawEllipse(mapped_origin, 4.0, 4.0)
+        painter.restore()
+
+    def _axis_indicator_origin(self) -> QPointF:
+        canvas_rect = QRectF(self.rect())
+        return QPointF(
+            canvas_rect.left() + AXIS_WIDGET_PADDING_PX,
+            canvas_rect.bottom() - AXIS_WIDGET_PADDING_PX,
+        )
+
+    def _draw_axis_indicator(self, painter: QPainter) -> None:
+        origin = self._axis_indicator_origin()
         x_tip = QPointF(origin.x() + AXIS_WIDGET_LENGTH_PX, origin.y())
         y_tip = QPointF(origin.x(), origin.y() - AXIS_WIDGET_LENGTH_PX)
 
@@ -1129,7 +1338,8 @@ class DrawingCanvas(QWidget):
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawPolygon(hole_polygon)
 
-        self._draw_axis_indicator(painter, mapper, outline)
+        self._draw_origin_marker(painter, mapper)
+        self._draw_axis_indicator(painter)
         self._draw_edit_overlay(painter, mapper, outline)
 
         if self._plane_selected:

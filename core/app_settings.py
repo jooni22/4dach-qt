@@ -21,9 +21,12 @@ class AppSettings:
         partial_cutout_top_extra_cm: Extra material added to the top portion
             of a sheet when a cutout only partially covers the band width.
             Defaults to 15.0 cm.  Must be >= 0.
+        grid_size_cm: Size of the editing grid square in domain centimetres.
+            Defaults to 10.0 cm. Must be > 0.
     """
 
     partial_cutout_top_extra_cm: float = 15.0
+    grid_size_cm: float = 10.0
 
     @classmethod
     def from_dict(cls, data: dict | None) -> "AppSettings":
@@ -33,7 +36,20 @@ class AppSettings:
             value = float(raw)
         except (TypeError, ValueError):
             value = 15.0
-        return cls(partial_cutout_top_extra_cm=max(0.0, value))
+        raw_grid = d.get("grid_size_cm", 10.0)
+        try:
+            grid_size = float(raw_grid)
+        except (TypeError, ValueError):
+            grid_size = 10.0
+        if grid_size <= 0:
+            grid_size = 10.0
+        return cls(
+            partial_cutout_top_extra_cm=max(0.0, value),
+            grid_size_cm=grid_size,
+        )
 
     def to_dict(self) -> dict:
-        return {"partial_cutout_top_extra_cm": self.partial_cutout_top_extra_cm}
+        return {
+            "partial_cutout_top_extra_cm": self.partial_cutout_top_extra_cm,
+            "grid_size_cm": self.grid_size_cm,
+        }

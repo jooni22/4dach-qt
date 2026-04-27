@@ -176,11 +176,6 @@ def validate_hole_polygon(outline: Polygon2D, hole: Polygon2D, sibling_holes: li
     if hole.area() >= outline.area() - EPSILON:
         issues.append("Wycinek musi być mniejszy od obrysu połaci")
 
-    for point in hole.points:
-        if not point_in_polygon(point, outline):
-            issues.append("Wycinek musi leżeć w całości wewnątrz obrysu")
-            break
-
     for sibling_hole in sibling_holes or []:
         if polygons_overlap(hole, sibling_hole):
             issues.append("Wycinki nie mogą na siebie nachodzić")

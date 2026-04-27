@@ -140,6 +140,36 @@ def test_project_state_add_roof_plane_round_trip():
     assert almost_equal(reloaded_plane.generation_settings.base_line_y_cm or 0.0, 200.0)
 
 
+def test_project_state_round_trip_preserves_custom_coordinate_origin():
+    state = ProjectState(
+        materials=[
+            Material(
+                id="PD510",
+                nazwa="PD510",
+                type="dachówkowa",
+                effective_width_cm=51,
+                module_length_cm=25,
+                bottom_margin_cm=10,
+                top_margin_cm=80,
+                min_sheet_length_cm=20,
+            )
+        ]
+    )
+
+    plane = state.add_roof_plane(build_rectangle_outline(300, 200))
+    plane.generation_settings.origin_x_cm = 45.5
+    plane.generation_settings.origin_y_cm = 188.0
+
+    payload = {"blachy": [material.to_dict() for material in state.materials]}
+    state.apply_to_config(payload)
+    reloaded = ProjectState.from_config(payload)
+    reloaded_plane = reloaded.active_roof_plane()
+
+    assert reloaded_plane is not None
+    assert almost_equal(reloaded_plane.generation_settings.origin_x_cm or 0.0, 45.5)
+    assert almost_equal(reloaded_plane.generation_settings.origin_y_cm or 0.0, 188.0)
+
+
 def test_project_state_can_switch_active_plane_explicitly():
     state = ProjectState()
     first_plane = state.add_roof_plane(build_rectangle_outline(300, 200))
@@ -278,12 +308,14 @@ def test_project_state_supports_multiple_holes_and_round_trip():
     assert reloaded.roof_planes[0].holes[1].points == second_hole.points
 
 
-def test_project_state_rejects_hole_outside_outline():
+def test_project_state_allows_hole_outside_outline():
     state = ProjectState()
     plane = state.add_roof_plane(build_rectangle_outline(300, 200))
 
-    with pytest.raises(ValueError, match="Wycinek musi leżeć w całości wewnątrz obrysu"):
-        state.add_hole_to_plane(Polygon2D.rectangle(80, 80, origin_x=260, origin_y=20), plane.id)
+    updated_plane = state.add_hole_to_plane(Polygon2D.rectangle(80, 80, origin_x=260, origin_y=20), plane.id)
+
+    assert len(updated_plane.holes) == 1
+    assert updated_plane.holes[0].points[0] == Point2D(260, 20)
 
 
 def test_project_state_rejects_overlapping_holes():
@@ -311,13 +343,14 @@ def test_project_state_roof_plane_edit_operations_update_geometry_revision():
     assert almost_equal(edited_plane.generation_settings.base_line_y_cm or 0.0, 205.0)
 
 
-def test_project_state_rejects_outline_edit_when_it_breaks_hole_containment():
+def test_project_state_allows_outline_edit_when_it_breaks_hole_containment():
     state = ProjectState()
     plane = state.add_roof_plane(build_rectangle_outline(300, 200))
     state.add_hole_to_plane(Polygon2D.rectangle(60, 60, origin_x=30, origin_y=40), plane.id)
 
-    with pytest.raises(ValueError, match="Wycinek musi leżeć w całości wewnątrz obrysu"):
-        state.move_roof_plane_point(0, 80, 0, plane.id)
+    updated_plane = state.move_roof_plane_point(0, 80, 0, plane.id)
+
+    assert updated_plane.outline.points[0] == Point2D(80, 0)
 
 
 def test_project_state_delete_hole_marks_geometry_changed():

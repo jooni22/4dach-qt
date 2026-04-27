@@ -5,15 +5,16 @@ import pytest
 pytest.importorskip("PySide6")
 pytest.importorskip("pytestqt")
 
-from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
+from PySide6.QtCore import QEvent, QPoint, QPointF, QRectF, Qt
 from PySide6.QtGui import QMouseEvent, QPalette
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
+from core.app_settings import AppSettings
 from core.geometry import segment_length
 from core.layout_engine import generate_layout
 from core.models import Material, Point2D, Polygon2D, RoofPlane
-from ui.drawing_canvas import DrawingCanvas
+from ui.drawing_canvas import AXIS_WIDGET_PADDING_PX, DrawingCanvas
 
 
 def _make_canvas(qtbot, outline: Polygon2D, *, holes: list[Polygon2D] | None = None) -> DrawingCanvas:
@@ -186,7 +187,7 @@ def test_canvas_dragging_cutout_vertex_emits_updated_hole(qtbot):
     assert canvas.selected_geometry_kind() == "cutout_vertex"
 
 
-def test_canvas_rejects_cutout_vertex_drag_outside_plane(qtbot):
+def test_canvas_allows_cutout_vertex_drag_outside_plane(qtbot):
     outline = Polygon2D.rectangle(300, 200)
     hole = Polygon2D.rectangle(80, 60, origin_x=100, origin_y=70)
     canvas = _make_canvas(qtbot, outline, holes=[hole])
@@ -195,13 +196,25 @@ def test_canvas_rejects_cutout_vertex_drag_outside_plane(qtbot):
     invalid_domain = Point2D(-10, 70)
     target = _point_on_canvas(canvas, invalid_domain)
 
-    with qtbot.waitSignal(canvas.outline_edit_rejected, timeout=1000) as blocker:
+    with qtbot.waitSignal(canvas.hole_edit_committed, timeout=1000) as blocker:
         QTest.mousePress(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, start)
         QTest.mouseMove(canvas, target)
         QTest.mouseRelease(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, target)
 
-    assert "Wycinek musi leżeć w całości wewnątrz obrysu" in blocker.args[0]
-    assert canvas.display_holes()[0].points == hole.points
+    assert blocker.args[0] == 0
+    assert blocker.args[1].points[0].x == pytest.approx(invalid_domain.x, abs=1.5)
+    assert blocker.args[1].points[0].y == pytest.approx(invalid_domain.y, abs=1.5)
+
+
+def test_canvas_axis_indicator_origin_is_pinned_to_canvas_corner(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+
+    axis_origin = canvas._axis_indicator_origin()
+    canvas_rect = QRectF(canvas.rect())
+
+    assert axis_origin.x() == pytest.approx(AXIS_WIDGET_PADDING_PX)
+    assert axis_origin.y() == pytest.approx(canvas_rect.bottom() - AXIS_WIDGET_PADDING_PX)
 
 
 def test_canvas_hovering_outline_vertex_sets_edit_overlay(qtbot):
@@ -288,11 +301,79 @@ def test_canvas_dragging_hole_center_exposes_coordinate_labels_for_all_cutout_ve
     assert [label.domain_point for label in labels[1:]] == preview_hole.points
 
 
+def test_canvas_origin_defaults_to_outline_bottom_left_corner(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+
+    assert canvas._origin_point() == Point2D(0.0, 200.0)
+
+
+def test_canvas_coordinate_label_text_uses_origin_relative_coordinates(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    plane = RoofPlane(id="plane-1", name="1", outline=outline)
+    plane.generation_settings.origin_x_cm = 25.0
+    plane.generation_settings.origin_y_cm = 180.0
+    canvas = DrawingCanvas()
+    canvas.resize(640, 420)
+    canvas.set_roof_plane(plane)
+    qtbot.addWidget(canvas)
+    canvas.show()
+    qtbot.waitExposed(canvas)
+
+    assert canvas._coordinate_label_text(Point2D(450.24, 120.54)) == "X: 425.2 | Y: 59.5"
+
+
+def test_canvas_dragging_origin_emits_committed_origin_point(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+
+    canvas.set_origin_edit_enabled(True)
+    start = _point_on_canvas(canvas, canvas._origin_point())
+    target_domain = Point2D(80, 150)
+    target = _point_on_canvas(canvas, target_domain)
+
+    with qtbot.waitSignal(canvas.origin_edit_committed, timeout=1000) as blocker:
+        QTest.mousePress(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, start)
+        _send_mouse_move(canvas, target, buttons=Qt.MouseButton.LeftButton)
+        QTest.mouseRelease(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, target)
+
+    committed_origin = blocker.args[0]
+    assert committed_origin.x == pytest.approx(target_domain.x, abs=1.5)
+    assert committed_origin.y == pytest.approx(target_domain.y, abs=1.5)
+
+
+def test_canvas_dragging_vertex_snaps_to_configured_grid_size(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+    canvas.set_app_settings(AppSettings(grid_size_cm=25.0))
+
+    start = _point_on_canvas(canvas, outline.points[1])
+    target = _point_on_canvas(canvas, Point2D(263, 43))
+
+    QTest.mousePress(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, start)
+    _send_mouse_move(canvas, target, buttons=Qt.MouseButton.LeftButton)
+
+    preview = canvas.display_outline()
+    assert preview is not None
+    assert preview.points[1].x == pytest.approx(275.0, abs=1.5)
+    assert preview.points[1].y == pytest.approx(50.0, abs=1.5)
+
+
+def test_canvas_edit_overlay_uses_configured_grid_size(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+    canvas.set_app_settings(AppSettings(grid_size_cm=5.0))
+
+    mapper = canvas._canvas_mapper()
+
+    assert canvas._edit_overlay_grid_step_cm(mapper) == pytest.approx(5.0)
+
+
 def test_canvas_coordinate_label_text_uses_single_decimal_without_unit(qtbot):
     outline = Polygon2D.rectangle(300, 200)
     canvas = _make_canvas(qtbot, outline)
 
-    assert canvas._coordinate_label_text(Point2D(450.24, 120.54)) == "X: 450.2 | Y: 120.5"
+    assert canvas._coordinate_label_text(Point2D(450.24, 120.54)) == "X: 450.2 | Y: 79.5"
 
 
 def test_canvas_mouse_release_clears_edit_overlay_after_drag(qtbot):

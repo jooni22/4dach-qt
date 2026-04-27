@@ -89,7 +89,7 @@ class ToolbarController:
             ("open_folder",    "Otwórz projekt",                              False, None),
             ("save_floppy",    "Zapisz projekt",                              False, None),
             ("roof_outline",   "Rysowanie krawędzi połaci",                   False, None),
-            ("base_point_toggle", "Pokaż/ukryj punkt bazowy",                 False, None),
+            ("base_point_toggle", "Ustaw punkt zerowy",                       True,  None),
             ("undo",           "Cofnij",                                       False, None),
             ("plus",           "Dodaj / Plus",                                False, None),
             ("minus",          "Odejmij / Minus",                             False, None),
@@ -110,6 +110,7 @@ class ToolbarController:
         self.action_open_project = self._toolbar_actions[1][0]
         self.action_save_project = self._toolbar_actions[2][0]
         self.action_draw_outline = self._toolbar_actions[3][0]
+        self.action_base_point_toggle = self._toolbar_actions[4][0]
         self.action_undo = self._toolbar_actions[5][0]
         self.action_trash = self._toolbar_actions[8][0]
         self.action_module_count = self._toolbar_actions[9][0]
