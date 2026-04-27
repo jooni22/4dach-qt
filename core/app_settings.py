@@ -12,6 +12,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+SHIFT_DRAG_BEHAVIOR_FREE_MOVE = "free_move"
+SHIFT_DRAG_BEHAVIOR_ORTHOGONAL_LOCK = "orthogonal_lock"
+_VALID_SHIFT_DRAG_BEHAVIORS = {
+    SHIFT_DRAG_BEHAVIOR_FREE_MOVE,
+    SHIFT_DRAG_BEHAVIOR_ORTHOGONAL_LOCK,
+}
+
 
 @dataclass
 class AppSettings:
@@ -23,10 +30,14 @@ class AppSettings:
             Defaults to 15.0 cm.  Must be >= 0.
         grid_size_cm: Size of the editing grid square in domain centimetres.
             Defaults to 10.0 cm. Must be > 0.
+        shift_drag_behavior: Defines how holding Shift modifies movement.
+            `free_move` bypasses snapping, while `orthogonal_lock` constrains
+            movement to one axis using 1 cm increments.
     """
 
     partial_cutout_top_extra_cm: float = 15.0
     grid_size_cm: float = 10.0
+    shift_drag_behavior: str = SHIFT_DRAG_BEHAVIOR_FREE_MOVE
 
     @classmethod
     def from_dict(cls, data: dict | None) -> "AppSettings":
@@ -43,13 +54,18 @@ class AppSettings:
             grid_size = 10.0
         if grid_size <= 0:
             grid_size = 10.0
+        shift_drag_behavior = str(d.get("shift_drag_behavior", SHIFT_DRAG_BEHAVIOR_FREE_MOVE))
+        if shift_drag_behavior not in _VALID_SHIFT_DRAG_BEHAVIORS:
+            shift_drag_behavior = SHIFT_DRAG_BEHAVIOR_FREE_MOVE
         return cls(
             partial_cutout_top_extra_cm=max(0.0, value),
             grid_size_cm=grid_size,
+            shift_drag_behavior=shift_drag_behavior,
         )
 
     def to_dict(self) -> dict:
         return {
             "partial_cutout_top_extra_cm": self.partial_cutout_top_extra_cm,
             "grid_size_cm": self.grid_size_cm,
+            "shift_drag_behavior": self.shift_drag_behavior,
         }

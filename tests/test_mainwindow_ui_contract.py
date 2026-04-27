@@ -375,6 +375,7 @@ def test_mainwindow_settings_dialog_updates_grid_size_on_project_state_and_canva
             return AppSettings(
                 partial_cutout_top_extra_cm=self._settings.partial_cutout_top_extra_cm,
                 grid_size_cm=25.0,
+                shift_drag_behavior="orthogonal_lock",
             )
 
     monkeypatch.setattr("ui.dialogs.settings_dialog.SettingsDialog", FakeSettingsDialog)
@@ -383,8 +384,10 @@ def test_mainwindow_settings_dialog_updates_grid_size_on_project_state_and_canva
 
     canvas = window._workspace.canvas_for_plane(plane.id)
     assert window.project_state.app_settings.grid_size_cm == pytest.approx(25.0)
+    assert window.project_state.app_settings.shift_drag_behavior == "orthogonal_lock"
     assert canvas is not None
     assert canvas._edit_overlay_grid_step_cm(canvas._canvas_mapper()) == pytest.approx(25.0)
+    assert canvas._app_settings.shift_drag_behavior == "orthogonal_lock"
 
 
 def test_mainwindow_toolbar_snap_toggle_updates_canvas_snap_state(qtbot):

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QDoubleSpinBox,
@@ -13,7 +14,11 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from core.app_settings import AppSettings
+from core.app_settings import (
+    AppSettings,
+    SHIFT_DRAG_BEHAVIOR_FREE_MOVE,
+    SHIFT_DRAG_BEHAVIOR_ORTHOGONAL_LOCK,
+)
 
 
 class SettingsDialog(QDialog):
@@ -79,6 +84,17 @@ class SettingsDialog(QDialog):
         grid_label.setWordWrap(True)
         grid_form.addRow(grid_label, self._spin_grid_size)
 
+        self._combo_shift_behavior = QComboBox()
+        self._combo_shift_behavior.addItem("Shift: swobodny ruch bez przyciągania", SHIFT_DRAG_BEHAVIOR_FREE_MOVE)
+        self._combo_shift_behavior.addItem("Shift: blokada osi X/Y co 1 cm", SHIFT_DRAG_BEHAVIOR_ORTHOGONAL_LOCK)
+        self._combo_shift_behavior.setToolTip(
+            "Określa działanie klawisza Shift podczas przeciągania punktów,\n"
+            "wycinków i punktu bazowego."
+        )
+        shift_label = QLabel("Zachowanie klawisza Shift:")
+        shift_label.setWordWrap(True)
+        grid_form.addRow(shift_label, self._combo_shift_behavior)
+
         root.addWidget(grp_grid)
 
         # --- Przyciski ---
@@ -93,12 +109,15 @@ class SettingsDialog(QDialog):
     def _load_values(self, settings: AppSettings) -> None:
         self._spin_top_extra.setValue(settings.partial_cutout_top_extra_cm)
         self._spin_grid_size.setValue(settings.grid_size_cm)
+        index = self._combo_shift_behavior.findData(settings.shift_drag_behavior)
+        self._combo_shift_behavior.setCurrentIndex(max(0, index))
 
     def get_values(self) -> dict:
         """Return current dialog values as a dict matching AppSettings fields."""
         return {
             "partial_cutout_top_extra_cm": self._spin_top_extra.value(),
             "grid_size_cm": self._spin_grid_size.value(),
+            "shift_drag_behavior": self._combo_shift_behavior.currentData(),
         }
 
     def build_settings(self) -> AppSettings:

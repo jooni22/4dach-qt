@@ -28,10 +28,14 @@ from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QFontMetricsF, QKeyEvent, QMouseEvent, QPainter, QPainterPath, QPalette, QPen, QPolygonF
 from PySide6.QtWidgets import QApplication, QWidget
 
-from core.app_settings import AppSettings
+from core.app_settings import (
+    AppSettings,
+    SHIFT_DRAG_BEHAVIOR_FREE_MOVE,
+    SHIFT_DRAG_BEHAVIOR_ORTHOGONAL_LOCK,
+)
 from core.canvas_mapper import CanvasMapper
 from core.geometry import point_in_polygon, polygon_edges, replace_polygon_point, segment_length, validate_hole_polygon, validate_polygon
-from core.models import Point2D, Polygon2D
+from core.models import Bounds2D, Point2D, Polygon2D
 
 SNAP_RADIUS = 10
 VERTEX_HANDLE_RADIUS = 6
@@ -481,14 +485,20 @@ class DrawingCanvas(QWidget):
         if self._drag_mapper is None:
             return
         raw_domain_point = self._drag_mapper.unmap_point(pos)
-        domain_point = self._snap_domain_point(raw_domain_point, modifiers=modifiers)
+        if self._shift_orthogonal_lock_active(modifiers):
+            domain_point = self._apply_shift_orthogonal_lock(
+                raw_domain_point,
+                reference_point=self._drag_reference_point(),
+            )
+        else:
+            domain_point = self._snap_domain_point(raw_domain_point, modifiers=modifiers)
         
         if self._dragging_hole_center_index is not None and self._drag_start_pos is not None:
             if self._drag_start_hole is not None:
-                dx = raw_domain_point.x - self._drag_start_pos.x
-                dy = raw_domain_point.y - self._drag_start_pos.y
+                dx = domain_point.x - self._drag_start_pos.x
+                dy = domain_point.y - self._drag_start_pos.y
                 new_points = [Point2D(p.x + dx, p.y + dy) for p in self._drag_start_hole.points]
-                if self._snap_should_apply(modifiers):
+                if self._snap_should_apply(modifiers) and not self._shift_orthogonal_lock_active(modifiers):
                     new_points = self._snap_translated_hole_vertices(new_points, modifiers=modifiers)
                 self._preview_hole = Polygon2D(new_points)
                 self._set_edit_overlay(
@@ -710,19 +720,41 @@ class DrawingCanvas(QWidget):
         return max(0.1, self._app_settings.grid_size_cm)
 
     def _effective_grid_step_cm(self, modifiers: Qt.KeyboardModifier = Qt.KeyboardModifier.NoModifier) -> float:
+        if self._shift_orthogonal_lock_active(modifiers):
+            return 1.0
         step_cm = self._grid_step_cm()
         if modifiers & Qt.KeyboardModifier.ControlModifier:
             return max(0.1, step_cm / 10.0)
         return step_cm
 
+    def _shift_drag_behavior(self) -> str:
+        behavior = self._app_settings.shift_drag_behavior
+        if behavior in {SHIFT_DRAG_BEHAVIOR_FREE_MOVE, SHIFT_DRAG_BEHAVIOR_ORTHOGONAL_LOCK}:
+            return behavior
+        return SHIFT_DRAG_BEHAVIOR_FREE_MOVE
+
     def _current_modifiers(self) -> Qt.KeyboardModifier:
         return QApplication.keyboardModifiers()
 
+    def _shift_free_move_active(self, modifiers: Qt.KeyboardModifier) -> bool:
+        return bool(
+            modifiers & Qt.KeyboardModifier.ShiftModifier
+            and self._shift_drag_behavior() == SHIFT_DRAG_BEHAVIOR_FREE_MOVE
+        )
+
+    def _shift_orthogonal_lock_active(self, modifiers: Qt.KeyboardModifier) -> bool:
+        return bool(
+            modifiers & Qt.KeyboardModifier.ShiftModifier
+            and self._shift_drag_behavior() == SHIFT_DRAG_BEHAVIOR_ORTHOGONAL_LOCK
+        )
+
     def _snap_should_apply(self, modifiers: Qt.KeyboardModifier | None = None) -> bool:
         effective_modifiers = self._current_modifiers() if modifiers is None else modifiers
+        if self._shift_orthogonal_lock_active(effective_modifiers):
+            return True
         if not self._snap_to_grid_enabled:
             return False
-        if effective_modifiers & Qt.KeyboardModifier.ShiftModifier:
+        if self._shift_free_move_active(effective_modifiers):
             return False
         return True
 
@@ -740,6 +772,28 @@ class DrawingCanvas(QWidget):
         snapped_x = anchor.x + round((point.x - anchor.x) / step_cm) * step_cm
         snapped_y = anchor.y - round((anchor.y - point.y) / step_cm) * step_cm
         return Point2D(snapped_x, snapped_y)
+
+    def _drag_reference_point(self) -> Point2D | None:
+        if self._dragging_origin:
+            return self._origin_drag_reference_point
+        if self._dragging_hole_center_index is not None:
+            return self._drag_start_pos
+        if self._dragging_vertex_index is None:
+            return None
+        if self._drag_start_outline is not None:
+            return self._drag_start_outline.points[self._dragging_vertex_index]
+        if self._drag_start_hole is not None:
+            return self._drag_start_hole.points[self._dragging_vertex_index]
+        return None
+
+    def _apply_shift_orthogonal_lock(self, point: Point2D, *, reference_point: Point2D | None) -> Point2D:
+        if reference_point is None:
+            return point
+        dx = point.x - reference_point.x
+        dy = point.y - reference_point.y
+        if abs(dx) >= abs(dy):
+            return Point2D(reference_point.x + round(dx), reference_point.y)
+        return Point2D(reference_point.x, reference_point.y + round(dy))
 
     def _snap_translated_hole_vertices(
         self,
@@ -821,11 +875,16 @@ class DrawingCanvas(QWidget):
             settings = self.roof_plane.generation_settings
             if settings.origin_x_cm is not None and settings.origin_y_cm is not None:
                 base_origin = Point2D(settings.origin_x_cm, settings.origin_y_cm)
-        domain_point = self._snap_domain_point(
-            self._drag_mapper.unmap_point(pos),
-            origin=base_origin,
-            modifiers=self._current_modifiers(),
-        )
+        raw_domain_point = self._drag_mapper.unmap_point(pos)
+        modifiers = self._current_modifiers()
+        if self._shift_orthogonal_lock_active(modifiers):
+            domain_point = self._apply_shift_orthogonal_lock(raw_domain_point, reference_point=base_origin)
+        else:
+            domain_point = self._snap_domain_point(
+                raw_domain_point,
+                origin=base_origin,
+                modifiers=modifiers,
+            )
         if not self._point_within_plane(domain_point, outline):
             domain_point = self._closest_boundary_point(domain_point, outline)
         self._preview_origin_point = domain_point
@@ -1116,9 +1175,14 @@ class DrawingCanvas(QWidget):
         painter.drawRect(self.rect().adjusted(0, 0, -1, -1))
 
         if self.roof_plane is not None and self.display_outline() is not None:
-            if self._grid_visible():
-                self._draw_grid(painter)
-            self._draw_roof_plane(painter)
+            if self._dragging_origin:
+                self._draw_roof_plane(painter)
+                if self._grid_visible():
+                    self._draw_grid(painter)
+            else:
+                if self._grid_visible():
+                    self._draw_grid(painter)
+                self._draw_roof_plane(painter)
         else:
             if self._grid_visible():
                 self._draw_grid(painter)
@@ -1138,7 +1202,7 @@ class DrawingCanvas(QWidget):
         outline = self.display_outline()
         mapper = self._canvas_mapper()
         if outline is not None and mapper is not None:
-            self._draw_domain_grid(painter, mapper, outline.bounds())
+            self._draw_domain_grid(painter, mapper, self._grid_bounds_for_current_paint(mapper))
             return
 
         grid_color = self.palette().color(QPalette.ColorRole.Mid)
@@ -1196,7 +1260,32 @@ class DrawingCanvas(QWidget):
             painter.drawEllipse(int(point.x()) - 3, int(point.y()) - 3, 6, 6)
 
     def _edit_overlay_grid_step_cm(self, mapper: CanvasMapper) -> float:
-        return self._effective_grid_step_cm(self._current_modifiers())
+        return self._grid_step_cm()
+
+    def _canvas_domain_bounds(self, mapper: CanvasMapper) -> Bounds2D:
+        corners = (
+            mapper.unmap_point(QPointF(self.rect().left(), self.rect().top())),
+            mapper.unmap_point(QPointF(self.rect().right(), self.rect().top())),
+            mapper.unmap_point(QPointF(self.rect().left(), self.rect().bottom())),
+            mapper.unmap_point(QPointF(self.rect().right(), self.rect().bottom())),
+        )
+        xs = [point.x for point in corners]
+        ys = [point.y for point in corners]
+        return Bounds2D(min(xs), min(ys), max(xs), max(ys))
+
+    def _grid_bounds_for_current_paint(self, mapper: CanvasMapper) -> Bounds2D:
+        outline = self.display_outline()
+        if outline is None:
+            return self._canvas_domain_bounds(mapper)
+        if self._dragging_origin:
+            return self._canvas_domain_bounds(mapper)
+        if (
+            self._edit_overlay is not None
+            and self._edit_overlay.mode == "drag"
+            and self._edit_overlay.target_kind in {"hole_center", "hole_vertex"}
+        ):
+            return self._canvas_domain_bounds(mapper)
+        return outline.bounds()
 
     def _draw_domain_grid(self, painter: QPainter, mapper: CanvasMapper, bounds) -> None:
         domain_rect = mapper.map_rect(bounds.min_x, bounds.max_x, bounds.min_y, bounds.max_y)
@@ -1232,7 +1321,7 @@ class DrawingCanvas(QWidget):
         domain_rect = mapper.map_rect(bounds.min_x, bounds.max_x, bounds.min_y, bounds.max_y)
         active_point = overlay.domain_point
 
-        self._draw_domain_grid(painter, mapper, bounds)
+        self._draw_domain_grid(painter, mapper, self._grid_bounds_for_current_paint(mapper))
 
         axis_color = self.palette().color(QPalette.ColorRole.Highlight)
         axis_color.setAlpha(170)
@@ -1464,9 +1553,6 @@ class DrawingCanvas(QWidget):
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawPolygon(hole_polygon)
 
-        self._draw_axis_indicator(painter)
-        self._draw_edit_overlay(painter, mapper, outline)
-
         if self._plane_selected:
             self._draw_vertex_handles(
                 painter,
@@ -1497,6 +1583,8 @@ class DrawingCanvas(QWidget):
             painter.drawEllipse(mapped_center, radius, radius)
 
         self._draw_edge_measurements(painter, mapper, outline, text_color, outline_color)
+        self._draw_axis_indicator(painter)
+        self._draw_edit_overlay(painter, mapper, outline)
 
     def _draw_vertex_handles(
         self,

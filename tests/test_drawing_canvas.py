@@ -488,6 +488,28 @@ def test_canvas_shift_temporarily_bypasses_vertex_snapping(qtbot):
     assert preview.points[1].y == pytest.approx(target_domain.y, abs=1.5)
 
 
+def test_canvas_shift_orthogonal_lock_constrains_vertex_drag_to_one_axis_in_one_centimeter_steps(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+    canvas.set_app_settings(AppSettings(grid_size_cm=25.0, shift_drag_behavior="orthogonal_lock"))
+
+    start = _point_on_canvas(canvas, outline.points[1])
+    target = _point_on_canvas(canvas, Point2D(263, 43))
+
+    QTest.mousePress(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, start)
+    _send_mouse_move(
+        canvas,
+        target,
+        buttons=Qt.MouseButton.LeftButton,
+        modifiers=Qt.KeyboardModifier.ShiftModifier,
+    )
+
+    preview = canvas.display_outline()
+    assert preview is not None
+    assert preview.points[1].x == pytest.approx(300.0, abs=1.5)
+    assert preview.points[1].y == pytest.approx(43.0, abs=1.5)
+
+
 def test_canvas_ctrl_uses_ten_times_finer_snap_step(qtbot):
     outline = Polygon2D.rectangle(300, 200)
     canvas = _make_canvas(qtbot, outline)
@@ -508,6 +530,18 @@ def test_canvas_ctrl_uses_ten_times_finer_snap_step(qtbot):
     assert preview is not None
     assert preview.points[1].x == pytest.approx(262.5, abs=1.5)
     assert preview.points[1].y == pytest.approx(42.5, abs=1.5)
+
+
+def test_canvas_ctrl_keeps_visual_grid_step_unchanged(qtbot, monkeypatch):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+    canvas.set_app_settings(AppSettings(grid_size_cm=25.0))
+    mapper = canvas._canvas_mapper()
+
+    monkeypatch.setattr(canvas, "_current_modifiers", lambda: Qt.KeyboardModifier.ControlModifier)
+
+    assert mapper is not None
+    assert canvas._edit_overlay_grid_step_cm(mapper) == pytest.approx(25.0)
 
 
 def test_canvas_dragging_hole_center_snaps_a_vertex_instead_of_the_center(qtbot):
@@ -603,6 +637,86 @@ def test_canvas_manual_grid_toggle_remains_independent_from_edit_overlay(qtbot):
 
     assert canvas._show_grid is False
     assert canvas._edit_overlay is not None
+
+
+def test_canvas_origin_drag_renders_grid_after_roof_plane(qtbot, monkeypatch):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+    canvas.set_origin_edit_enabled(True)
+    calls: list[str] = []
+
+    monkeypatch.setattr(canvas, "_draw_grid", lambda *args, **kwargs: calls.append("grid"))
+    monkeypatch.setattr(canvas, "_draw_roof_plane", lambda *args, **kwargs: calls.append("roof"))
+    monkeypatch.setattr(canvas, "_draw_origin_marker", lambda *args, **kwargs: calls.append("origin"))
+
+    start = _point_on_canvas(canvas, canvas._origin_point())
+    QTest.mousePress(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, start)
+
+    canvas.grab()
+    QApplication.processEvents()
+
+    assert "roof" in calls
+    assert "grid" in calls
+    assert calls.index("roof") < calls.index("grid")
+
+
+def test_canvas_origin_drag_grid_extends_beyond_outline_bounds(qtbot, monkeypatch):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+    canvas.set_origin_edit_enabled(True)
+    captured_bounds = []
+
+    original = canvas._draw_domain_grid
+
+    def capture_bounds(painter, mapper, bounds):
+        captured_bounds.append(bounds)
+        return original(painter, mapper, bounds)
+
+    monkeypatch.setattr(canvas, "_draw_domain_grid", capture_bounds)
+
+    start = _point_on_canvas(canvas, canvas._origin_point())
+    QTest.mousePress(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, start)
+
+    canvas.grab()
+    QApplication.processEvents()
+
+    outline_bounds = outline.bounds()
+    assert captured_bounds
+    assert captured_bounds[0].min_x < outline_bounds.min_x
+    assert captured_bounds[0].max_x > outline_bounds.max_x
+    assert captured_bounds[0].min_y < outline_bounds.min_y
+    assert captured_bounds[0].max_y > outline_bounds.max_y
+
+
+def test_canvas_cutout_drag_grid_extends_beyond_outline_bounds(qtbot, monkeypatch):
+    outline = Polygon2D.rectangle(300, 200)
+    hole = Polygon2D.rectangle(80, 60, origin_x=100, origin_y=70)
+    canvas = _make_canvas(qtbot, outline, holes=[hole])
+    captured_bounds = []
+
+    original = canvas._draw_domain_grid
+
+    def capture_bounds(painter, mapper, bounds):
+        captured_bounds.append(bounds)
+        return original(painter, mapper, bounds)
+
+    monkeypatch.setattr(canvas, "_draw_domain_grid", capture_bounds)
+
+    hole_center = _point_on_canvas(canvas, Point2D(140, 100))
+    target = _point_on_canvas(canvas, Point2D(170, 120))
+
+    QTest.mousePress(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, hole_center)
+    _send_mouse_move(canvas, target, buttons=Qt.MouseButton.LeftButton)
+
+    canvas.grab()
+    QApplication.processEvents()
+
+    outline_bounds = outline.bounds()
+    assert captured_bounds
+    assert captured_bounds[0].min_x < outline_bounds.min_x
+    assert captured_bounds[0].max_x > outline_bounds.max_x
+    assert captured_bounds[0].min_y < outline_bounds.min_y
+    assert captured_bounds[0].max_y > outline_bounds.max_y
 
 
 def test_canvas_uses_extra_horizontal_view_margin(qtbot):
