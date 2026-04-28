@@ -165,6 +165,9 @@ class DrawingCanvas(QWidget):
         self._caret_timer.timeout.connect(self._toggle_caret)
         self._caret_timer.start()
 
+        self._render_items_cache: list | None = None
+        self._render_items_cache_revision: int = -1
+
         self.setMouseTracking(True)
         self.setAutoFillBackground(True)
         self.setMinimumSize(640, 420)
@@ -194,6 +197,8 @@ class DrawingCanvas(QWidget):
         self._show_sheet_placements = visible
         if not visible:
             self._selected_sheet_id = None
+        self._render_items_cache = None
+        self._render_items_cache_revision = -1
         self.update()
 
     def set_snap_to_grid_enabled(self, enabled: bool) -> None:
@@ -247,6 +252,8 @@ class DrawingCanvas(QWidget):
         self._preview_origin_point = None
         self._check_selection_changed()
         self._sync_view_cursor()
+        self._render_items_cache = None
+        self._render_items_cache_revision = -1
         self.update()
 
     def set_material(self, material) -> None:
@@ -395,6 +402,10 @@ class DrawingCanvas(QWidget):
         if self.roof_plane is None:
             return []
 
+        plane_revision = self.roof_plane.layout_revision
+        if self._render_items_cache is not None and self._render_items_cache_revision == plane_revision:
+            return self._render_items_cache
+
         visible_placements = self._visible_sheet_placements()
         placements_by_id = {placement.id: placement for placement in visible_placements}
         render_items: list[_SheetRenderItem] = []
@@ -446,7 +457,10 @@ class DrawingCanvas(QWidget):
                 )
             )
 
-        return sorted(render_items, key=lambda item: (item.source != "auto", item.band_index, item.placement_id))
+        sorted_items = sorted(render_items, key=lambda item: (item.source != "auto", item.band_index, item.placement_id))
+        self._render_items_cache = sorted_items
+        self._render_items_cache_revision = plane_revision
+        return sorted_items
 
     def _placement_polygon(self, placement) -> Polygon2D:
         visual_top = placement.y_top_cm
@@ -772,7 +786,14 @@ class DrawingCanvas(QWidget):
         )
         if ok and new_len > 0 and abs(new_len - current_len) > 0.1:
             scale = new_len / current_len
-            new_points = [Point2D(p.x * scale, p.y * scale) for p in outline.points]
+            anchor = start  # first vertex of the edited edge
+            new_points = [
+                Point2D(
+                    anchor.x + (p.x - anchor.x) * scale,
+                    anchor.y + (p.y - anchor.y) * scale,
+                )
+                for p in outline.points
+            ]
             new_outline = Polygon2D(new_points)
             self.outline_edit_committed.emit(new_outline)
 

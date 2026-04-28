@@ -5,6 +5,7 @@ import copy
 import json
 import sys
 import warnings
+from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 import tempfile
@@ -18,6 +19,8 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QDesktopServices
 
 from app_icons import build_icon
+
+_UNDO_STACK_MAX = 50
 from persistence import load_config, save_config
 from core.models import Point2D, Polygon2D, SheetPlacement
 from core.project_state import ProjectState
@@ -51,8 +54,8 @@ class MainWindow(QMainWindow):
         self._theme_mgr = ThemeManager()
         self._latest_report_html = ""
         self._latest_report_plane_id: str | None = None
-        self._undo_stack: list[_HistoryEntry] = []
-        self._redo_stack: list[_HistoryEntry] = []
+        self._undo_stack: deque[_HistoryEntry] = deque(maxlen=_UNDO_STACK_MAX)
+        self._redo_stack: deque[_HistoryEntry] = deque(maxlen=_UNDO_STACK_MAX)
         self._saved_snapshot_signature = ""
         self._saved_plane_snapshot_signatures: dict[str, str] = {}
         self._unsaved_plane_ids: set[str] = set()

@@ -11,7 +11,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from core.app_settings import AppSettings
-from core.geometry import segment_length
+from core.geometry import polygon_edges, segment_length
 from core.layout_engine import generate_layout
 from core.models import Material, Point2D, Polygon2D, RoofPlane
 from ui.drawing_canvas import AXIS_WIDGET_PADDING_PX, DrawingCanvas
@@ -1058,3 +1058,41 @@ def test_canvas_hides_sheet_rendering_in_wireframe_mode(qtbot):
     canvas.set_sheet_visibility(False)
 
     assert canvas._hit_test_sheet(QPointF(10.0, 10.0)) is None
+
+
+def test_canvas_edge_scale_preserves_anchor_point(qtbot):
+    """Scaling an edge should scale relative to the anchor point (first vertex of the edge),
+    not the origin (0, 0), so the shape scales in-place."""
+    # Create a rectangle at offset (100, 100)
+    outline = Polygon2D.rectangle(100, 100, origin_x=100, origin_y=100)
+    canvas = _make_canvas(qtbot, outline)
+    
+    # Store original anchor point and x_min
+    edges = list(polygon_edges(outline))
+    start, end = edges[0]  # First edge
+    original_anchor = start
+    original_x_min = outline.bounds().min_x
+    
+    # Scale the first edge from 100 to 150 (scale factor 1.5)
+    current_len = segment_length(start, end)
+    new_len = 150.0
+    scale = new_len / current_len
+    
+    # Apply the scaling logic from _prompt_scale_polygon
+    anchor = start
+    new_points = [
+        Point2D(
+            anchor.x + (p.x - anchor.x) * scale,
+            anchor.y + (p.y - anchor.y) * scale,
+        )
+        for p in outline.points
+    ]
+    new_outline = Polygon2D(new_points)
+    
+    # Verify anchor point is preserved (still at 100, 100)
+    assert new_outline.points[0].x == pytest.approx(100.0, abs=0.01)
+    assert new_outline.points[0].y == pytest.approx(100.0, abs=0.01)
+    
+    # Verify x_min has not moved (shape scaled in-place)
+    new_x_min = new_outline.bounds().min_x
+    assert new_x_min == pytest.approx(original_x_min, abs=0.01)

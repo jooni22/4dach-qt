@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import re
 from dataclasses import dataclass, field
 
 from core.app_settings import AppSettings
@@ -394,19 +395,18 @@ class ProjectState:
 
     def _is_placement_removed(self, placement_id: str, removed_ids: set[str]) -> bool:
         """Check if placement ID matches any removed ID (exact or legacy prefix match).
-        
-        Legacy IDs don't have -r{row} suffix. For backward compatibility,
-        if a removed ID lacks -r, treat it as a prefix and remove all placements
-        whose IDs start with that prefix + "-r".
+
+        Uses O(1) set lookup. For legacy backward-compatibility, checks if the
+        placement_id has a -r{row} suffix and whether its base is in removed_ids.
         """
         if placement_id in removed_ids:
             return True
-        
-        # Check for legacy ID prefix match
-        for removed_id in removed_ids:
-            if "-r" not in removed_id and placement_id.startswith(f"{removed_id}-r"):
+        # Legacy backward-compat: removed ID may lack -r\d+ suffix (old format)
+        m = re.search(r"-r\d+$", placement_id)
+        if m:
+            base = placement_id[: m.start()]
+            if base in removed_ids:
                 return True
-        
         return False
     
     def active_sheet_placements_for_plane(self, plane_id: str | None = None) -> list[SheetPlacement]:

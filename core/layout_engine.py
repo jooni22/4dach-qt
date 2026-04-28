@@ -294,6 +294,22 @@ def generate_layout(
                                 split_reason=placement_split,
                             )
                         )
+                        
+                        # Fix #7: Update segment coverage_polygons for partial_cutout_top to include visual extension
+                        if is_top_sheet and effective_extra > 0:
+                            extended_coverage_polygons = []
+                            for poly in band_segment.coverage_polygons:
+                                extended_points = []
+                                for pt in poly.points:
+                                    # Only shift top edge points upward, keep bottom edge in place
+                                    if abs(pt.y - band_segment.y_top_cm) < EPSILON:
+                                        extended_points.append(Point2D(pt.x, pt.y - effective_extra))
+                                    else:
+                                        extended_points.append(pt)
+                                extended_coverage_polygons.append(Polygon2D(extended_points))
+                            band_segment.coverage_polygons = extended_coverage_polygons
+                            # Update segment placement_id to point to the top sheet
+                            band_segment.placement_id = placement_id
                     else:
                         result.rejected_segments.append(
                             RejectedSegment(
@@ -359,7 +375,9 @@ def generate_layout(
                     row_index += 1
 
             band_segment.segment_index = segment_index
-            band_segment.placement_id = f"{plane.id}-b{band_index}-s{segment_index}-r0"
+            # Only set placement_id to r0 if not already set by partial_cutout_top logic
+            if band_segment.placement_id is None:
+                band_segment.placement_id = f"{plane.id}-b{band_index}-s{segment_index}-r0"
             layout_band.segments.append(band_segment)
 
         result.bands.append(layout_band)
@@ -620,5 +638,5 @@ def _point_on_edge_at_x(start: Point2D, end: Point2D, x_value: float) -> Point2D
     return Point2D(x_value, y_value)
 
 
-def _polygon_to_dict(polygon: Polygon2D) -> list[dict[str, float]]:
-    return [{"x": point.x, "y": point.y} for point in polygon.points]
+def _polygon_to_dict(polygon: Polygon2D) -> list[list[float]]:
+    return [[point.x, point.y] for point in polygon.points]

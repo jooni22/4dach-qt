@@ -964,3 +964,51 @@ def test_basic_user_workflow_smoke():
     assert "project_state" in config_after
     assert config_after["project_state"]["roof_planes"]["order"] == [plane.id]
     assert _compact_plane_payload(config_after, plane.id)["d"] == "manual_override"
+
+
+def test_is_placement_removed_legacy_prefix_match():
+    state = ProjectState(
+        materials=[
+            Material(
+                id="PD510",
+                nazwa="PD510",
+                type="dachówkowa",
+                effective_width_cm=51,
+                module_length_cm=25,
+                bottom_margin_cm=10,
+                top_margin_cm=15,
+                min_sheet_length_cm=20,
+            )
+        ]
+    )
+    plane = state.add_roof_plane(build_rectangle_outline(300, 200), selected_material_id="PD510")
+    state.generate_layout_for_plane(plane.id)
+
+    legacy_removed_id = plane.auto_sheet_placements[0].id.rsplit("-r", 1)[0]
+    assert "-r" not in legacy_removed_id
+    removed_ids_set = {legacy_removed_id}
+
+    placement_with_row_suffix_id = f"{legacy_removed_id}-r99"
+    result = state._is_placement_removed(placement_with_row_suffix_id, removed_ids_set)
+    assert result is True
+
+    result_unrelated = state._is_placement_removed("plane-999-b0-s0-r1", removed_ids_set)
+    assert result_unrelated is False
+
+
+def test_is_placement_removed_legacy_prefix_match_hardcoded():
+    """Test that legacy removed IDs (without -r suffix) match placement IDs with -r suffix."""
+    state = ProjectState(materials=[])
+    
+    # Store legacy removed ID without -r suffix
+    removed_ids = {"plane-1-b0-s0"}
+    
+    # Verify that placement with -r3 suffix is treated as removed
+    assert state._is_placement_removed("plane-1-b0-s0-r3", removed_ids) is True
+    
+    # Verify exact match still works
+    assert state._is_placement_removed("plane-1-b0-s0", removed_ids) is True
+    
+    # Verify unrelated placement is not treated as removed
+    assert state._is_placement_removed("plane-2-b0-s0-r1", removed_ids) is False
+    assert state._is_placement_removed("plane-1-b1-s0-r1", removed_ids) is False
