@@ -58,7 +58,12 @@ VIEW_MARGIN_X_PX = 80.0
 VIEW_MARGIN_Y_PX = 36.0
 AXIS_WIDGET_LENGTH_PX = 42.0
 AXIS_WIDGET_PADDING_PX = 18.0
+AXIS_WIDGET_ARROW_SIZE_PX = 6.0
 FREE_DRAW_DOMAIN_SIZE_CM = 1000.0
+GRID_MINOR_MIN_SPACING_PX = 8.0
+GRID_MAJOR_MIN_SPACING_PX = 5.0
+CROSSHAIR_LENGTH_PX = 28.0
+CROSSHAIR_DEAD_ZONE_PX = 1.0
 
 
 @dataclass(slots=True)
@@ -124,6 +129,9 @@ class DrawingCanvas(QWidget):
 
         self.user_points: list[QPointF] = []
         self.preview_point: QPointF | None = None
+        self._last_mouse_point: QPointF | None = None
+        self._crosshair_point: QPointF | None = None
+        self._crosshair_axis: str | None = None
         self._snap_active: bool = False
 
         self.roof_plane = None
@@ -228,6 +236,9 @@ class DrawingCanvas(QWidget):
         self._mode = mode
         self.user_points.clear()
         self.preview_point = None
+        self._last_mouse_point = None
+        self._crosshair_point = None
+        self._crosshair_axis = None
         self._snap_active = False
         self._length_input_active = False
         self._length_input_text = ""
@@ -854,6 +865,18 @@ class DrawingCanvas(QWidget):
     def _grid_step_cm(self) -> float:
         return max(0.1, self._app_settings.grid_size_cm)
 
+    def _grid_major_step_cm(self) -> float:
+        return float(max(1, self._app_settings.grid_major_cm))
+
+    def _grid_minor_step_cm(self) -> float:
+        return float(max(1, self._app_settings.grid_minor_cm))
+
+    def _should_draw_minor_grid(self, mapper: CanvasMapper) -> bool:
+        return mapper.map_length(self._grid_minor_step_cm()) >= GRID_MINOR_MIN_SPACING_PX
+
+    def _should_draw_major_grid(self, mapper: CanvasMapper) -> bool:
+        return mapper.map_length(self._grid_major_step_cm()) >= GRID_MAJOR_MIN_SPACING_PX
+
     def _effective_grid_step_cm(self, modifiers: Qt.KeyboardModifier = Qt.KeyboardModifier.NoModifier) -> float:
         if self._shift_orthogonal_lock_active(modifiers):
             return 1.0
@@ -929,6 +952,23 @@ class DrawingCanvas(QWidget):
         self._caret_visible = not self._caret_visible
         if self._mode in {self.MODE_DRAW_OUTLINE, self.MODE_DRAW_CUTOUT} and self._length_input_active:
             self.update()
+
+    def _update_crosshair(self, point: QPointF, *, reference: QPointF | None = None) -> None:
+        self._crosshair_point = QPointF(point)
+        base = reference if reference is not None else self._last_mouse_point
+        axis: str | None = None
+        if base is not None:
+            dx = point.x() - base.x()
+            dy = point.y() - base.y()
+            if max(abs(dx), abs(dy)) >= CROSSHAIR_DEAD_ZONE_PX:
+                axis = "x" if abs(dx) >= abs(dy) else "y"
+        self._crosshair_axis = axis
+        self._last_mouse_point = QPointF(point)
+
+    def _clear_crosshair(self) -> None:
+        self._crosshair_point = None
+        self._crosshair_axis = None
+        self._last_mouse_point = None
 
     def _clear_length_input(self) -> None:
         self._length_input_text = ""
@@ -1247,6 +1287,7 @@ class DrawingCanvas(QWidget):
                         return
                     domain_point = self._pixel_to_domain_point(pos, mapper, modifiers=event.modifiers())
                     self.user_points.append(self._domain_to_pixel_point(domain_point, mapper))
+                    self._update_crosshair(self.user_points[-1])
                     self.update()
                 return
 
@@ -1318,6 +1359,7 @@ class DrawingCanvas(QWidget):
                 self.user_points.clear()
                 self.preview_point = None
                 self._snap_active = False
+                self._clear_crosshair()
                 self._clear_length_input()
                 self.update()
                 return
@@ -1342,6 +1384,8 @@ class DrawingCanvas(QWidget):
                 domain_point = self._pixel_to_domain_point(pos, mapper, modifiers=event.modifiers())
                 pos = self._domain_to_pixel_point(domain_point, mapper)
             self.preview_point = pos
+            reference = self.user_points[-1] if self.user_points else None
+            self._update_crosshair(pos, reference=reference)
             near = self._is_near_first_vertex(pos)
             if near != self._snap_active:
                 self._snap_active = near
@@ -1349,12 +1393,20 @@ class DrawingCanvas(QWidget):
                 self.setCursor(cursor)
             self.update()
         elif self._mode == self.MODE_VIEW and self._dragging_origin:
+            self._update_crosshair(event.position())
             self._update_origin_drag(event.position())
             return
         elif self._mode == self.MODE_VIEW and (self._dragging_vertex_index is not None or self._dragging_hole_center_index is not None):
+            reference = None
+            if self._drag_mapper is not None:
+                drag_reference = self._drag_reference_point()
+                if drag_reference is not None:
+                    reference = self._drag_mapper.map_point(drag_reference)
+            self._update_crosshair(event.position(), reference=reference)
             self._update_geometry_drag(event.position(), event.modifiers())
             return
         elif self._mode == self.MODE_VIEW and not self._origin_edit_enabled:
+            self._update_crosshair(event.position())
             self._update_edit_overlay_hover(event.position())
         super().mouseMoveEvent(event)
 
@@ -1371,6 +1423,7 @@ class DrawingCanvas(QWidget):
         if self._mode in {self.MODE_DRAW_OUTLINE, self.MODE_DRAW_CUTOUT}:
             self.preview_point = None
             self._snap_active = False
+            self._clear_crosshair()
             self.update()
         elif self._mode == self.MODE_VIEW and self._clear_edit_overlay():
             self.update()
@@ -1415,6 +1468,7 @@ class DrawingCanvas(QWidget):
                 self.user_points.clear()
                 self.preview_point = None
                 self._snap_active = False
+                self._clear_crosshair()
                 self._clear_length_input()
                 self.update()
                 return
@@ -1477,6 +1531,8 @@ class DrawingCanvas(QWidget):
             self._draw_drawing_hud(painter)
         if self._mode in {self.MODE_DRAW_OUTLINE, self.MODE_DRAW_CUTOUT} and len(self.user_points) >= 1:
             self._draw_length_input_bar(painter)
+        self._draw_freehand_axis_overlay(painter)
+        self._draw_crosshair(painter)
 
     def _draw_grid(self, painter: QPainter) -> None:
         grid_context = self._grid_context()
@@ -1528,6 +1584,8 @@ class DrawingCanvas(QWidget):
         painter.setPen(QPen(accent, 1))
         painter.setBrush(accent)
         for index, point in enumerate(self.user_points):
+            if index == 0:
+                self._draw_start_point_marker(painter, point)
             if index == 0 and self._snap_active:
                 snap_color = QColor(accent)
                 snap_color.setAlpha(200)
@@ -1537,6 +1595,17 @@ class DrawingCanvas(QWidget):
                 painter.setBrush(accent)
                 painter.setPen(QPen(accent, 1))
             painter.drawEllipse(int(point.x()) - 3, int(point.y()) - 3, 6, 6)
+
+    def _draw_start_point_marker(self, painter: QPainter, point: QPointF) -> None:
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setBrush(QColor(255, 224, 80, 230))
+        painter.setPen(QPen(QColor(20, 20, 20, 220), 1.4))
+        painter.drawEllipse(point, 6.0, 6.0)
+        painter.setPen(QPen(QColor(20, 20, 20, 220), 1.0))
+        painter.drawLine(QPointF(point.x() - 8.0, point.y()), QPointF(point.x() + 8.0, point.y()))
+        painter.drawLine(QPointF(point.x(), point.y() - 8.0), QPointF(point.x(), point.y() + 8.0))
+        painter.restore()
 
     def _draw_drawing_hud(self, painter: QPainter) -> None:
         mapper = self._active_mapper()
@@ -1649,15 +1718,34 @@ class DrawingCanvas(QWidget):
         mapper = grid_context.mapper
         bounds = grid_context.bounds
         domain_rect = mapper.map_rect(bounds.min_x, bounds.max_x, bounds.min_y, bounds.max_y)
-        step_cm = self._edit_overlay_grid_step_cm(mapper)
         origin = grid_context.origin
-        grid_color = self.palette().color(QPalette.ColorRole.Mid)
-        grid_color.setAlpha(50)
 
         painter.save()
         painter.setClipRect(domain_rect.adjusted(-1, -1, 1, 1))
-        painter.setPen(QPen(grid_color, 0.75))
 
+        if self._should_draw_minor_grid(mapper):
+            minor_color = self.palette().color(QPalette.ColorRole.Mid)
+            minor_color.setAlpha(64)
+            painter.setPen(QPen(minor_color, 0.5))
+            self._draw_grid_lines_for_step(painter, mapper, bounds, domain_rect, origin, self._grid_minor_step_cm())
+
+        if self._should_draw_major_grid(mapper):
+            major_color = self.palette().color(QPalette.ColorRole.Mid)
+            major_color.setAlpha(90)
+            painter.setPen(QPen(major_color, 0.85))
+            self._draw_grid_lines_for_step(painter, mapper, bounds, domain_rect, origin, self._grid_major_step_cm())
+
+        painter.restore()
+
+    def _draw_grid_lines_for_step(
+        self,
+        painter: QPainter,
+        mapper: CanvasMapper,
+        bounds: Bounds2D,
+        domain_rect: QRectF,
+        origin: Point2D,
+        step_cm: float,
+    ) -> None:
         x_start = int(floor((bounds.min_x - origin.x) / step_cm))
         x_end = int(ceil((bounds.max_x - origin.x) / step_cm))
         for index in range(x_start, x_end + 1):
@@ -1669,8 +1757,6 @@ class DrawingCanvas(QWidget):
         for index in range(y_start, y_end + 1):
             y = mapper.map_y(origin.y - index * step_cm)
             painter.drawLine(QPointF(domain_rect.left(), y), QPointF(domain_rect.right(), y))
-
-        painter.restore()
 
     def _draw_edit_overlay(self, painter: QPainter, mapper: CanvasMapper, outline: Polygon2D) -> None:
         if self._edit_overlay is None:
@@ -1846,31 +1932,75 @@ class DrawingCanvas(QWidget):
             canvas_rect.bottom() - AXIS_WIDGET_PADDING_PX,
         )
 
+    def _freehand_axis_origin(self) -> QPointF:
+        if self.user_points:
+            return self.user_points[0]
+        return self._axis_indicator_origin()
+
+    def _draw_freehand_axis_overlay(self, painter: QPainter) -> None:
+        if not self._app_settings.show_axis_overlay:
+            return
+        if self._mode not in {self.MODE_DRAW_OUTLINE, self.MODE_DRAW_CUTOUT}:
+            return
+        self._draw_axis_indicator_at(painter, self._freehand_axis_origin())
+
     def _draw_axis_indicator(self, painter: QPainter) -> None:
-        origin = self._axis_indicator_origin()
+        if not self._app_settings.show_axis_overlay:
+            return
+        if self._mode in {self.MODE_DRAW_OUTLINE, self.MODE_DRAW_CUTOUT}:
+            return
+        self._draw_axis_indicator_at(painter, self._axis_indicator_origin())
+
+    def _draw_axis_indicator_at(self, painter: QPainter, origin: QPointF) -> None:
         x_tip = QPointF(origin.x() + AXIS_WIDGET_LENGTH_PX, origin.y())
         y_tip = QPointF(origin.x(), origin.y() - AXIS_WIDGET_LENGTH_PX)
 
-        axis_color = self.palette().color(QPalette.ColorRole.Text)
-        axis_color.setAlpha(210)
+        x_color = QColor(220, 70, 70, 255)
+        y_color = QColor(70, 180, 80, 255)
         label_font = painter.font()
         label_font.setPointSize(max(label_font.pointSize(), 9))
 
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         painter.setFont(label_font)
-        painter.setPen(QPen(axis_color, 2.0, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        painter.setPen(QPen(x_color, 1.6, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
         painter.drawLine(origin, x_tip)
-        painter.drawLine(origin, y_tip)
-
-        arrow_size = 6.0
-        painter.drawLine(x_tip, QPointF(x_tip.x() - arrow_size, x_tip.y() - arrow_size / 2.0))
-        painter.drawLine(x_tip, QPointF(x_tip.x() - arrow_size, x_tip.y() + arrow_size / 2.0))
-        painter.drawLine(y_tip, QPointF(y_tip.x() - arrow_size / 2.0, y_tip.y() + arrow_size))
-        painter.drawLine(y_tip, QPointF(y_tip.x() + arrow_size / 2.0, y_tip.y() + arrow_size))
-
+        painter.drawLine(x_tip, QPointF(x_tip.x() - AXIS_WIDGET_ARROW_SIZE_PX, x_tip.y() - AXIS_WIDGET_ARROW_SIZE_PX / 2.0))
+        painter.drawLine(x_tip, QPointF(x_tip.x() - AXIS_WIDGET_ARROW_SIZE_PX, x_tip.y() + AXIS_WIDGET_ARROW_SIZE_PX / 2.0))
         painter.drawText(QRectF(x_tip.x() + 4.0, x_tip.y() - 12.0, 16.0, 16.0), Qt.AlignmentFlag.AlignCenter, "X")
+
+        painter.setPen(QPen(y_color, 1.6, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        painter.drawLine(origin, y_tip)
+        painter.drawLine(y_tip, QPointF(y_tip.x() - AXIS_WIDGET_ARROW_SIZE_PX / 2.0, y_tip.y() + AXIS_WIDGET_ARROW_SIZE_PX))
+        painter.drawLine(y_tip, QPointF(y_tip.x() + AXIS_WIDGET_ARROW_SIZE_PX / 2.0, y_tip.y() + AXIS_WIDGET_ARROW_SIZE_PX))
         painter.drawText(QRectF(y_tip.x() - 8.0, y_tip.y() - 18.0, 16.0, 16.0), Qt.AlignmentFlag.AlignCenter, "Y")
+        painter.restore()
+
+    def _draw_crosshair(self, painter: QPainter) -> None:
+        if not self._app_settings.show_crosshair or self._crosshair_point is None:
+            return
+        if (
+            self._mode not in {self.MODE_DRAW_OUTLINE, self.MODE_DRAW_CUTOUT}
+            and self._edit_overlay is None
+            and not self._dragging_origin
+            and self._dragging_vertex_index is None
+            and self._dragging_hole_center_index is None
+        ):
+            return
+        point = self._crosshair_point
+        color = self.palette().color(QPalette.ColorRole.Text)
+        color.setAlpha(95)
+        highlight = self.palette().color(QPalette.ColorRole.Highlight)
+        highlight.setAlpha(145)
+
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        horizontal_pen = QPen(highlight if self._crosshair_axis == "x" else color, 1.2 if self._crosshair_axis == "x" else 0.8)
+        vertical_pen = QPen(highlight if self._crosshair_axis == "y" else color, 1.2 if self._crosshair_axis == "y" else 0.8)
+        painter.setPen(horizontal_pen)
+        painter.drawLine(QPointF(point.x() - CROSSHAIR_LENGTH_PX, point.y()), QPointF(point.x() + CROSSHAIR_LENGTH_PX, point.y()))
+        painter.setPen(vertical_pen)
+        painter.drawLine(QPointF(point.x(), point.y() - CROSSHAIR_LENGTH_PX), QPointF(point.x(), point.y() + CROSSHAIR_LENGTH_PX))
         painter.restore()
 
     def _draw_roof_plane(self, painter: QPainter) -> None:

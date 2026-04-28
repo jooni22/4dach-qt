@@ -88,6 +88,55 @@ def test_canvas_selects_vertex_handle_on_mouse_press(qtbot):
     assert canvas._dragging_vertex_index == 0
 
 
+def test_freehand_axis_origin_moves_to_first_point(qtbot):
+    canvas = DrawingCanvas()
+    canvas.resize(640, 420)
+    qtbot.addWidget(canvas)
+    canvas.set_mode(canvas.MODE_DRAW_OUTLINE)
+
+    assert canvas._freehand_axis_origin() == canvas._axis_indicator_origin()
+
+    mapper = canvas._free_draw_mapper()
+    first_point = mapper.map_point(Point2D(100, 100))
+    QTest.mousePress(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, first_point.toPoint())
+
+    assert canvas.user_points
+    assert canvas._freehand_axis_origin() == canvas.user_points[0]
+
+
+def test_grid_minor_visibility_follows_mapper_scale(qtbot):
+    canvas = DrawingCanvas()
+    canvas.resize(640, 420)
+    qtbot.addWidget(canvas)
+    canvas.set_app_settings(AppSettings(grid_major_cm=100, grid_minor_cm=10))
+    canvas.set_mode(canvas.MODE_DRAW_OUTLINE)
+
+    mapper = canvas._free_draw_mapper()
+    assert canvas._should_draw_major_grid(mapper) is True
+    assert canvas._should_draw_minor_grid(mapper) is False
+
+    zoomed_mapper = canvas.build_view_mapper(Polygon2D.rectangle(80, 80).bounds(), QRectF(canvas.rect()))
+    assert canvas._should_draw_minor_grid(zoomed_mapper) is True
+
+
+def test_crosshair_axis_uses_dominant_freehand_direction(qtbot):
+    canvas = DrawingCanvas()
+    canvas.resize(640, 420)
+    qtbot.addWidget(canvas)
+    canvas.set_mode(canvas.MODE_DRAW_OUTLINE)
+    mapper = canvas._free_draw_mapper()
+    first_point = mapper.map_point(Point2D(100, 100))
+    horizontal_point = mapper.map_point(Point2D(220, 110))
+    vertical_point = mapper.map_point(Point2D(225, 260))
+
+    QTest.mousePress(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, first_point.toPoint())
+    _send_mouse_move(canvas, horizontal_point.toPoint())
+    assert canvas._crosshair_axis == "x"
+
+    _send_mouse_move(canvas, vertical_point.toPoint())
+    assert canvas._crosshair_axis == "y"
+
+
 def test_canvas_clicking_midpoint_inserts_new_vertex_and_starts_drag(qtbot):
     outline = Polygon2D.rectangle(300, 200)
     canvas = _make_canvas(qtbot, outline)

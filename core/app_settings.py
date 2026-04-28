@@ -38,6 +38,10 @@ class AppSettings:
     partial_cutout_top_extra_cm: float = 15.0
     grid_size_cm: float = 10.0
     shift_drag_behavior: str = SHIFT_DRAG_BEHAVIOR_FREE_MOVE
+    show_axis_overlay: bool = True
+    grid_major_cm: int = 100
+    grid_minor_cm: int = 10
+    show_crosshair: bool = True
 
     @classmethod
     def from_dict(cls, data: dict | None) -> "AppSettings":
@@ -57,10 +61,28 @@ class AppSettings:
         shift_drag_behavior = str(d.get("shift_drag_behavior", SHIFT_DRAG_BEHAVIOR_FREE_MOVE))
         if shift_drag_behavior not in _VALID_SHIFT_DRAG_BEHAVIORS:
             shift_drag_behavior = SHIFT_DRAG_BEHAVIOR_FREE_MOVE
+        show_axis_overlay = bool(d.get("show_axis_overlay", True))
+        show_crosshair = bool(d.get("show_crosshair", True))
+        try:
+            grid_major_cm = int(d.get("grid_major_cm", 100))
+        except (TypeError, ValueError):
+            grid_major_cm = 100
+        if grid_major_cm <= 0:
+            grid_major_cm = 100
+        try:
+            grid_minor_cm = int(d.get("grid_minor_cm", 10))
+        except (TypeError, ValueError):
+            grid_minor_cm = 10
+        if grid_minor_cm <= 0:
+            grid_minor_cm = 10
         return cls(
             partial_cutout_top_extra_cm=max(0.0, value),
             grid_size_cm=grid_size,
             shift_drag_behavior=shift_drag_behavior,
+            show_axis_overlay=show_axis_overlay,
+            grid_major_cm=grid_major_cm,
+            grid_minor_cm=grid_minor_cm,
+            show_crosshair=show_crosshair,
         )
 
     def to_dict(self) -> dict:
@@ -68,4 +90,8 @@ class AppSettings:
             "partial_cutout_top_extra_cm": self.partial_cutout_top_extra_cm,
             "grid_size_cm": self.grid_size_cm,
             "shift_drag_behavior": self.shift_drag_behavior,
+            "show_axis_overlay": self.show_axis_overlay,
+            "grid_major_cm": self.grid_major_cm,
+            "grid_minor_cm": self.grid_minor_cm,
+            "show_crosshair": self.show_crosshair,
         }
