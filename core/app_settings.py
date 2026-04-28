@@ -18,6 +18,12 @@ _VALID_SHIFT_DRAG_BEHAVIORS = {
     SHIFT_DRAG_BEHAVIOR_FREE_MOVE,
     SHIFT_DRAG_BEHAVIOR_ORTHOGONAL_LOCK,
 }
+LIVE_ANGLE_MODE_ABSOLUTE = "absolute"
+LIVE_ANGLE_MODE_RELATIVE_TO_PREV = "relative_to_prev"
+_VALID_LIVE_ANGLE_MODES = {
+    LIVE_ANGLE_MODE_ABSOLUTE,
+    LIVE_ANGLE_MODE_RELATIVE_TO_PREV,
+}
 
 
 @dataclass
@@ -42,6 +48,11 @@ class AppSettings:
     grid_major_cm: int = 100
     grid_minor_cm: int = 10
     show_crosshair: bool = True
+    live_angle_mode: str = LIVE_ANGLE_MODE_ABSOLUTE
+    show_decimal_cm: bool = False
+    show_angle_arc: bool = True
+    show_guide_lines: bool = True
+    close_on_rmb: bool = True
 
     @classmethod
     def from_dict(cls, data: dict | None) -> "AppSettings":
@@ -75,6 +86,9 @@ class AppSettings:
             grid_minor_cm = 10
         if grid_minor_cm <= 0:
             grid_minor_cm = 10
+        live_angle_mode = str(d.get("live_angle_mode", LIVE_ANGLE_MODE_ABSOLUTE))
+        if live_angle_mode not in _VALID_LIVE_ANGLE_MODES:
+            live_angle_mode = LIVE_ANGLE_MODE_ABSOLUTE
         return cls(
             partial_cutout_top_extra_cm=max(0.0, value),
             grid_size_cm=grid_size,
@@ -83,6 +97,11 @@ class AppSettings:
             grid_major_cm=grid_major_cm,
             grid_minor_cm=grid_minor_cm,
             show_crosshair=show_crosshair,
+            live_angle_mode=live_angle_mode,
+            show_decimal_cm=bool(d.get("show_decimal_cm", False)),
+            show_angle_arc=bool(d.get("show_angle_arc", True)),
+            show_guide_lines=bool(d.get("show_guide_lines", True)),
+            close_on_rmb=bool(d.get("close_on_rmb", True)),
         )
 
     def to_dict(self) -> dict:
@@ -94,4 +113,9 @@ class AppSettings:
             "grid_major_cm": self.grid_major_cm,
             "grid_minor_cm": self.grid_minor_cm,
             "show_crosshair": self.show_crosshair,
+            "live_angle_mode": self.live_angle_mode,
+            "show_decimal_cm": self.show_decimal_cm,
+            "show_angle_arc": self.show_angle_arc,
+            "show_guide_lines": self.show_guide_lines,
+            "close_on_rmb": self.close_on_rmb,
         }

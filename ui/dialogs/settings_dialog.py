@@ -18,6 +18,8 @@ from PySide6.QtWidgets import (
 
 from core.app_settings import (
     AppSettings,
+    LIVE_ANGLE_MODE_ABSOLUTE,
+    LIVE_ANGLE_MODE_RELATIVE_TO_PREV,
     SHIFT_DRAG_BEHAVIOR_FREE_MOVE,
     SHIFT_DRAG_BEHAVIOR_ORTHOGONAL_LOCK,
 )
@@ -121,6 +123,29 @@ class SettingsDialog(QDialog):
 
         root.addWidget(grp_grid)
 
+        grp_live_drawing = QGroupBox("Rysowanie na żywo")
+        live_form = QFormLayout(grp_live_drawing)
+        live_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+
+        self._combo_live_angle_mode = QComboBox()
+        self._combo_live_angle_mode.addItem("Kąt bezwzględny od osi X", LIVE_ANGLE_MODE_ABSOLUTE)
+        self._combo_live_angle_mode.addItem("Kąt względem poprzedniej krawędzi", LIVE_ANGLE_MODE_RELATIVE_TO_PREV)
+        live_form.addRow("Tryb kąta:", self._combo_live_angle_mode)
+
+        self._check_show_decimal_cm = QCheckBox("Pokazuj długości z dokładnością do 0.1 cm")
+        live_form.addRow("Precyzja długości:", self._check_show_decimal_cm)
+
+        self._check_show_angle_arc = QCheckBox("Pokaż łuk kąta przy aktywnym wierzchołku")
+        live_form.addRow("Łuk kąta:", self._check_show_angle_arc)
+
+        self._check_show_guide_lines = QCheckBox("Pokaż subtelne linie pomocnicze aktywnego segmentu")
+        live_form.addRow("Linie pomocnicze:", self._check_show_guide_lines)
+
+        self._check_close_on_rmb = QCheckBox("Zamykaj wielokąt prawym przyciskiem myszy")
+        live_form.addRow("Zamykanie:", self._check_close_on_rmb)
+
+        root.addWidget(grp_live_drawing)
+
         # --- Przyciski ---
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok
@@ -139,6 +164,12 @@ class SettingsDialog(QDialog):
         self._spin_grid_major.setValue(settings.grid_major_cm)
         self._spin_grid_minor.setValue(settings.grid_minor_cm)
         self._check_crosshair.setChecked(settings.show_crosshair)
+        live_angle_index = self._combo_live_angle_mode.findData(settings.live_angle_mode)
+        self._combo_live_angle_mode.setCurrentIndex(max(0, live_angle_index))
+        self._check_show_decimal_cm.setChecked(settings.show_decimal_cm)
+        self._check_show_angle_arc.setChecked(settings.show_angle_arc)
+        self._check_show_guide_lines.setChecked(settings.show_guide_lines)
+        self._check_close_on_rmb.setChecked(settings.close_on_rmb)
 
     def get_values(self) -> dict:
         """Return current dialog values as a dict matching AppSettings fields."""
@@ -150,6 +181,11 @@ class SettingsDialog(QDialog):
             "grid_major_cm": self._spin_grid_major.value(),
             "grid_minor_cm": self._spin_grid_minor.value(),
             "show_crosshair": self._check_crosshair.isChecked(),
+            "live_angle_mode": self._combo_live_angle_mode.currentData(),
+            "show_decimal_cm": self._check_show_decimal_cm.isChecked(),
+            "show_angle_arc": self._check_show_angle_arc.isChecked(),
+            "show_guide_lines": self._check_show_guide_lines.isChecked(),
+            "close_on_rmb": self._check_close_on_rmb.isChecked(),
         }
 
     def build_settings(self) -> AppSettings:

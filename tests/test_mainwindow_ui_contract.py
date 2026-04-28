@@ -413,6 +413,11 @@ def test_mainwindow_settings_dialog_updates_grid_size_on_project_state_and_canva
                 grid_major_cm=50,
                 grid_minor_cm=5,
                 show_crosshair=False,
+                live_angle_mode="relative_to_prev",
+                show_decimal_cm=True,
+                show_angle_arc=False,
+                show_guide_lines=False,
+                close_on_rmb=False,
             )
 
     monkeypatch.setattr("ui.dialogs.settings_dialog.SettingsDialog", FakeSettingsDialog)
@@ -426,8 +431,15 @@ def test_mainwindow_settings_dialog_updates_grid_size_on_project_state_and_canva
     assert window.project_state.app_settings.grid_major_cm == 50
     assert window.project_state.app_settings.grid_minor_cm == 5
     assert window.project_state.app_settings.show_crosshair is False
+    assert window.project_state.app_settings.live_angle_mode == "relative_to_prev"
+    assert window.project_state.app_settings.show_decimal_cm is True
+    assert window.project_state.app_settings.show_angle_arc is False
+    assert window.project_state.app_settings.show_guide_lines is False
+    assert window.project_state.app_settings.close_on_rmb is False
     assert canvas is not None
     assert canvas._edit_overlay_grid_step_cm(canvas._canvas_mapper()) == pytest.approx(25.0)
+    assert canvas._app_settings.live_angle_mode == "relative_to_prev"
+    assert canvas._app_settings.close_on_rmb is False
     assert canvas._app_settings.shift_drag_behavior == "orthogonal_lock"
     assert canvas._app_settings.show_axis_overlay is False
     assert canvas._app_settings.grid_major_cm == 50

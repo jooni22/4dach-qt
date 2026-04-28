@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from core.app_settings import AppSettings
+from core.app_settings import AppSettings, LIVE_ANGLE_MODE_RELATIVE_TO_PREV
 
 
 def test_default_value():
@@ -12,6 +12,11 @@ def test_default_value():
     assert s.grid_major_cm == 100
     assert s.grid_minor_cm == 10
     assert s.show_crosshair is True
+    assert s.live_angle_mode == "absolute"
+    assert s.show_decimal_cm is False
+    assert s.show_angle_arc is True
+    assert s.show_guide_lines is True
+    assert s.close_on_rmb is True
 
 
 def test_round_trip():
@@ -23,6 +28,11 @@ def test_round_trip():
         grid_major_cm=50,
         grid_minor_cm=5,
         show_crosshair=False,
+        live_angle_mode=LIVE_ANGLE_MODE_RELATIVE_TO_PREV,
+        show_decimal_cm=True,
+        show_angle_arc=False,
+        show_guide_lines=False,
+        close_on_rmb=False,
     )
     s2 = AppSettings.from_dict(s.to_dict())
     assert s2.partial_cutout_top_extra_cm == 22.5
@@ -32,6 +42,11 @@ def test_round_trip():
     assert s2.grid_major_cm == 50
     assert s2.grid_minor_cm == 5
     assert s2.show_crosshair is False
+    assert s2.live_angle_mode == LIVE_ANGLE_MODE_RELATIVE_TO_PREV
+    assert s2.show_decimal_cm is True
+    assert s2.show_angle_arc is False
+    assert s2.show_guide_lines is False
+    assert s2.close_on_rmb is False
 
 
 def test_negative_clamped_to_zero():
@@ -62,6 +77,11 @@ def test_missing_key_uses_default():
     assert s.grid_major_cm == 100
     assert s.grid_minor_cm == 10
     assert s.show_crosshair is True
+    assert s.live_angle_mode == "absolute"
+    assert s.show_decimal_cm is False
+    assert s.show_angle_arc is True
+    assert s.show_guide_lines is True
+    assert s.close_on_rmb is True
 
 
 def test_nonpositive_grid_size_uses_default():
@@ -74,3 +94,8 @@ def test_nonpositive_grid_size_uses_default():
 def test_invalid_shift_drag_behavior_uses_default():
     s = AppSettings.from_dict({"shift_drag_behavior": "diagonal_rocket"})
     assert s.shift_drag_behavior == "free_move"
+
+
+def test_invalid_live_angle_mode_uses_default():
+    s = AppSettings.from_dict({"live_angle_mode": "chaos"})
+    assert s.live_angle_mode == "absolute"

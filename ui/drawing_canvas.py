@@ -14,8 +14,8 @@ Polygon drawing (MODE_DRAW_OUTLINE / MODE_DRAW_CUTOUT)
 * When the cursor is within SNAP_RADIUS pixels of the *first* vertex (and ≥ 3
   vertices have been placed) the canvas shows a snap indicator and the cursor
   changes to a crosshair — clicking there closes the polygon.
-* Pressing Enter also closes the polygon when ≥ 3 vertices are present.
-* Right-click / Escape clears the in-progress sketch.
+* Right-click closes the polygon when enabled; Escape clears the in-progress
+  sketch.
 * The controller receives the closed polygon and decides whether it becomes a
   new roof plane outline or a cutout inside the active plane.
 """
@@ -25,9 +25,9 @@ import math
 from dataclasses import dataclass
 from math import ceil, floor, hypot
 
-from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QFontMetricsF, QKeyEvent, QMouseEvent, QPainter, QPainterPath, QPalette, QPen, QPolygonF
-from PySide6.QtWidgets import QApplication, QWidget
+from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QLineEdit, QWidget
 
 from core.app_settings import (
     AppSettings,
@@ -64,6 +64,123 @@ GRID_MINOR_MIN_SPACING_PX = 8.0
 GRID_MAJOR_MIN_SPACING_PX = 5.0
 CROSSHAIR_LENGTH_PX = 28.0
 CROSSHAIR_DEAD_ZONE_PX = 1.0
+RUBBER_BAND_LABEL_PADDING_X = 8.0
+RUBBER_BAND_LABEL_PADDING_Y = 4.0
+ANGLE_ARC_RADIUS_PX = 20.0
+INLINE_EDITOR_OFFSET_X = 16.0
+INLINE_EDITOR_OFFSET_Y = 14.0
+INLINE_EDITOR_MARGIN_PX = 8.0
+
+LIVE_ANGLE_MODE_ABSOLUTE = "absolute"
+LIVE_ANGLE_MODE_RELATIVE_TO_PREV = "relative_to_prev"
+
+
+class _InlineSegmentEditor(QFrame):
+    """Minimal local widget for length/angle entry while freehand drawing."""
+
+    def __init__(self, canvas: "DrawingCanvas") -> None:
+        super().__init__(canvas)
+        self._canvas = canvas
+        self.setObjectName("inline_segment_editor")
+        self.setFrameShape(QFrame.Shape.NoFrame)
+        self.setAutoFillBackground(True)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setSpacing(6)
+
+        self._length_label = QLabel("L")
+        self._length_edit = QLineEdit(self)
+        self._length_edit.setObjectName("inline_length_edit")
+        self._length_edit.setPlaceholderText("cm")
+        self._length_edit.setFixedWidth(72)
+
+        self._angle_label = QLabel("A")
+        self._angle_edit = QLineEdit(self)
+        self._angle_edit.setObjectName("inline_angle_edit")
+        self._angle_edit.setPlaceholderText("deg")
+        self._angle_edit.setFixedWidth(72)
+
+        layout.addWidget(self._length_label)
+        layout.addWidget(self._length_edit)
+        layout.addWidget(self._angle_label)
+        layout.addWidget(self._angle_edit)
+
+        for widget in (self._length_edit, self._angle_edit):
+            widget.installEventFilter(self)
+
+        self.hide()
+
+    @property
+    def length_edit(self) -> QLineEdit:
+        return self._length_edit
+
+    @property
+    def angle_edit(self) -> QLineEdit:
+        return self._angle_edit
+
+    def show_for_point(self, point: QPointF, *, length_text: str, angle_text: str, active_field: str) -> None:
+        self._length_edit.setText(length_text)
+        self._angle_edit.setText(angle_text)
+        self.adjustSize()
+        self._reposition(point)
+        self.show()
+        self.raise_()
+        self._active_edit(active_field).setFocus(Qt.FocusReason.OtherFocusReason)
+        self._active_edit(active_field).selectAll()
+
+    def update_contents(self, *, length_text: str, angle_text: str, active_field: str) -> None:
+        self._length_edit.setText(length_text)
+        self._angle_edit.setText(angle_text)
+        active_edit = self._active_edit(active_field)
+        active_edit.setFocus(Qt.FocusReason.OtherFocusReason)
+        active_edit.selectAll()
+
+    def move_for_point(self, point: QPointF) -> None:
+        if self.isHidden():
+            return
+        self.adjustSize()
+        self._reposition(point)
+
+    def hide_and_release_focus(self) -> None:
+        self.hide()
+        self._canvas.setFocus(Qt.FocusReason.OtherFocusReason)
+
+    def eventFilter(self, watched, event) -> bool:
+        if event.type() == QEvent.Type.KeyPress:
+            key_event = event
+            if key_event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                self._canvas._confirm_inline_segment_editor()
+                return True
+            if key_event.key() == Qt.Key.Key_Tab:
+                self._canvas._advance_inline_segment_editor_field()
+                return True
+            if key_event.key() == Qt.Key.Key_Backtab:
+                self._canvas._advance_inline_segment_editor_field(reverse=True)
+                return True
+            if key_event.key() == Qt.Key.Key_Escape:
+                self._canvas._cancel_inline_segment_editor()
+                return True
+        return super().eventFilter(watched, event)
+
+    def _active_edit(self, field_name: str) -> QLineEdit:
+        return self._angle_edit if field_name == "angle" else self._length_edit
+
+    def _reposition(self, point: QPointF) -> None:
+        viewport = self._canvas.rect().adjusted(
+            INLINE_EDITOR_MARGIN_PX,
+            INLINE_EDITOR_MARGIN_PX,
+            -INLINE_EDITOR_MARGIN_PX,
+            -INLINE_EDITOR_MARGIN_PX,
+        )
+        x = point.x() + INLINE_EDITOR_OFFSET_X
+        y = point.y() + INLINE_EDITOR_OFFSET_Y
+        width = float(self.width())
+        height = float(self.height())
+        x = min(max(x, viewport.left()), max(viewport.left(), viewport.right() - width))
+        y = min(max(y, viewport.top()), max(viewport.top(), viewport.bottom() - height))
+        self.move(int(round(x)), int(round(y)))
 
 
 @dataclass(slots=True)
@@ -144,8 +261,11 @@ class DrawingCanvas(QWidget):
         self._show_module_count: bool = False
         self._show_sheet_placements: bool = True
         self._snap_to_grid_enabled: bool = True
-        self._length_input_active: bool = False
-        self._length_input_text: str = ""
+        self._segment_input_active: bool = False
+        self._segment_input_length_text: str = ""
+        self._segment_input_angle_text: str = ""
+        self._segment_input_active_field: str = "length"
+        self._segment_input_anchor_point: QPointF | None = None
 
         self._plane_selected: bool = False
         self._selected_hole_index: int | None = None
@@ -172,6 +292,7 @@ class DrawingCanvas(QWidget):
         self._caret_timer.setInterval(500)
         self._caret_timer.timeout.connect(self._toggle_caret)
         self._caret_timer.start()
+        self._inline_segment_editor = _InlineSegmentEditor(self)
 
         self._render_items_cache: list | None = None
         self._render_items_cache_revision: int = -1
@@ -240,8 +361,7 @@ class DrawingCanvas(QWidget):
         self._crosshair_point = None
         self._crosshair_axis = None
         self._snap_active = False
-        self._length_input_active = False
-        self._length_input_text = ""
+        self._cancel_inline_segment_editor()
         self._cancel_geometry_drag()
         if mode != self.MODE_VIEW:
             self._reset_selection()
@@ -950,7 +1070,7 @@ class DrawingCanvas(QWidget):
 
     def _toggle_caret(self) -> None:
         self._caret_visible = not self._caret_visible
-        if self._mode in {self.MODE_DRAW_OUTLINE, self.MODE_DRAW_CUTOUT} and self._length_input_active:
+        if self._mode in {self.MODE_DRAW_OUTLINE, self.MODE_DRAW_CUTOUT} and self._segment_input_active:
             self.update()
 
     def _update_crosshair(self, point: QPointF, *, reference: QPointF | None = None) -> None:
@@ -970,46 +1090,224 @@ class DrawingCanvas(QWidget):
         self._crosshair_axis = None
         self._last_mouse_point = None
 
-    def _clear_length_input(self) -> None:
-        self._length_input_text = ""
-        self._length_input_active = False
+    def _segment_input_point(self) -> QPointF:
+        if self.preview_point is not None:
+            return QPointF(self.preview_point)
+        if self._segment_input_anchor_point is not None:
+            return QPointF(self._segment_input_anchor_point)
+        if self.user_points:
+            return QPointF(self.user_points[-1])
+        return QPointF(self.rect().center())
 
-    def _commit_length_input(self) -> None:
+    def _active_preview_domain_point(self) -> Point2D | None:
+        mapper = self._active_mapper()
+        if mapper is None or self.preview_point is None:
+            return None
+        return mapper.unmap_point(self.preview_point)
+
+    def _current_segment_start_domain_point(self) -> Point2D | None:
+        mapper = self._active_mapper()
+        if mapper is None or not self.user_points:
+            return None
+        return mapper.unmap_point(self.user_points[-1])
+
+    def _previous_segment_start_domain_point(self) -> Point2D | None:
+        mapper = self._active_mapper()
+        if mapper is None or len(self.user_points) < 2:
+            return None
+        return mapper.unmap_point(self.user_points[-2])
+
+    def _preview_segment_delta(self) -> tuple[float, float] | None:
+        start = self._current_segment_start_domain_point()
+        end = self._active_preview_domain_point()
+        if start is None or end is None:
+            return None
+        return end.x - start.x, end.y - start.y
+
+    def _preview_segment_length_cm(self) -> float | None:
+        delta = self._preview_segment_delta()
+        if delta is None:
+            return None
+        dx, dy = delta
+        return math.hypot(dx, dy)
+
+    def _absolute_angle_degrees_from_delta(self, dx: float, dy: float) -> float:
+        return math.degrees(math.atan2(-dy, dx)) % 360.0
+
+    def _previous_segment_absolute_angle_degrees(self) -> float | None:
+        previous_start = self._previous_segment_start_domain_point()
+        current_start = self._current_segment_start_domain_point()
+        if previous_start is None or current_start is None:
+            return None
+        dx = current_start.x - previous_start.x
+        dy = current_start.y - previous_start.y
+        if math.hypot(dx, dy) < 1e-6:
+            return None
+        return self._absolute_angle_degrees_from_delta(dx, dy)
+
+    def _preview_absolute_angle_degrees(self) -> float | None:
+        delta = self._preview_segment_delta()
+        if delta is None:
+            return None
+        dx, dy = delta
+        if math.hypot(dx, dy) < 1e-6:
+            return None
+        return self._absolute_angle_degrees_from_delta(dx, dy)
+
+    def _angle_mode(self) -> str:
+        mode = getattr(self._app_settings, "live_angle_mode", LIVE_ANGLE_MODE_ABSOLUTE)
+        if mode in {LIVE_ANGLE_MODE_ABSOLUTE, LIVE_ANGLE_MODE_RELATIVE_TO_PREV}:
+            return mode
+        return LIVE_ANGLE_MODE_ABSOLUTE
+
+    def _normalize_signed_angle(self, angle: float) -> float:
+        normalized = (angle + 180.0) % 360.0 - 180.0
+        if normalized == -180.0:
+            return 180.0
+        return normalized
+
+    def _display_angle_degrees(self) -> float | None:
+        preview_angle = self._preview_absolute_angle_degrees()
+        if preview_angle is None:
+            return None
+        if self._angle_mode() == LIVE_ANGLE_MODE_RELATIVE_TO_PREV:
+            previous_angle = self._previous_segment_absolute_angle_degrees()
+            if previous_angle is not None:
+                return self._normalize_signed_angle(preview_angle - previous_angle)
+        return preview_angle
+
+    def _angle_baseline_degrees(self) -> float:
+        if self._angle_mode() == LIVE_ANGLE_MODE_RELATIVE_TO_PREV:
+            previous_angle = self._previous_segment_absolute_angle_degrees()
+            if previous_angle is not None:
+                return previous_angle
+        return 0.0
+
+    def _format_live_length_label(self, length_cm: float) -> str:
+        if getattr(self._app_settings, "show_decimal_cm", False):
+            return f"{length_cm:.1f} cm"
+        return f"{int(round(length_cm))} cm"
+
+    def _format_live_angle_label(self, angle_deg: float) -> str:
+        rounded = int(round(angle_deg))
+        return f"{rounded}°"
+
+    def _parse_segment_input_number(self, text: str) -> float | None:
+        normalized = text.strip().replace(",", ".")
+        if not normalized:
+            return None
         try:
-            target_length = float(self._length_input_text)
+            return float(normalized)
         except ValueError:
-            self._clear_length_input()
-            self.update()
-            return
+            return None
 
-        self._clear_length_input()
+    def _build_point_from_length_and_angle(self, length_cm: float, angle_deg: float) -> Point2D | None:
+        start = self._current_segment_start_domain_point()
+        if start is None:
+            return None
+        absolute_angle = angle_deg
+        if self._angle_mode() == LIVE_ANGLE_MODE_RELATIVE_TO_PREV:
+            previous_angle = self._previous_segment_absolute_angle_degrees()
+            if previous_angle is not None:
+                absolute_angle = previous_angle + angle_deg
+        radians = math.radians(absolute_angle)
+        dx = math.cos(radians) * length_cm
+        dy = -math.sin(radians) * length_cm
+        return Point2D(start.x + dx, start.y + dy)
 
-        if target_length <= 0 or self.preview_point is None or not self.user_points:
-            self.update()
-            return
-
+    def _append_user_point_from_domain(self, point: Point2D) -> None:
         mapper = self._active_mapper()
         if mapper is None:
-            self.update()
             return
+        pixel_point = mapper.map_point(point)
+        self.user_points.append(pixel_point)
+        self.preview_point = pixel_point
+        self._update_crosshair(pixel_point, reference=self.user_points[-2] if len(self.user_points) >= 2 else None)
 
-        last_domain = mapper.unmap_point(self.user_points[-1])
-        preview_domain = mapper.unmap_point(self.preview_point)
-
-        dx = preview_domain.x - last_domain.x
-        dy = preview_domain.y - last_domain.y
-        current_length = math.hypot(dx, dy)
-
-        if current_length < 1e-6:
-            new_domain = Point2D(last_domain.x + target_length, last_domain.y)
+    def _start_inline_segment_editor(self, initial_text: str) -> None:
+        if not self.user_points:
+            return
+        if not self._segment_input_active:
+            self._segment_input_length_text = initial_text
+            self._segment_input_angle_text = self._default_segment_input_angle_text()
+            self._segment_input_active_field = "length"
+            self._segment_input_active = True
         else:
-            scale = target_length / current_length
-            new_domain = Point2D(last_domain.x + dx * scale, last_domain.y + dy * scale)
-
-        new_domain = self._snap_domain_point(new_domain)
-        new_pixel = mapper.map_point(new_domain)
-        self.user_points.append(new_pixel)
+            if self._segment_input_active_field == "angle":
+                self._segment_input_angle_text = initial_text
+            else:
+                self._segment_input_length_text = initial_text
+        self._caret_visible = True
+        self._segment_input_anchor_point = self._segment_input_point()
+        self._inline_segment_editor.show_for_point(
+            self._segment_input_anchor_point,
+            length_text=self._segment_input_length_text,
+            angle_text=self._segment_input_angle_text,
+            active_field=self._segment_input_active_field,
+        )
         self.update()
+
+    def _default_segment_input_angle_text(self) -> str:
+        angle = self._display_angle_degrees()
+        if angle is None:
+            return "0"
+        return str(int(round(angle)))
+
+    def _sync_segment_input_from_editor(self) -> None:
+        if self._inline_segment_editor.isHidden():
+            return
+        self._segment_input_length_text = self._inline_segment_editor.length_edit.text()
+        self._segment_input_angle_text = self._inline_segment_editor.angle_edit.text()
+
+    def _advance_inline_segment_editor_field(self, *, reverse: bool = False) -> None:
+        if not self._segment_input_active:
+            return
+        self._sync_segment_input_from_editor()
+        if reverse:
+            self._segment_input_active_field = "length" if self._segment_input_active_field == "angle" else "angle"
+        else:
+            self._segment_input_active_field = "angle" if self._segment_input_active_field == "length" else "length"
+        self._inline_segment_editor.update_contents(
+            length_text=self._segment_input_length_text,
+            angle_text=self._segment_input_angle_text,
+            active_field=self._segment_input_active_field,
+        )
+
+    def _cancel_inline_segment_editor(self) -> None:
+        self._segment_input_active = False
+        self._segment_input_length_text = ""
+        self._segment_input_angle_text = ""
+        self._segment_input_active_field = "length"
+        self._segment_input_anchor_point = None
+        self._inline_segment_editor.hide_and_release_focus()
+        self.update()
+
+    def _confirm_inline_segment_editor(self) -> None:
+        if not self._segment_input_active:
+            return
+        self._sync_segment_input_from_editor()
+        length_cm = self._parse_segment_input_number(self._segment_input_length_text)
+        angle_deg = self._parse_segment_input_number(self._segment_input_angle_text)
+        if length_cm is None or angle_deg is None or length_cm <= 0:
+            self._cancel_inline_segment_editor()
+            return
+        new_domain_point = self._build_point_from_length_and_angle(length_cm, angle_deg)
+        if new_domain_point is None:
+            self._cancel_inline_segment_editor()
+            return
+        new_domain_point = self._snap_domain_point(new_domain_point)
+        self._append_user_point_from_domain(new_domain_point)
+        self._cancel_inline_segment_editor()
+
+    def _typed_segment_input_target(self) -> str:
+        return "angle" if self._segment_input_active_field == "angle" else "length"
+
+    def _move_inline_segment_editor_if_needed(self) -> None:
+        if not self._segment_input_active:
+            return
+        anchor = self._segment_input_point()
+        self._segment_input_anchor_point = anchor
+        self._inline_segment_editor.move_for_point(anchor)
 
     def _drag_reference_point(self) -> Point2D | None:
         if self._dragging_origin:
@@ -1356,11 +1654,14 @@ class DrawingCanvas(QWidget):
 
         if event.button() == Qt.MouseButton.RightButton:
             if self._mode in {self.MODE_DRAW_OUTLINE, self.MODE_DRAW_CUTOUT}:
+                if getattr(self._app_settings, "close_on_rmb", True) and len(self.user_points) >= 3:
+                    self._close_polygon()
+                    return
                 self.user_points.clear()
                 self.preview_point = None
                 self._snap_active = False
                 self._clear_crosshair()
-                self._clear_length_input()
+                self._cancel_inline_segment_editor()
                 self.update()
                 return
             if self._mode == self.MODE_SELECT_SHEET:
@@ -1386,6 +1687,7 @@ class DrawingCanvas(QWidget):
             self.preview_point = pos
             reference = self.user_points[-1] if self.user_points else None
             self._update_crosshair(pos, reference=reference)
+            self._move_inline_segment_editor_if_needed()
             near = self._is_near_first_vertex(pos)
             if near != self._snap_active:
                 self._snap_active = near
@@ -1424,6 +1726,7 @@ class DrawingCanvas(QWidget):
             self.preview_point = None
             self._snap_active = False
             self._clear_crosshair()
+            self._move_inline_segment_editor_if_needed()
             self.update()
         elif self._mode == self.MODE_VIEW and self._clear_edit_overlay():
             self.update()
@@ -1435,41 +1738,26 @@ class DrawingCanvas(QWidget):
             text = event.text()
 
             if self.user_points and text and (text.isdigit() or text in (".", ",")):
-                char = "." if text == "," else text
-                if char != "." or "." not in self._length_input_text:
-                    self._length_input_text += char
-                    self._length_input_active = True
-                    self._caret_visible = True
-                    self.update()
+                self._start_inline_segment_editor(text)
                 return
 
-            if self._length_input_active and key == Qt.Key.Key_Backspace:
-                self._length_input_text = self._length_input_text[:-1]
-                if not self._length_input_text:
-                    self._length_input_active = False
-                self._caret_visible = True
-                self.update()
+            if self._segment_input_active and key == Qt.Key.Key_Tab:
+                self._advance_inline_segment_editor_field()
                 return
 
-            if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Tab):
-                if self._length_input_active and self._length_input_text:
-                    self._commit_length_input()
-                    return
-                if not self._length_input_active:
-                    self._close_polygon()
-                    return
+            if self._segment_input_active and key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                self._confirm_inline_segment_editor()
                 return
 
             if key == Qt.Key.Key_Escape:
-                if self._length_input_active:
-                    self._clear_length_input()
-                    self.update()
+                if self._segment_input_active:
+                    self._cancel_inline_segment_editor()
                     return
                 self.user_points.clear()
                 self.preview_point = None
                 self._snap_active = False
                 self._clear_crosshair()
-                self._clear_length_input()
+                self._cancel_inline_segment_editor()
                 self.update()
                 return
         elif self._mode == self.MODE_VIEW:
@@ -1523,14 +1811,6 @@ class DrawingCanvas(QWidget):
         if mapper is not None:
             self._draw_origin_marker(painter, mapper)
 
-        if (
-            self._mode in {self.MODE_DRAW_OUTLINE, self.MODE_DRAW_CUTOUT}
-            and self._show_grid
-            and self.preview_point is not None
-        ):
-            self._draw_drawing_hud(painter)
-        if self._mode in {self.MODE_DRAW_OUTLINE, self.MODE_DRAW_CUTOUT} and len(self.user_points) >= 1:
-            self._draw_length_input_bar(painter)
         self._draw_freehand_axis_overlay(painter)
         self._draw_crosshair(painter)
 
@@ -1574,12 +1854,17 @@ class DrawingCanvas(QWidget):
             painter.drawLine(self.user_points[index], self.user_points[index + 1])
 
         if self.preview_point is not None:
+            rubber_band_color = QColor(accent)
+            rubber_band_color.setAlpha(200)
+            painter.setPen(QPen(rubber_band_color, 1.7, Qt.PenStyle.DashLine))
             painter.drawLine(self.user_points[-1], self.preview_point)
+            self._draw_live_segment_feedback(painter)
 
         if len(self.user_points) >= 3 and self.preview_point is not None:
             close_pen = QPen(accent, 1.5, Qt.PenStyle.DashLine)
             painter.setPen(close_pen)
             painter.drawLine(self.preview_point, self.user_points[0])
+            self._draw_close_hint(painter)
 
         painter.setPen(QPen(accent, 1))
         painter.setBrush(accent)
@@ -1607,84 +1892,154 @@ class DrawingCanvas(QWidget):
         painter.drawLine(QPointF(point.x(), point.y() - 8.0), QPointF(point.x(), point.y() + 8.0))
         painter.restore()
 
-    def _draw_drawing_hud(self, painter: QPainter) -> None:
+    def _draw_live_segment_feedback(self, painter: QPainter) -> None:
         mapper = self._active_mapper()
-        if mapper is None or self.preview_point is None:
+        if mapper is None or self.preview_point is None or not self.user_points:
+            return
+        length_cm = self._preview_segment_length_cm()
+        angle_deg = self._display_angle_degrees()
+        if length_cm is None or angle_deg is None:
             return
 
-        domain_pt = mapper.unmap_point(self.preview_point)
-        rel = self._relative_coordinate_point(domain_pt)
-        lines = [f"X: {rel.x:.1f}  Y: {rel.y:.1f}"]
+        self._draw_live_length_label(painter, self.user_points[-1], self.preview_point, self._format_live_length_label(length_cm))
+        self._draw_live_angle_feedback(painter, mapper, angle_deg)
 
-        if self.user_points:
-            last_domain = mapper.unmap_point(self.user_points[-1])
-            dx = domain_pt.x - last_domain.x
-            dy = domain_pt.y - last_domain.y
-            length = math.hypot(dx, dy)
-            angle = math.degrees(math.atan2(-dy, dx)) % 360
-            lines.append(f"L: {length:.1f}  ∠: {angle:.1f}°")
-
-        font = QFont("Monospace")
-        font.setStyleHint(QFont.StyleHint.Monospace)
-        font.setPointSize(9)
-        painter.setFont(font)
-
-        metrics = QFontMetricsF(font)
-        line_spacing = metrics.lineSpacing()
-        text_width = max(metrics.horizontalAdvance(line) for line in lines)
-        text_height = line_spacing * len(lines)
-        padding_x = 5.0
-        padding_y = 3.0
-        box_width = text_width + padding_x * 2
-        box_height = text_height + padding_y * 2
-
-        x = self.preview_point.x() + 16.0
-        y = self.preview_point.y() - 16.0 - box_height
-        max_x = max(float(self.rect().left()), float(self.rect().right()) - box_width)
-        max_y = max(float(self.rect().top()), float(self.rect().bottom()) - box_height)
-        x = min(max(x, float(self.rect().left())), max_x)
-        y = min(max(y, float(self.rect().top())), max_y)
-
-        hud_rect = QRectF(x, y, box_width, box_height)
-        text_rect = hud_rect.adjusted(padding_x, padding_y, -padding_x, -padding_y)
-
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(0, 0, 0, 160))
-        painter.drawRoundedRect(hud_rect, 4, 4)
-
-        painter.setPen(QColor(255, 255, 255, 230))
-        painter.drawText(text_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, "\n".join(lines))
-
-    def _draw_length_input_bar(self, painter: QPainter) -> None:
-        bar_width = 180.0
-        bar_height = 28.0
-        bar_x = (self.width() - bar_width) / 2.0
-        bar_y = self.height() - bar_height - 12.0
-        bar_rect = QRectF(bar_x, bar_y, bar_width, bar_height)
-
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(30, 30, 30, 200))
-        painter.drawRoundedRect(bar_rect, 4, 4)
-
-        if self._length_input_active:
-            painter.setPen(QPen(QColor(0, 200, 220), 1))
-            painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.drawRoundedRect(bar_rect.adjusted(0.5, 0.5, -0.5, -0.5), 4, 4)
-
+    def _draw_live_length_label(self, painter: QPainter, start_point: QPointF, end_point: QPointF, label_text: str) -> None:
         font = painter.font()
         font.setPointSize(9)
+        painter.save()
         painter.setFont(font)
-
-        label_rect = QRectF(bar_rect.left() + 10.0, bar_rect.top(), 36.0, bar_rect.height())
-        value_rect = QRectF(label_rect.right() + 4.0, bar_rect.top(), bar_rect.width() - 50.0, bar_rect.height())
-        value_text = self._length_input_text if self._length_input_active else "─ ─ ─"
-        if self._length_input_active and self._caret_visible:
-            value_text = f"{value_text}|"
-
-        painter.setPen(QColor(180, 180, 180))
-        painter.drawText(label_rect, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, "L =")
+        metrics = QFontMetricsF(font)
+        label_width = metrics.horizontalAdvance(label_text) + RUBBER_BAND_LABEL_PADDING_X * 2.0
+        label_height = metrics.height() + RUBBER_BAND_LABEL_PADDING_Y * 2.0
+        mid_x = (start_point.x() + end_point.x()) / 2.0
+        mid_y = (start_point.y() + end_point.y()) / 2.0
+        label_rect = QRectF(mid_x - label_width / 2.0, mid_y - label_height - 8.0, label_width, label_height)
+        viewport = self.rect().adjusted(6, 6, -6, -6)
+        if label_rect.right() > viewport.right():
+            label_rect.moveRight(viewport.right())
+        if label_rect.left() < viewport.left():
+            label_rect.moveLeft(viewport.left())
+        if label_rect.top() < viewport.top():
+            label_rect.moveTop(mid_y + 8.0)
+        if label_rect.bottom() > viewport.bottom():
+            label_rect.moveBottom(viewport.bottom())
+        painter.setPen(QPen(QColor(255, 255, 255, 120), 0.8))
+        painter.setBrush(QColor(18, 18, 18, 210))
+        painter.drawRoundedRect(label_rect, 5.0, 5.0)
         painter.setPen(QColor(255, 255, 255))
-        painter.drawText(value_rect, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, value_text)
+        painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, label_text)
+        painter.restore()
+
+    def _draw_live_angle_feedback(self, painter: QPainter, mapper: CanvasMapper, angle_deg: float) -> None:
+        if not getattr(self._app_settings, "show_angle_arc", True):
+            return
+        vertex_domain = self._current_segment_start_domain_point()
+        preview_angle = self._preview_absolute_angle_degrees()
+        if vertex_domain is None or preview_angle is None:
+            return
+        vertex_point = mapper.map_point(vertex_domain)
+        baseline_angle = self._angle_baseline_degrees()
+        if getattr(self._app_settings, "show_guide_lines", True):
+            self._draw_live_angle_guides(painter, mapper, vertex_point, baseline_angle)
+
+        signed_display_angle = angle_deg if self._angle_mode() == LIVE_ANGLE_MODE_RELATIVE_TO_PREV else self._normalize_signed_angle(preview_angle)
+        start_angle_qt = -baseline_angle * 16.0
+        span_angle_qt = -signed_display_angle * 16.0
+        arc_rect = QRectF(
+            vertex_point.x() - ANGLE_ARC_RADIUS_PX,
+            vertex_point.y() - ANGLE_ARC_RADIUS_PX,
+            ANGLE_ARC_RADIUS_PX * 2.0,
+            ANGLE_ARC_RADIUS_PX * 2.0,
+        )
+        arc_color = QColor(84, 210, 111, 230)
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(QPen(arc_color, 2.0))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawArc(arc_rect, int(round(start_angle_qt)), int(round(span_angle_qt)))
+        label_angle = baseline_angle + signed_display_angle
+        radians = math.radians(label_angle)
+        label_point = QPointF(
+            vertex_point.x() + math.cos(radians) * (ANGLE_ARC_RADIUS_PX + 14.0),
+            vertex_point.y() - math.sin(radians) * (ANGLE_ARC_RADIUS_PX + 14.0),
+        )
+        self._draw_live_angle_label(painter, label_point, self._format_live_angle_label(angle_deg), arc_color)
+        painter.restore()
+
+    def _draw_live_angle_guides(self, painter: QPainter, mapper: CanvasMapper, vertex_point: QPointF, baseline_angle: float) -> None:
+        guide_color = self.palette().color(QPalette.ColorRole.Highlight)
+        guide_color.setAlpha(85)
+        painter.save()
+        painter.setPen(QPen(guide_color, 1.0, Qt.PenStyle.DotLine))
+        painter.drawLine(QPointF(self.rect().left(), vertex_point.y()), QPointF(self.rect().right(), vertex_point.y()))
+        painter.drawLine(QPointF(vertex_point.x(), self.rect().top()), QPointF(vertex_point.x(), self.rect().bottom()))
+        if len(self.user_points) >= 2:
+            radians = math.radians(baseline_angle)
+            direction_x = math.cos(radians)
+            direction_y = -math.sin(radians)
+            span = max(self.width(), self.height())
+            painter.drawLine(
+                QPointF(vertex_point.x() - direction_x * span, vertex_point.y() - direction_y * span),
+                QPointF(vertex_point.x() + direction_x * span, vertex_point.y() + direction_y * span),
+            )
+        painter.restore()
+
+    def _draw_live_angle_label(self, painter: QPainter, anchor_point: QPointF, label_text: str, label_color: QColor) -> None:
+        font = painter.font()
+        font.setPointSize(8)
+        painter.save()
+        painter.setFont(font)
+        metrics = QFontMetricsF(font)
+        label_rect = QRectF(
+            anchor_point.x() - (metrics.horizontalAdvance(label_text) + 12.0) / 2.0,
+            anchor_point.y() - (metrics.height() + 6.0) / 2.0,
+            metrics.horizontalAdvance(label_text) + 12.0,
+            metrics.height() + 6.0,
+        )
+        viewport = self.rect().adjusted(6, 6, -6, -6)
+        if label_rect.right() > viewport.right():
+            label_rect.moveRight(viewport.right())
+        if label_rect.left() < viewport.left():
+            label_rect.moveLeft(viewport.left())
+        if label_rect.top() < viewport.top():
+            label_rect.moveTop(viewport.top())
+        if label_rect.bottom() > viewport.bottom():
+            label_rect.moveBottom(viewport.bottom())
+        painter.setPen(QPen(label_color, 0.8))
+        painter.setBrush(QColor(18, 18, 18, 200))
+        painter.drawRoundedRect(label_rect, 4.0, 4.0)
+        painter.setPen(label_color)
+        painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, label_text)
+        painter.restore()
+
+    def _draw_close_hint(self, painter: QPainter) -> None:
+        hint_text = "RMB to close"
+        font = painter.font()
+        font.setPointSize(8)
+        painter.save()
+        painter.setFont(font)
+        metrics = QFontMetricsF(font)
+        anchor = self.user_points[0]
+        label_rect = QRectF(
+            anchor.x() + 12.0,
+            anchor.y() - metrics.height() - 10.0,
+            metrics.horizontalAdvance(hint_text) + 12.0,
+            metrics.height() + 6.0,
+        )
+        viewport = self.rect().adjusted(6, 6, -6, -6)
+        if label_rect.right() > viewport.right():
+            label_rect.moveRight(viewport.right())
+        if label_rect.left() < viewport.left():
+            label_rect.moveLeft(viewport.left())
+        if label_rect.top() < viewport.top():
+            label_rect.moveTop(anchor.y() + 12.0)
+        painter.setPen(QPen(QColor(255, 255, 255, 110), 0.8))
+        painter.setBrush(QColor(18, 18, 18, 180))
+        painter.drawRoundedRect(label_rect, 4.0, 4.0)
+        painter.setPen(QColor(255, 255, 255, 225))
+        painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, hint_text)
+        painter.restore()
 
     def _edit_overlay_grid_step_cm(self, mapper: CanvasMapper) -> float:
         return self._grid_step_cm()

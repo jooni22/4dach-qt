@@ -558,7 +558,7 @@ def test_canvas_freehand_close_does_not_resnap_with_different_origin(qtbot):
     assert closed_domain.y == pytest.approx(50.0, abs=0.1)
 
 
-def test_drawing_hud_hidden_when_grid_off(qtbot, monkeypatch):
+def test_live_segment_feedback_hidden_without_user_points(qtbot, monkeypatch):
     canvas = DrawingCanvas()
     canvas.resize(640, 420)
     qtbot.addWidget(canvas)
@@ -566,10 +566,9 @@ def test_drawing_hud_hidden_when_grid_off(qtbot, monkeypatch):
     qtbot.waitExposed(canvas)
     canvas.set_mode(DrawingCanvas.MODE_DRAW_OUTLINE)
     canvas.preview_point = QPointF(120.0, 120.0)
-    canvas.toggle_grid(False)
     calls: list[str] = []
 
-    monkeypatch.setattr(canvas, "_draw_drawing_hud", lambda *args, **kwargs: calls.append("hud"))
+    monkeypatch.setattr(canvas, "_draw_live_segment_feedback", lambda *args, **kwargs: calls.append("feedback"))
 
     canvas.grab()
     QApplication.processEvents()
@@ -577,7 +576,7 @@ def test_drawing_hud_hidden_when_grid_off(qtbot, monkeypatch):
     assert calls == []
 
 
-def test_commit_length_input_places_correct_vertex(qtbot):
+def test_inline_segment_editor_confirm_places_correct_vertex(qtbot):
     canvas = DrawingCanvas()
     canvas.resize(640, 420)
     canvas.set_app_settings(AppSettings(grid_size_cm=10.0))
@@ -589,19 +588,20 @@ def test_commit_length_input_places_correct_vertex(qtbot):
 
     canvas.user_points.append(mapper.map_point(Point2D(0.0, 0.0)))
     canvas.preview_point = mapper.map_point(Point2D(10.0, 0.0))
-    canvas._length_input_text = "30"
-    canvas._length_input_active = True
+    canvas._segment_input_length_text = "30"
+    canvas._segment_input_angle_text = "0"
+    canvas._segment_input_active = True
 
-    canvas._commit_length_input()
+    canvas._confirm_inline_segment_editor()
 
     placed_domain = mapper.unmap_point(canvas.user_points[-1])
     assert placed_domain.x == pytest.approx(30.0, abs=0.1)
     assert placed_domain.y == pytest.approx(0.0, abs=0.1)
-    assert canvas._length_input_active is False
-    assert canvas._length_input_text == ""
+    assert canvas._segment_input_active is False
+    assert canvas._segment_input_length_text == ""
 
 
-def test_length_input_decimal_point(qtbot):
+def test_typing_digit_opens_inline_segment_editor(qtbot):
     canvas = DrawingCanvas()
     canvas.resize(640, 420)
     qtbot.addWidget(canvas)
@@ -612,13 +612,14 @@ def test_length_input_decimal_point(qtbot):
     canvas.user_points.append(mapper.map_point(Point2D(0.0, 0.0)))
     canvas.setFocus()
 
-    QTest.keyClicks(canvas, "15.5")
+    QTest.keyClick(canvas, Qt.Key.Key_1)
 
-    assert canvas._length_input_text == "15.5"
-    assert canvas._length_input_active is True
+    assert canvas._segment_input_active is True
+    assert canvas._segment_input_length_text == "1"
+    assert canvas._inline_segment_editor.isVisible() is True
 
 
-def test_length_input_duplicate_decimal_rejected(qtbot):
+def test_inline_segment_editor_tab_switches_active_field(qtbot):
     canvas = DrawingCanvas()
     canvas.resize(640, 420)
     qtbot.addWidget(canvas)
@@ -629,10 +630,102 @@ def test_length_input_duplicate_decimal_rejected(qtbot):
     canvas.user_points.append(mapper.map_point(Point2D(0.0, 0.0)))
     canvas.setFocus()
 
-    QTest.keyClicks(canvas, "1.5.")
+    QTest.keyClick(canvas, Qt.Key.Key_1)
+    QTest.keyClick(canvas._inline_segment_editor.length_edit, Qt.Key.Key_Tab)
 
-    assert canvas._length_input_text == "1.5"
-    assert canvas._length_input_active is True
+    assert canvas._segment_input_active_field == "angle"
+
+
+def test_inline_segment_editor_escape_cancels_without_leaving_draw_mode(qtbot):
+    canvas = DrawingCanvas()
+    canvas.resize(640, 420)
+    qtbot.addWidget(canvas)
+    canvas.show()
+    qtbot.waitExposed(canvas)
+    canvas.set_mode(DrawingCanvas.MODE_DRAW_OUTLINE)
+    mapper = canvas._free_draw_mapper()
+    canvas.user_points.append(mapper.map_point(Point2D(0.0, 0.0)))
+    canvas.setFocus()
+
+    QTest.keyClick(canvas, Qt.Key.Key_1)
+    QTest.keyClick(canvas, Qt.Key.Key_Escape)
+
+    assert canvas._segment_input_active is False
+    assert canvas._mode == DrawingCanvas.MODE_DRAW_OUTLINE
+    assert len(canvas.user_points) == 1
+
+
+def test_enter_without_inline_editor_does_not_close_polygon(qtbot):
+    canvas = DrawingCanvas()
+    canvas.resize(640, 420)
+    qtbot.addWidget(canvas)
+    canvas.show()
+    qtbot.waitExposed(canvas)
+    canvas.set_mode(DrawingCanvas.MODE_DRAW_OUTLINE)
+    mapper = canvas._free_draw_mapper()
+    canvas.user_points = [
+        mapper.map_point(Point2D(0.0, 0.0)),
+        mapper.map_point(Point2D(20.0, 0.0)),
+        mapper.map_point(Point2D(20.0, 20.0)),
+    ]
+    canvas.setFocus()
+
+    QTest.keyClick(canvas, Qt.Key.Key_Return)
+
+    assert len(canvas.user_points) == 3
+    assert canvas._mode == DrawingCanvas.MODE_DRAW_OUTLINE
+
+
+def test_rmb_closes_polygon_when_enabled(qtbot):
+    canvas = DrawingCanvas()
+    canvas.resize(640, 420)
+    qtbot.addWidget(canvas)
+    canvas.show()
+    qtbot.waitExposed(canvas)
+    canvas.set_mode(DrawingCanvas.MODE_DRAW_OUTLINE)
+    mapper = canvas._free_draw_mapper()
+    canvas.user_points = [
+        mapper.map_point(Point2D(0.0, 0.0)),
+        mapper.map_point(Point2D(20.0, 0.0)),
+        mapper.map_point(Point2D(20.0, 20.0)),
+    ]
+
+    with qtbot.waitSignal(canvas.polygon_closed, timeout=1000) as blocker:
+        QTest.mouseClick(canvas, Qt.MouseButton.RightButton, Qt.KeyboardModifier.NoModifier, QPoint(10, 10))
+
+    assert len(blocker.args[0]) == 3
+    assert canvas.user_points == []
+
+
+def test_rmb_clears_sketch_when_close_disabled(qtbot):
+    canvas = DrawingCanvas()
+    canvas.resize(640, 420)
+    qtbot.addWidget(canvas)
+    canvas.show()
+    qtbot.waitExposed(canvas)
+    canvas.set_app_settings(AppSettings(close_on_rmb=False))
+    canvas.set_mode(DrawingCanvas.MODE_DRAW_OUTLINE)
+    mapper = canvas._free_draw_mapper()
+    canvas.user_points = [
+        mapper.map_point(Point2D(0.0, 0.0)),
+        mapper.map_point(Point2D(20.0, 0.0)),
+        mapper.map_point(Point2D(20.0, 20.0)),
+    ]
+
+    QTest.mouseClick(canvas, Qt.MouseButton.RightButton, Qt.KeyboardModifier.NoModifier, QPoint(10, 10))
+
+    assert canvas.user_points == []
+
+
+def test_live_length_label_uses_integer_by_default():
+    canvas = DrawingCanvas()
+    assert canvas._format_live_length_label(143.2) == "143 cm"
+
+
+def test_live_length_label_uses_decimal_when_enabled():
+    canvas = DrawingCanvas()
+    canvas.set_app_settings(AppSettings(show_decimal_cm=True))
+    assert canvas._format_live_length_label(143.2) == "143.2 cm"
 
 
 def test_canvas_dragging_origin_projects_to_nearest_boundary_when_cursor_leaves_shape(qtbot):
