@@ -121,6 +121,24 @@ class SettingsDialog(QDialog):
         self._check_crosshair.setToolTip("Pokazuje subtelny krzyżyk kierunkowy podczas rysowania i edycji.")
         grid_form.addRow("Kursor:", self._check_crosshair)
 
+        self._check_snap_to_grid = QCheckBox("Przyciągaj do siatki")
+        grid_form.addRow("Snap:", self._check_snap_to_grid)
+
+        self._check_snap_to_axis = QCheckBox("Przyciągaj do osi 0°/90°")
+        grid_form.addRow("Osie:", self._check_snap_to_axis)
+
+        self._check_snap_to_45deg = QCheckBox("Przyciągaj do 45°")
+        grid_form.addRow("Kąty:", self._check_snap_to_45deg)
+
+        self._check_snap_to_3060deg = QCheckBox("Przyciągaj do 30°/60°")
+        grid_form.addRow("Kąty 30/60:", self._check_snap_to_3060deg)
+
+        self._check_snap_to_points = QCheckBox("Przyciągaj do punktów charakterystycznych")
+        grid_form.addRow("Punkty:", self._check_snap_to_points)
+
+        self._check_show_inferences = QCheckBox("Pokaż linie inferencji CAD")
+        grid_form.addRow("Inferencje:", self._check_show_inferences)
+
         root.addWidget(grp_grid)
 
         grp_live_drawing = QGroupBox("Rysowanie na żywo")
@@ -170,6 +188,12 @@ class SettingsDialog(QDialog):
         self._check_show_angle_arc.setChecked(settings.show_angle_arc)
         self._check_show_guide_lines.setChecked(settings.show_guide_lines)
         self._check_close_on_rmb.setChecked(settings.close_on_rmb)
+        self._check_snap_to_grid.setChecked(settings.snap_to_grid)
+        self._check_snap_to_axis.setChecked(settings.snap_to_axis)
+        self._check_snap_to_45deg.setChecked(settings.snap_to_45deg)
+        self._check_snap_to_3060deg.setChecked(settings.snap_to_3060deg)
+        self._check_snap_to_points.setChecked(settings.snap_to_points)
+        self._check_show_inferences.setChecked(settings.show_inferences)
 
     def get_values(self) -> dict:
         """Return current dialog values as a dict matching AppSettings fields."""
@@ -186,6 +210,12 @@ class SettingsDialog(QDialog):
             "show_angle_arc": self._check_show_angle_arc.isChecked(),
             "show_guide_lines": self._check_show_guide_lines.isChecked(),
             "close_on_rmb": self._check_close_on_rmb.isChecked(),
+            "snap_to_grid": self._check_snap_to_grid.isChecked(),
+            "snap_to_axis": self._check_snap_to_axis.isChecked(),
+            "snap_to_45deg": self._check_snap_to_45deg.isChecked(),
+            "snap_to_3060deg": self._check_snap_to_3060deg.isChecked(),
+            "snap_to_points": self._check_snap_to_points.isChecked(),
+            "show_inferences": self._check_show_inferences.isChecked(),
         }
 
     def build_settings(self) -> AppSettings:

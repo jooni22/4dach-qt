@@ -53,6 +53,15 @@ class AppSettings:
     show_angle_arc: bool = True
     show_guide_lines: bool = True
     close_on_rmb: bool = True
+    snap_to_grid: bool = True
+    snap_to_axis: bool = True
+    snap_to_45deg: bool = True
+    snap_to_3060deg: bool = False
+    snap_to_points: bool = True
+    show_inferences: bool = True
+    snap_axis_threshold_deg: float = 3.0
+    snap_45_threshold_deg: float = 2.5
+    snap_radius_px: int = 12
 
     @classmethod
     def from_dict(cls, data: dict | None) -> "AppSettings":
@@ -89,6 +98,24 @@ class AppSettings:
         live_angle_mode = str(d.get("live_angle_mode", LIVE_ANGLE_MODE_ABSOLUTE))
         if live_angle_mode not in _VALID_LIVE_ANGLE_MODES:
             live_angle_mode = LIVE_ANGLE_MODE_ABSOLUTE
+        try:
+            snap_axis_threshold_deg = float(d.get("snap_axis_threshold_deg", 3.0))
+        except (TypeError, ValueError):
+            snap_axis_threshold_deg = 3.0
+        if snap_axis_threshold_deg <= 0:
+            snap_axis_threshold_deg = 3.0
+        try:
+            snap_45_threshold_deg = float(d.get("snap_45_threshold_deg", 2.5))
+        except (TypeError, ValueError):
+            snap_45_threshold_deg = 2.5
+        if snap_45_threshold_deg <= 0:
+            snap_45_threshold_deg = 2.5
+        try:
+            snap_radius_px = int(d.get("snap_radius_px", 12))
+        except (TypeError, ValueError):
+            snap_radius_px = 12
+        if snap_radius_px <= 0:
+            snap_radius_px = 12
         return cls(
             partial_cutout_top_extra_cm=max(0.0, value),
             grid_size_cm=grid_size,
@@ -102,6 +129,15 @@ class AppSettings:
             show_angle_arc=bool(d.get("show_angle_arc", True)),
             show_guide_lines=bool(d.get("show_guide_lines", True)),
             close_on_rmb=bool(d.get("close_on_rmb", True)),
+            snap_to_grid=bool(d.get("snap_to_grid", True)),
+            snap_to_axis=bool(d.get("snap_to_axis", True)),
+            snap_to_45deg=bool(d.get("snap_to_45deg", True)),
+            snap_to_3060deg=bool(d.get("snap_to_3060deg", False)),
+            snap_to_points=bool(d.get("snap_to_points", True)),
+            show_inferences=bool(d.get("show_inferences", True)),
+            snap_axis_threshold_deg=snap_axis_threshold_deg,
+            snap_45_threshold_deg=snap_45_threshold_deg,
+            snap_radius_px=snap_radius_px,
         )
 
     def to_dict(self) -> dict:
@@ -118,4 +154,13 @@ class AppSettings:
             "show_angle_arc": self.show_angle_arc,
             "show_guide_lines": self.show_guide_lines,
             "close_on_rmb": self.close_on_rmb,
+            "snap_to_grid": self.snap_to_grid,
+            "snap_to_axis": self.snap_to_axis,
+            "snap_to_45deg": self.snap_to_45deg,
+            "snap_to_3060deg": self.snap_to_3060deg,
+            "snap_to_points": self.snap_to_points,
+            "show_inferences": self.show_inferences,
+            "snap_axis_threshold_deg": self.snap_axis_threshold_deg,
+            "snap_45_threshold_deg": self.snap_45_threshold_deg,
+            "snap_radius_px": self.snap_radius_px,
         }

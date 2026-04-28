@@ -485,7 +485,7 @@ def test_canvas_draw_outline_mode_uses_global_free_draw_mapper(qtbot):
 def test_canvas_freehand_outline_points_snap_to_same_grid_as_dragging(qtbot):
     canvas = DrawingCanvas()
     canvas.resize(640, 420)
-    canvas.set_app_settings(AppSettings(grid_size_cm=25.0))
+    canvas.set_app_settings(AppSettings(grid_size_cm=25.0, grid_minor_cm=25))
     qtbot.addWidget(canvas)
     canvas.show()
     qtbot.waitExposed(canvas)
@@ -509,7 +509,7 @@ def test_canvas_freehand_outline_points_snap_to_same_grid_as_dragging(qtbot):
 def test_canvas_draw_outline_mode_uses_free_draw_mapper_even_with_existing_outline(qtbot):
     outline = Polygon2D.rectangle(300, 200)
     canvas = _make_canvas(qtbot, outline)
-    canvas.set_app_settings(AppSettings(grid_size_cm=25.0))
+    canvas.set_app_settings(AppSettings(grid_size_cm=25.0, grid_minor_cm=25))
     canvas.set_mode(DrawingCanvas.MODE_DRAW_OUTLINE)
     free_mapper = canvas._free_draw_mapper()
     view_mapper = canvas._canvas_mapper()
@@ -528,6 +528,98 @@ def test_canvas_draw_outline_mode_uses_free_draw_mapper_even_with_existing_outli
     snapped_domain = free_mapper.unmap_point(canvas.user_points[0])
     assert snapped_domain.x == pytest.approx(275.0, abs=0.1)
     assert snapped_domain.y == pytest.approx(50.0, abs=0.1)
+
+
+def test_canvas_axis_snap_updates_existing_preview_endpoint(qtbot):
+    canvas = DrawingCanvas()
+    canvas.resize(640, 420)
+    qtbot.addWidget(canvas)
+    canvas.show()
+    qtbot.waitExposed(canvas)
+    canvas.set_mode(DrawingCanvas.MODE_DRAW_OUTLINE)
+    mapper = canvas._free_draw_mapper()
+    canvas.user_points.append(mapper.map_point(Point2D(100.0, 100.0)))
+
+    _send_mouse_move(canvas, mapper.map_point(Point2D(190.0, 104.0)))
+
+    assert canvas.preview_point is not None
+    preview_domain = mapper.unmap_point(canvas.preview_point)
+    assert preview_domain.y == pytest.approx(100.0, abs=0.1)
+    assert canvas._draw_snap_state is not None
+    assert canvas._draw_snap_state.kind == "axis"
+
+
+def test_canvas_45_degree_snap_updates_existing_preview_endpoint(qtbot):
+    canvas = DrawingCanvas()
+    canvas.resize(640, 420)
+    qtbot.addWidget(canvas)
+    canvas.show()
+    qtbot.waitExposed(canvas)
+    canvas.set_app_settings(AppSettings(snap_to_axis=False))
+    canvas.set_mode(DrawingCanvas.MODE_DRAW_OUTLINE)
+    mapper = canvas._free_draw_mapper()
+    canvas.user_points.append(mapper.map_point(Point2D(100.0, 100.0)))
+
+    _send_mouse_move(canvas, mapper.map_point(Point2D(160.0, 42.0)))
+
+    assert canvas.preview_point is not None
+    preview_domain = mapper.unmap_point(canvas.preview_point)
+    assert preview_domain.x - 100.0 == pytest.approx(100.0 - preview_domain.y, abs=0.5)
+    assert canvas._draw_snap_state is not None
+    assert canvas._draw_snap_state.kind == "angle"
+    assert canvas._draw_snap_state.label == "45°"
+
+
+def test_canvas_3060_degree_snap_uses_fixed_internal_threshold(qtbot):
+    canvas = DrawingCanvas()
+    canvas.resize(640, 420)
+    qtbot.addWidget(canvas)
+    canvas.show()
+    qtbot.waitExposed(canvas)
+    canvas.set_app_settings(AppSettings(snap_to_axis=False, snap_to_45deg=False, snap_to_3060deg=True))
+    canvas.set_mode(DrawingCanvas.MODE_DRAW_OUTLINE)
+    mapper = canvas._free_draw_mapper()
+    canvas.user_points.append(mapper.map_point(Point2D(100.0, 100.0)))
+
+    _send_mouse_move(canvas, mapper.map_point(Point2D(170.0, 60.0)))
+
+    assert canvas._draw_snap_state is not None
+    assert canvas._draw_snap_state.kind == "angle"
+    assert canvas._draw_snap_state.label == "30°"
+
+
+def test_canvas_vertex_and_midpoint_snap_precede_grid(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+    canvas.set_app_settings(AppSettings(grid_minor_cm=25, snap_to_axis=False, snap_to_45deg=False))
+    canvas.set_mode(DrawingCanvas.MODE_DRAW_CUTOUT)
+    mapper = canvas._active_mapper()
+    assert mapper is not None
+
+    vertex_result = canvas._resolve_draw_preview_endpoint(Point2D(2.0, 2.0), mapper)
+    assert vertex_result == Point2D(0.0, 0.0)
+    assert canvas._draw_snap_state is not None
+    assert canvas._draw_snap_state.kind == "vertex"
+
+    midpoint_result = canvas._resolve_draw_preview_endpoint(Point2D(151.0, 2.0), mapper)
+    assert midpoint_result == Point2D(150.0, 0.0)
+    assert canvas._draw_snap_state is not None
+    assert canvas._draw_snap_state.kind == "midpoint"
+
+
+def test_canvas_inference_state_tracks_horizontal_and_vertical_alignment(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+    canvas.set_app_settings(AppSettings(snap_to_axis=False, snap_to_45deg=False, snap_to_points=False, snap_to_grid=False))
+    canvas.set_mode(DrawingCanvas.MODE_DRAW_CUTOUT)
+    mapper = canvas._active_mapper()
+    assert mapper is not None
+
+    canvas._resolve_draw_preview_endpoint(Point2D(120.0, 0.5), mapper)
+    assert any(line.kind == "horizontal" for line in canvas._draw_inference_lines)
+
+    canvas._resolve_draw_preview_endpoint(Point2D(0.5, 120.0), mapper)
+    assert any(line.kind == "vertical" for line in canvas._draw_inference_lines)
 
 
 def test_canvas_draw_outline_mode_grid_uses_free_draw_bounds_with_existing_outline(qtbot):

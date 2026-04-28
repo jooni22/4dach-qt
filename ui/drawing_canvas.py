@@ -64,6 +64,8 @@ GRID_MINOR_MIN_SPACING_PX = 8.0
 GRID_MAJOR_MIN_SPACING_PX = 5.0
 CROSSHAIR_LENGTH_PX = 28.0
 CROSSHAIR_DEAD_ZONE_PX = 1.0
+GRID_SNAP_THRESHOLD_PX = 8.0
+SNAP_3060_THRESHOLD_DEG = 2.0
 RUBBER_BAND_LABEL_PADDING_X = 8.0
 RUBBER_BAND_LABEL_PADDING_Y = 4.0
 ANGLE_ARC_RADIUS_PX = 20.0
@@ -218,6 +220,20 @@ class _GridContext:
 
 
 @dataclass(slots=True, frozen=True)
+class _DrawSnapState:
+    kind: str
+    point: Point2D
+    label: str = ""
+
+
+@dataclass(slots=True, frozen=True)
+class _InferenceLine:
+    kind: str
+    start: Point2D
+    end: Point2D
+
+
+@dataclass(slots=True, frozen=True)
 class _SelectionSnapshot:
     kind: str | None
     hole_index: int | None = None
@@ -250,6 +266,8 @@ class DrawingCanvas(QWidget):
         self._crosshair_point: QPointF | None = None
         self._crosshair_axis: str | None = None
         self._snap_active: bool = False
+        self._draw_snap_state: _DrawSnapState | None = None
+        self._draw_inference_lines: list[_InferenceLine] = []
 
         self.roof_plane = None
         self._material = None
@@ -334,13 +352,15 @@ class DrawingCanvas(QWidget):
         if self._snap_to_grid_enabled == enabled:
             return
         self._snap_to_grid_enabled = enabled
+        self._app_settings.snap_to_grid = enabled
         self.update()
 
     def snap_to_grid_enabled(self) -> bool:
-        return self._snap_to_grid_enabled
+        return self._app_settings.snap_to_grid and self._snap_to_grid_enabled
 
     def set_app_settings(self, settings: AppSettings | None) -> None:
         self._app_settings = settings or AppSettings()
+        self._snap_to_grid_enabled = self._app_settings.snap_to_grid
         self.update()
 
     def set_origin_edit_enabled(self, enabled: bool) -> None:
@@ -1030,7 +1050,7 @@ class DrawingCanvas(QWidget):
         effective_modifiers = self._current_modifiers() if modifiers is None else modifiers
         if self._shift_orthogonal_lock_active(effective_modifiers):
             return True
-        if not self._snap_to_grid_enabled:
+        if not self.snap_to_grid_enabled():
             return False
         if self._shift_free_move_active(effective_modifiers):
             return False
@@ -1067,6 +1087,222 @@ class DrawingCanvas(QWidget):
 
     def _domain_to_pixel_point(self, point: Point2D, mapper: CanvasMapper) -> QPointF:
         return mapper.map_point(point)
+
+    def _draw_snap_enabled(self, modifiers: Qt.KeyboardModifier) -> bool:
+        return not self._shift_free_move_active(modifiers)
+
+    def _distance_cm(self, first: Point2D, second: Point2D) -> float:
+        return math.hypot(first.x - second.x, first.y - second.y)
+
+    def _angle_difference_degrees(self, first: float, second: float) -> float:
+        return abs((first - second + 180.0) % 360.0 - 180.0)
+
+    def _point_from_angle_and_radius(self, start: Point2D, angle_deg: float, radius: float) -> Point2D:
+        radians = math.radians(angle_deg)
+        return Point2D(start.x + math.cos(radians) * radius, start.y - math.sin(radians) * radius)
+
+    def _snap_radius_cm(self, mapper: CanvasMapper) -> float:
+        return max(float(getattr(self._app_settings, "snap_radius_px", 12)), 1.0) / max(mapper.scale, 1e-9)
+
+    def _grid_snap_radius_cm(self, mapper: CanvasMapper) -> float:
+        return GRID_SNAP_THRESHOLD_PX / max(mapper.scale, 1e-9)
+
+    def _draw_target_polygons(self) -> list[Polygon2D]:
+        polygons: list[Polygon2D] = []
+        if len(self.user_points) >= 2:
+            mapper = self._active_mapper()
+            if mapper is not None:
+                polygons.append(Polygon2D([mapper.unmap_point(point) for point in self.user_points]))
+        if self.roof_plane is not None:
+            outline = getattr(self.roof_plane, "outline", None)
+            if outline is not None:
+                polygons.append(outline)
+            polygons.extend(getattr(self.roof_plane, "holes", []) or [])
+        return polygons
+
+    def _draw_target_edges(self) -> list[tuple[Point2D, Point2D]]:
+        edges: list[tuple[Point2D, Point2D]] = []
+        for polygon in self._draw_target_polygons():
+            if len(polygon.points) >= 2:
+                edges.extend(polygon_edges(polygon))
+        return edges
+
+    def _draw_target_vertices(self) -> list[Point2D]:
+        vertices: list[Point2D] = []
+        for polygon in self._draw_target_polygons():
+            vertices.extend(polygon.points)
+        return vertices
+
+    def _project_point_to_segment_inside(self, point: Point2D, start: Point2D, end: Point2D) -> Point2D | None:
+        dx = end.x - start.x
+        dy = end.y - start.y
+        length_sq = dx * dx + dy * dy
+        if length_sq <= 1e-9:
+            return None
+        ratio = ((point.x - start.x) * dx + (point.y - start.y) * dy) / length_sq
+        if ratio < 0.0 or ratio > 1.0:
+            return None
+        return Point2D(start.x + ratio * dx, start.y + ratio * dy)
+
+    def _ray_segment_intersection(self, ray_start: Point2D, ray_end: Point2D, seg_start: Point2D, seg_end: Point2D) -> Point2D | None:
+        rx = ray_end.x - ray_start.x
+        ry = ray_end.y - ray_start.y
+        sx = seg_end.x - seg_start.x
+        sy = seg_end.y - seg_start.y
+        denominator = rx * sy - ry * sx
+        if abs(denominator) <= 1e-9:
+            return None
+        qpx = seg_start.x - ray_start.x
+        qpy = seg_start.y - ray_start.y
+        t = (qpx * sy - qpy * sx) / denominator
+        u = (qpx * ry - qpy * rx) / denominator
+        if t < 0.0 or u < 0.0 or u > 1.0:
+            return None
+        return Point2D(ray_start.x + t * rx, ray_start.y + t * ry)
+
+    def _best_near_point(self, candidates: list[tuple[str, Point2D]], raw_point: Point2D, mapper: CanvasMapper) -> _DrawSnapState | None:
+        radius = self._snap_radius_cm(mapper)
+        best: tuple[float, _DrawSnapState] | None = None
+        for kind, point in candidates:
+            distance = self._distance_cm(point, raw_point)
+            if distance <= radius and (best is None or distance < best[0]):
+                best = (distance, _DrawSnapState(kind, point))
+        return None if best is None else best[1]
+
+    def _resolve_axis_snap(self, raw_point: Point2D, start: Point2D) -> _DrawSnapState | None:
+        if not getattr(self._app_settings, "snap_to_axis", True):
+            return None
+        dx = raw_point.x - start.x
+        dy = raw_point.y - start.y
+        radius = math.hypot(dx, dy)
+        if radius <= 1e-6:
+            return None
+        angle = self._absolute_angle_degrees_from_delta(dx, dy)
+        for target in (0.0, 90.0, 180.0, 270.0):
+            if self._angle_difference_degrees(angle, target) <= self._app_settings.snap_axis_threshold_deg:
+                return _DrawSnapState("axis", self._point_from_angle_and_radius(start, target, radius), f"{int(target)}°")
+        return None
+
+    def _resolve_angular_snap(self, raw_point: Point2D, start: Point2D) -> _DrawSnapState | None:
+        dx = raw_point.x - start.x
+        dy = raw_point.y - start.y
+        radius = math.hypot(dx, dy)
+        if radius <= 1e-6:
+            return None
+        angle = self._absolute_angle_degrees_from_delta(dx, dy)
+        candidates: list[tuple[float, float]] = []
+        if getattr(self._app_settings, "snap_to_45deg", True):
+            candidates.extend((target, self._app_settings.snap_45_threshold_deg) for target in (45.0, 135.0, 225.0, 315.0))
+        if getattr(self._app_settings, "snap_to_3060deg", False):
+            candidates.extend((target, SNAP_3060_THRESHOLD_DEG) for target in (30.0, 60.0, 120.0, 150.0, 210.0, 240.0, 300.0, 330.0))
+        best: tuple[float, float] | None = None
+        for target, threshold in candidates:
+            delta = self._angle_difference_degrees(angle, target)
+            if delta <= threshold and (best is None or delta < best[0]):
+                best = (delta, target)
+        if best is None:
+            return None
+        target = best[1]
+        return _DrawSnapState("angle", self._point_from_angle_and_radius(start, target, radius), f"{int(target)}°")
+
+    def _resolve_point_snap(self, raw_point: Point2D, start: Point2D | None, mapper: CanvasMapper) -> _DrawSnapState | None:
+        if not getattr(self._app_settings, "snap_to_points", True):
+            return None
+        vertex = self._best_near_point([("vertex", point) for point in self._draw_target_vertices()], raw_point, mapper)
+        if vertex is not None:
+            return vertex
+        midpoint_candidates: list[tuple[str, Point2D]] = []
+        for edge_start, edge_end in self._draw_target_edges():
+            midpoint_candidates.append(("midpoint", Point2D((edge_start.x + edge_end.x) / 2.0, (edge_start.y + edge_end.y) / 2.0)))
+        midpoint = self._best_near_point(midpoint_candidates, raw_point, mapper)
+        if midpoint is not None:
+            return midpoint
+        intersection_candidates: list[tuple[str, Point2D]] = []
+        projection_candidates: list[tuple[str, Point2D]] = []
+        for edge_start, edge_end in self._draw_target_edges():
+            projection = self._project_point_to_segment_inside(raw_point, edge_start, edge_end)
+            if projection is not None:
+                projection_candidates.append(("perpendicular", projection))
+            if start is not None:
+                intersection = self._ray_segment_intersection(start, raw_point, edge_start, edge_end)
+                if intersection is not None:
+                    intersection_candidates.append(("intersection", intersection))
+        intersection = self._best_near_point(intersection_candidates, raw_point, mapper)
+        if intersection is not None:
+            return intersection
+        return self._best_near_point(projection_candidates, raw_point, mapper)
+
+    def _resolve_grid_snap(self, raw_point: Point2D, mapper: CanvasMapper, modifiers: Qt.KeyboardModifier) -> _DrawSnapState | None:
+        if not self.snap_to_grid_enabled():
+            return None
+        step_cm = max(float(getattr(self._app_settings, "grid_minor_cm", 10)), 0.1)
+        anchor = self._snap_origin_point(mapper)
+        snapped = Point2D(
+            anchor.x + round((raw_point.x - anchor.x) / step_cm) * step_cm,
+            anchor.y + round((raw_point.y - anchor.y) / step_cm) * step_cm,
+        )
+        if self._distance_cm(raw_point, snapped) <= self._grid_snap_radius_cm(mapper):
+            return _DrawSnapState("grid", snapped)
+        return None
+
+    def _build_draw_inferences(self, raw_point: Point2D, start: Point2D | None, mapper: CanvasMapper) -> list[_InferenceLine]:
+        if not getattr(self._app_settings, "show_inferences", True):
+            return []
+        radius = self._snap_radius_cm(mapper)
+        bounds = mapper.bounds
+        lines: list[_InferenceLine] = []
+        for vertex in self._draw_target_vertices():
+            if abs(raw_point.y - vertex.y) <= radius:
+                lines.append(_InferenceLine("horizontal", Point2D(bounds.min_x, vertex.y), Point2D(bounds.max_x, vertex.y)))
+                break
+        for vertex in self._draw_target_vertices():
+            if abs(raw_point.x - vertex.x) <= radius:
+                lines.append(_InferenceLine("vertical", Point2D(vertex.x, bounds.min_y), Point2D(vertex.x, bounds.max_y)))
+                break
+        if start is not None and len(self.user_points) >= 2:
+            previous = mapper.unmap_point(self.user_points[-2])
+            dx = start.x - previous.x
+            dy = start.y - previous.y
+            length = math.hypot(dx, dy)
+            if length > 1e-6:
+                ux = dx / length
+                uy = dy / length
+                span = max(bounds.width, bounds.height) * 2.0
+                lines.append(_InferenceLine("continuation", Point2D(start.x - ux * span, start.y - uy * span), Point2D(start.x + ux * span, start.y + uy * span)))
+        return lines
+
+    def _resolve_draw_preview_endpoint(
+        self,
+        raw_point: Point2D,
+        mapper: CanvasMapper,
+        modifiers: Qt.KeyboardModifier = Qt.KeyboardModifier.NoModifier,
+    ) -> Point2D:
+        self._draw_snap_state = None
+        self._draw_inference_lines = []
+        start = self._current_segment_start_domain_point()
+        if not self._draw_snap_enabled(modifiers):
+            return raw_point
+        self._draw_inference_lines = self._build_draw_inferences(raw_point, start, mapper)
+        if start is not None:
+            for resolver in (
+                self._resolve_axis_snap,
+                lambda point, segment_start: self._resolve_point_snap(point, segment_start, mapper),
+                self._resolve_angular_snap,
+            ):
+                state = resolver(raw_point, start)
+                if state is not None:
+                    self._draw_snap_state = state
+                    return state.point
+        else:
+            state = self._resolve_point_snap(raw_point, None, mapper)
+            if state is not None:
+                self._draw_snap_state = state
+                return state.point
+        state = self._resolve_grid_snap(raw_point, mapper, modifiers)
+        if state is not None:
+            self._draw_snap_state = state
+            return state.point
+        return raw_point
 
     def _toggle_caret(self) -> None:
         self._caret_visible = not self._caret_visible
@@ -1224,6 +1460,13 @@ class DrawingCanvas(QWidget):
         self.preview_point = pixel_point
         self._update_crosshair(pixel_point, reference=self.user_points[-2] if len(self.user_points) >= 2 else None)
 
+    def _append_draw_point_from_raw_position(self, pos: QPointF, mapper: CanvasMapper, modifiers: Qt.KeyboardModifier) -> None:
+        raw_domain_point = mapper.unmap_point(pos)
+        domain_point = self._resolve_draw_preview_endpoint(raw_domain_point, mapper, modifiers)
+        self.user_points.append(self._domain_to_pixel_point(domain_point, mapper))
+        self.preview_point = self.user_points[-1]
+        self._update_crosshair(self.user_points[-1], reference=self.user_points[-2] if len(self.user_points) >= 2 else None)
+
     def _start_inline_segment_editor(self, initial_text: str) -> None:
         if not self.user_points:
             return
@@ -1295,7 +1538,9 @@ class DrawingCanvas(QWidget):
         if new_domain_point is None:
             self._cancel_inline_segment_editor()
             return
-        new_domain_point = self._snap_domain_point(new_domain_point)
+        mapper = self._active_mapper()
+        if mapper is not None:
+            new_domain_point = self._resolve_draw_preview_endpoint(new_domain_point, mapper, self._current_modifiers())
         self._append_user_point_from_domain(new_domain_point)
         self._cancel_inline_segment_editor()
 
@@ -1583,9 +1828,7 @@ class DrawingCanvas(QWidget):
                     mapper = self._active_mapper()
                     if mapper is None:
                         return
-                    domain_point = self._pixel_to_domain_point(pos, mapper, modifiers=event.modifiers())
-                    self.user_points.append(self._domain_to_pixel_point(domain_point, mapper))
-                    self._update_crosshair(self.user_points[-1])
+                    self._append_draw_point_from_raw_position(pos, mapper, event.modifiers())
                     self.update()
                 return
 
@@ -1682,7 +1925,8 @@ class DrawingCanvas(QWidget):
             pos = event.position()
             mapper = self._active_mapper()
             if mapper is not None:
-                domain_point = self._pixel_to_domain_point(pos, mapper, modifiers=event.modifiers())
+                raw_domain_point = mapper.unmap_point(pos)
+                domain_point = self._resolve_draw_preview_endpoint(raw_domain_point, mapper, event.modifiers())
                 pos = self._domain_to_pixel_point(domain_point, mapper)
             self.preview_point = pos
             reference = self.user_points[-1] if self.user_points else None
@@ -1855,9 +2099,13 @@ class DrawingCanvas(QWidget):
 
         if self.preview_point is not None:
             rubber_band_color = QColor(accent)
+            if self._draw_snap_state is not None and self._draw_snap_state.kind in {"axis", "angle"}:
+                rubber_band_color = QColor(0, 220, 255)
             rubber_band_color.setAlpha(200)
             painter.setPen(QPen(rubber_band_color, 1.7, Qt.PenStyle.DashLine))
             painter.drawLine(self.user_points[-1], self.preview_point)
+            self._draw_inference_feedback(painter)
+            self._draw_snap_feedback(painter)
             self._draw_live_segment_feedback(painter)
 
         if len(self.user_points) >= 3 and self.preview_point is not None:
@@ -1880,6 +2128,62 @@ class DrawingCanvas(QWidget):
                 painter.setBrush(accent)
                 painter.setPen(QPen(accent, 1))
             painter.drawEllipse(int(point.x()) - 3, int(point.y()) - 3, 6, 6)
+
+    def _draw_inference_feedback(self, painter: QPainter) -> None:
+        if not self._draw_inference_lines:
+            return
+        mapper = self._active_mapper()
+        if mapper is None:
+            return
+        painter.save()
+        inference_color = QColor(150, 205, 255, 105)
+        painter.setPen(QPen(inference_color, 1.0, Qt.PenStyle.DotLine))
+        for line in self._draw_inference_lines:
+            painter.drawLine(mapper.map_point(line.start), mapper.map_point(line.end))
+        painter.restore()
+
+    def _draw_snap_feedback(self, painter: QPainter) -> None:
+        state = self._draw_snap_state
+        if state is None:
+            return
+        mapper = self._active_mapper()
+        if mapper is None:
+            return
+        point = mapper.map_point(state.point)
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        if state.kind == "grid":
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor(0, 220, 255, 230))
+            painter.drawEllipse(point, 4.0, 4.0)
+        elif state.kind == "vertex":
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.setPen(QPen(QColor(80, 255, 120, 235), 2.0))
+            painter.drawRect(QRectF(point.x() - 5.0, point.y() - 5.0, 10.0, 10.0))
+        elif state.kind == "midpoint":
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.setPen(QPen(QColor(0, 220, 255, 235), 2.0))
+            triangle = QPolygonF([
+                QPointF(point.x(), point.y() - 6.0),
+                QPointF(point.x() + 6.0, point.y() + 5.0),
+                QPointF(point.x() - 6.0, point.y() + 5.0),
+            ])
+            painter.drawPolygon(triangle)
+        elif state.kind == "perpendicular":
+            painter.setPen(QPen(QColor(255, 80, 255, 235), 2.0))
+            painter.drawLine(QPointF(point.x() - 5.0, point.y() + 5.0), QPointF(point.x() - 5.0, point.y() - 5.0))
+            painter.drawLine(QPointF(point.x() - 5.0, point.y() + 5.0), QPointF(point.x() + 5.0, point.y() + 5.0))
+        elif state.kind == "intersection":
+            painter.setPen(QPen(QColor(255, 220, 0, 235), 2.0))
+            painter.drawLine(QPointF(point.x() - 5.0, point.y() - 5.0), QPointF(point.x() + 5.0, point.y() + 5.0))
+            painter.drawLine(QPointF(point.x() - 5.0, point.y() + 5.0), QPointF(point.x() + 5.0, point.y() - 5.0))
+        elif state.kind in {"axis", "angle"}:
+            painter.setPen(QPen(QColor(0, 220, 255, 235), 1.5))
+            painter.setBrush(QColor(0, 220, 255, 60))
+            painter.drawEllipse(point, 5.0, 5.0)
+            if state.label:
+                self._draw_live_angle_label(painter, QPointF(point.x() + 22.0, point.y() - 16.0), state.label, QColor(0, 220, 255, 235))
+        painter.restore()
 
     def _draw_start_point_marker(self, painter: QPainter, point: QPointF) -> None:
         painter.save()

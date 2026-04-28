@@ -418,6 +418,12 @@ def test_mainwindow_settings_dialog_updates_grid_size_on_project_state_and_canva
                 show_angle_arc=False,
                 show_guide_lines=False,
                 close_on_rmb=False,
+                snap_to_grid=False,
+                snap_to_axis=False,
+                snap_to_45deg=False,
+                snap_to_3060deg=True,
+                snap_to_points=False,
+                show_inferences=False,
             )
 
     monkeypatch.setattr("ui.dialogs.settings_dialog.SettingsDialog", FakeSettingsDialog)
@@ -436,6 +442,12 @@ def test_mainwindow_settings_dialog_updates_grid_size_on_project_state_and_canva
     assert window.project_state.app_settings.show_angle_arc is False
     assert window.project_state.app_settings.show_guide_lines is False
     assert window.project_state.app_settings.close_on_rmb is False
+    assert window.project_state.app_settings.snap_to_grid is False
+    assert window.project_state.app_settings.snap_to_axis is False
+    assert window.project_state.app_settings.snap_to_45deg is False
+    assert window.project_state.app_settings.snap_to_3060deg is True
+    assert window.project_state.app_settings.snap_to_points is False
+    assert window.project_state.app_settings.show_inferences is False
     assert canvas is not None
     assert canvas._edit_overlay_grid_step_cm(canvas._canvas_mapper()) == pytest.approx(25.0)
     assert canvas._app_settings.live_angle_mode == "relative_to_prev"
@@ -445,6 +457,8 @@ def test_mainwindow_settings_dialog_updates_grid_size_on_project_state_and_canva
     assert canvas._app_settings.grid_major_cm == 50
     assert canvas._app_settings.grid_minor_cm == 5
     assert canvas._app_settings.show_crosshair is False
+    assert canvas.snap_to_grid_enabled() is False
+    assert window._tb_ctrl.action_grid.isChecked() is False
 
 
 def test_mainwindow_toolbar_snap_toggle_updates_canvas_snap_state(qtbot):
@@ -467,6 +481,7 @@ def test_mainwindow_toolbar_snap_toggle_updates_canvas_snap_state(qtbot):
 
     assert window._tb_ctrl.action_grid.isChecked() is False
     assert canvas.snap_to_grid_enabled() is False
+    assert window.project_state.app_settings.snap_to_grid is False
 
 
 def test_mainwindow_toolbar_sheet_toggle_switches_wireframe_mode_without_recalc(qtbot, monkeypatch):
