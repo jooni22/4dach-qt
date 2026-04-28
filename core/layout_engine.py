@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from math import ceil
 
 from core.app_settings import AppSettings
 from core.geometry import (
@@ -14,7 +13,6 @@ from core.geometry import (
     vertical_segments_for_band,
 )
 from core.models import Material, Point2D, Polygon2D, RoofPlane, SheetPlacement
-
 
 EPSILON = 1e-6
 logger = logging.getLogger(__name__)

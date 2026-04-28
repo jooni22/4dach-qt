@@ -1,4 +1,3 @@
-# This Python file uses the following encoding: utf-8
 """DrawingCanvas — the interactive QWidget for roof-plane visualisation and drawing.
 
 Modes
@@ -22,18 +21,30 @@ Polygon drawing (MODE_DRAW_OUTLINE / MODE_DRAW_CUTOUT)
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass
 from math import ceil, floor, hypot
 
 from PySide6.QtCore import QEvent, QPointF, QRectF, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QFont, QFontMetricsF, QKeyEvent, QKeySequence, QMouseEvent, QPainter, QPainterPath, QPalette, QPen, QPolygonF
+from PySide6.QtGui import (
+    QColor,
+    QFontMetricsF,
+    QKeyEvent,
+    QKeySequence,
+    QMouseEvent,
+    QPainter,
+    QPainterPath,
+    QPalette,
+    QPen,
+    QPolygonF,
+)
 from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QLineEdit, QWidget
 
 from core.app_settings import (
-    AppSettings,
     EDGE_DRAG_MODE_INSERT_VERTEX,
     SHIFT_DRAG_BEHAVIOR_FREE_MOVE,
     SHIFT_DRAG_BEHAVIOR_ORTHOGONAL_LOCK,
+    AppSettings,
 )
 from core.canvas_mapper import CanvasMapper
 from core.geometry import (
@@ -79,6 +90,7 @@ DRAW_REFERENCE_LABEL_MIN_OFFSET_PX = 18.0
 DRAW_REFERENCE_LABEL_MAX_OFFSET_PX = 42.0
 DRAW_REFERENCE_LABEL_VERTICAL_GAP_PX = 12.0
 DRAW_REFERENCE_LABEL_HORIZONTAL_GAP_PX = 8.0
+SHEET_PLACEMENT_ID_PATTERN = re.compile(r"-b(?P<band>\d+)-s(?P<segment>\d+)-r\d+$")
 
 LIVE_ANGLE_MODE_ABSOLUTE = "absolute"
 LIVE_ANGLE_MODE_RELATIVE_TO_PREV = "relative_to_prev"
@@ -87,7 +99,7 @@ LIVE_ANGLE_MODE_RELATIVE_TO_PREV = "relative_to_prev"
 class _InlineSegmentEditor(QFrame):
     """Minimal local widget for length/angle entry while freehand drawing."""
 
-    def __init__(self, canvas: "DrawingCanvas") -> None:
+    def __init__(self, canvas: DrawingCanvas) -> None:
         super().__init__(canvas)
         self._canvas = canvas
         self.setObjectName("inline_segment_editor")
@@ -648,51 +660,19 @@ class DrawingCanvas(QWidget):
         if self._render_items_cache is not None and self._render_items_cache_revision == plane_revision:
             return self._render_items_cache
 
-        visible_placements = self._visible_sheet_placements()
-        placements_by_id = {placement.id: placement for placement in visible_placements}
         render_items: list[_SheetRenderItem] = []
-        seen_ids: set[str] = set()
+        segment_map = self._layout_segment_map()
 
-        for band in self.roof_plane.layout_bands:
-            for segment in band.get("segments", []):
-                placement_id = segment.get("placement_id")
-                if not placement_id:
-                    continue
-                placement = placements_by_id.get(placement_id)
-                if placement is None:
-                    continue
-                
-                # Fix #5: Use coverage_polygons from layout engine instead of fallback
-                coverage_polygons = [
-                    Polygon2D([Point2D(p[0], p[1]) for p in poly_pts])
-                    for poly_pts in segment.get("coverage_polygons", [])
-                    if len(poly_pts) >= 3
-                ]
-                if not coverage_polygons:
-                    coverage_polygons = [self._placement_polygon(placement)]
-                
-                render_items.append(
-                    _SheetRenderItem(
-                        placement_id=placement.id,
-                        source=placement.source,
-                        band_index=placement.band_index,
-                        polygons=coverage_polygons,
-                        raw_length_cm=placement.raw_length_cm,
-                        final_length_cm=placement.final_length_cm,
-                        split_reason=placement.split_reason,
-                    )
-                )
-                seen_ids.add(placement.id)
-
-        for placement in visible_placements:
-            if placement.id in seen_ids:
-                continue
+        for placement in self._visible_sheet_placements():
+            coverage_polygons = self._placement_render_polygons(placement, segment_map)
+            if not coverage_polygons:
+                coverage_polygons = [self._placement_polygon(placement)]
             render_items.append(
                 _SheetRenderItem(
                     placement_id=placement.id,
                     source=placement.source,
                     band_index=placement.band_index,
-                    polygons=[self._placement_polygon(placement)],
+                    polygons=coverage_polygons,
                     raw_length_cm=placement.raw_length_cm,
                     final_length_cm=placement.final_length_cm,
                     split_reason=placement.split_reason,
@@ -703,6 +683,153 @@ class DrawingCanvas(QWidget):
         self._render_items_cache = sorted_items
         self._render_items_cache_revision = plane_revision
         return sorted_items
+
+    def _layout_segment_map(self) -> dict[tuple[int, int], dict]:
+        if self.roof_plane is None:
+            return {}
+        segment_map: dict[tuple[int, int], dict] = {}
+        for band in self.roof_plane.layout_bands:
+            band_index = band.get("band_index")
+            if band_index is None:
+                continue
+            for segment in band.get("segments", []):
+                segment_index = segment.get("segment_index")
+                if segment_index is None:
+                    continue
+                segment_map[(int(band_index), int(segment_index))] = segment
+        return segment_map
+
+    def _placement_render_polygons(self, placement, segment_map: dict[tuple[int, int], dict]) -> list[Polygon2D]:
+        segment_key = self._segment_key_for_placement(placement.id)
+        if segment_key is None:
+            return []
+        segment = segment_map.get(segment_key)
+        if segment is None:
+            return []
+        coverage_polygons = self._segment_coverage_polygons(segment)
+        if not coverage_polygons:
+            return []
+        return self._clip_segment_polygons_for_placement(coverage_polygons, placement)
+
+    def _segment_key_for_placement(self, placement_id: str) -> tuple[int, int] | None:
+        match = SHEET_PLACEMENT_ID_PATTERN.search(placement_id)
+        if match is None:
+            return None
+        return int(match.group("band")), int(match.group("segment"))
+
+    def _segment_coverage_polygons(self, segment: dict) -> list[Polygon2D]:
+        polygons: list[Polygon2D] = []
+        for polygon_payload in segment.get("coverage_polygons", []):
+            if not isinstance(polygon_payload, list) or len(polygon_payload) < 3:
+                continue
+            points = [
+                Point2D(float(point[0]), float(point[1]))
+                for point in polygon_payload
+                if isinstance(point, (list, tuple)) and len(point) == 2
+            ]
+            if len(points) >= 3:
+                polygons.append(Polygon2D(points))
+        return polygons
+
+    def _clip_segment_polygons_for_placement(self, polygons: list[Polygon2D], placement) -> list[Polygon2D]:
+        clipped_polygons: list[Polygon2D] = []
+        top_extension = max(0.0, placement.final_length_cm - placement.raw_length_cm)
+        for polygon in polygons:
+            clipped = self._clip_polygon_to_vertical_span(
+                polygon,
+                placement.y_top_cm,
+                placement.y_bottom_cm,
+            )
+            if clipped is None:
+                continue
+            if placement.split_reason == "partial_cutout_top" and top_extension > 0.0:
+                clipped = self._extend_polygon_top(clipped, placement.y_top_cm, top_extension)
+            clipped_polygons.append(clipped)
+        return clipped_polygons
+
+    def _clip_polygon_to_vertical_span(
+        self,
+        polygon: Polygon2D,
+        y_top_cm: float,
+        y_bottom_cm: float,
+    ) -> Polygon2D | None:
+        points = list(polygon.points)
+        if len(points) < 3:
+            return None
+        clipped_to_top = self._clip_polygon_to_half_plane(points, y_value=y_top_cm, keep_below=False)
+        clipped_to_span = self._clip_polygon_to_half_plane(clipped_to_top, y_value=y_bottom_cm, keep_below=True)
+        cleaned = self._clean_polygon_points(clipped_to_span)
+        if len(cleaned) < 3:
+            return None
+        clipped_polygon = Polygon2D(cleaned)
+        if abs(clipped_polygon.area()) <= 1e-6:
+            return None
+        return clipped_polygon
+
+    def _clip_polygon_to_half_plane(
+        self,
+        points: list[Point2D],
+        *,
+        y_value: float,
+        keep_below: bool,
+    ) -> list[Point2D]:
+        if not points:
+            return []
+
+        def inside(point: Point2D) -> bool:
+            if keep_below:
+                return point.y <= y_value + 1e-6
+            return point.y >= y_value - 1e-6
+
+        clipped: list[Point2D] = []
+        previous = points[-1]
+        previous_inside = inside(previous)
+        for current in points:
+            current_inside = inside(current)
+            if current_inside:
+                if not previous_inside:
+                    clipped.append(self._interpolate_point_at_y(previous, current, y_value))
+                clipped.append(current)
+            elif previous_inside:
+                clipped.append(self._interpolate_point_at_y(previous, current, y_value))
+            previous = current
+            previous_inside = current_inside
+        return clipped
+
+    def _interpolate_point_at_y(self, start: Point2D, end: Point2D, y_value: float) -> Point2D:
+        dy = end.y - start.y
+        if abs(dy) <= 1e-9:
+            return Point2D(end.x, y_value)
+        ratio = (y_value - start.y) / dy
+        x_value = start.x + ratio * (end.x - start.x)
+        return Point2D(x_value, y_value)
+
+    def _clean_polygon_points(self, points: list[Point2D]) -> list[Point2D]:
+        cleaned: list[Point2D] = []
+        for point in points:
+            if cleaned and segment_length(cleaned[-1], point) <= 1e-6:
+                continue
+            cleaned.append(point)
+        if len(cleaned) >= 2 and segment_length(cleaned[0], cleaned[-1]) <= 1e-6:
+            cleaned.pop()
+        return cleaned
+
+    def _extend_polygon_top(self, polygon: Polygon2D, top_y_cm: float, extra_cm: float) -> Polygon2D:
+        return Polygon2D(
+            [
+                Point2D(point.x, point.y - extra_cm) if abs(point.y - top_y_cm) <= 1e-6 else point
+                for point in polygon.points
+            ]
+        )
+
+    def _sheet_item_path(self, mapper: CanvasMapper, polygons: list[Polygon2D]) -> tuple[list[QPolygonF], QPainterPath]:
+        mapped_polygons = [QPolygonF([mapper.map_point(point) for point in polygon.points]) for polygon in polygons]
+        union_path = QPainterPath()
+        for mapped_polygon in mapped_polygons:
+            polygon_path = QPainterPath()
+            polygon_path.addPolygon(mapped_polygon)
+            union_path = polygon_path if union_path.isEmpty() else union_path.united(polygon_path)
+        return mapped_polygons, union_path.simplified()
 
     def _placement_polygon(self, placement) -> Polygon2D:
         visual_top = placement.y_top_cm
@@ -724,32 +851,11 @@ class DrawingCanvas(QWidget):
         if mapper is None or self.roof_plane is None:
             return None
         domain_point = mapper.unmap_point(pos)
-        
-        # Fix #6: Use coverage polygons from layout engine for accurate hit testing
-        for band in self.roof_plane.layout_bands:
-            for segment in band.get("segments", []):
-                placement_id = segment.get("placement_id")
-                if not placement_id:
-                    continue
-                
-                # Get coverage polygons from layout engine
-                coverage_polygons = [
-                    Polygon2D([Point2D(p[0], p[1]) for p in poly_pts])
-                    for poly_pts in segment.get("coverage_polygons", [])
-                    if len(poly_pts) >= 3
-                ]
-                
-                # Fallback to placement polygon if no coverage polygons
-                if not coverage_polygons:
-                    placement = next((p for p in self._visible_sheet_placements() if p.id == placement_id), None)
-                    if placement:
-                        coverage_polygons = [self._placement_polygon(placement)]
-                
-                # Check if point is in any coverage polygon
-                for polygon in coverage_polygons:
-                    if point_in_polygon(domain_point, polygon):
-                        return placement_id
-        
+
+        for item in reversed(self._sheet_render_items()):
+            if any(point_in_polygon(domain_point, polygon) for polygon in item.polygons):
+                return item.placement_id
+
         return None
 
     def _is_near_first_vertex(self, pos: QPointF) -> bool:
@@ -2208,9 +2314,7 @@ class DrawingCanvas(QWidget):
             self.setCursor(Qt.CursorShape.SizeAllCursor)
             return
         self._sync_view_cursor()
-        if self._clear_edit_overlay():
-            self.update()
-        elif edge_changed:
+        if self._clear_edit_overlay() or edge_changed:
             self.update()
 
     def _reset_selection(self, *, select_plane: bool = False) -> None:
@@ -3501,12 +3605,11 @@ class DrawingCanvas(QWidget):
         for item in render_items:
             fill_color = manual_color if item.source == "manual" else auto_color
             outline_color = split_color if item.split_reason else fill_color.darker(150)
-            mapped_polygons = [QPolygonF([mapper.map_point(point) for point in polygon.points]) for polygon in item.polygons]
+            mapped_polygons, item_path = self._sheet_item_path(mapper, item.polygons)
 
             painter.setPen(QPen(outline_color, 1.2))
             painter.setBrush(fill_color)
-            for mapped_polygon in mapped_polygons:
-                painter.drawPolygon(mapped_polygon)
+            painter.drawPath(item_path)
 
             if module_length_cm and module_length_cm > 0:
                 self._draw_module_guides(painter, mapped_polygons, mapper, module_length_cm, text_color)
@@ -3647,11 +3750,10 @@ class DrawingCanvas(QWidget):
         mapper = self._canvas_mapper()
         if mapper is None:
             return
-        all_sheets = self._visible_sheet_placements()
-        for sheet in all_sheets:
-            if sheet.id == self._selected_sheet_id:
+        for item in self._sheet_render_items():
+            if item.placement_id == self._selected_sheet_id:
+                _, item_path = self._sheet_item_path(mapper, item.polygons)
                 painter.setPen(QPen(QColor("#ff3333"), 2))
                 painter.setBrush(Qt.BrushStyle.NoBrush)
-                polygon = QPolygonF([mapper.map_point(point) for point in self._placement_polygon(sheet).points])
-                painter.drawPolygon(polygon)
+                painter.drawPath(item_path)
                 break

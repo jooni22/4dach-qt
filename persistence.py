@@ -6,8 +6,8 @@ It is Qt-free so that core/ modules can import it if needed.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import tempfile
+from pathlib import Path
 
 _CONFIG_PATH = Path(__file__).parent / "config.json"
 
@@ -19,7 +19,7 @@ def load_config(path: Path | str | None = None) -> dict:
     """
     config_path = Path(path) if path is not None else _CONFIG_PATH
     try:
-        with open(config_path, "r", encoding="utf-8") as fh:
+        with open(config_path, encoding="utf-8") as fh:
             return json.load(fh)
     except FileNotFoundError:
         return {}

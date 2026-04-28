@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-from math import isclose
-from math import sqrt
+from math import isclose, sqrt
 
 from core.models import Point2D, Polygon2D
-
 
 EPSILON = 1e-9
 

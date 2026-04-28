@@ -1,4 +1,3 @@
-# This Python file uses the following encoding: utf-8
 """workspace.py — WorkspaceController manages the central QTabWidget.
 
 Responsibilities:

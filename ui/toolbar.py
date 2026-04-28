@@ -1,4 +1,3 @@
-# This Python file uses the following encoding: utf-8
 """toolbar.py — ToolbarController builds and manages the main QToolBar.
 
 Responsibilities:

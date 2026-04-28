@@ -1,4 +1,3 @@
-# This Python file uses the following encoding: utf-8
 """shape_dialogs.py — dialogs for adding roof-plane outlines by shape."""
 from __future__ import annotations
 

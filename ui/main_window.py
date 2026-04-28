@@ -1,36 +1,41 @@
-# This Python file uses the following encoding: utf-8
 """ui/main_window.py — slim MainWindow (~150 lines) that mounts controllers."""
 from __future__ import annotations
+
 import copy
 import json
-import sys
+import tempfile
 import warnings
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
-import tempfile
 
-from PySide6.QtCore import QSettings, QRectF, QSize, Qt, QUrl
-from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
+from PySide6.QtCore import QRectF, QSettings, QSize, Qt, QUrl
+from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QKeySequence
 from PySide6.QtWidgets import (
-    QApplication, QComboBox, QDialog, QInputDialog, QMainWindow,
-    QFileDialog, QMenu, QMessageBox, QSizePolicy, QToolButton, QVBoxLayout, QWidget, QLabel,
+    QDialog,
+    QFileDialog,
+    QInputDialog,
+    QLabel,
+    QMainWindow,
+    QMenu,
+    QMessageBox,
+    QSizePolicy,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
 )
-from PySide6.QtGui import QDesktopServices
 
 from app_icons import build_icon
-
-from persistence import load_config, save_config
+from core.geometry import make_rectangle, make_trapezoid, make_triangle
 from core.models import Point2D, Polygon2D, SheetPlacement
 from core.project_state import ProjectState
 from core.reporting import build_project_report, build_project_report_html
-from core.geometry import make_rectangle, make_trapezoid, make_triangle
-
-from ui.theme_manager import ThemeManager
-from ui.drawing_canvas import CommittedOutlineEdit, DrawingCanvas
-from ui.workspace import WorkspaceController
-from ui.report_view import ReportController
+from persistence import load_config, save_config
 from ui.dialogs import BlachyDialog, DaneFirmyDialog, ProstokatDialog, TrapezDialog, TrojkatDialog
+from ui.drawing_canvas import CommittedOutlineEdit, DrawingCanvas
+from ui.report_view import ReportController
+from ui.theme_manager import ThemeManager
+from ui.workspace import WorkspaceController
 
 
 def _show_warning(parent, title: str, msg: str) -> None:

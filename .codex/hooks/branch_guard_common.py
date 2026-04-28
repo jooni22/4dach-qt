@@ -11,7 +11,6 @@ import unicodedata
 from pathlib import Path
 from typing import Any
 
-
 FIX_HINTS = {
     "bug",
     "bugfix",

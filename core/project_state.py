@@ -14,7 +14,15 @@ from core.geometry import (
     validate_polygon,
 )
 from core.layout_engine import LayoutResult, generate_layout
-from core.models import CompanyData, GenerationSettings, Material, Point2D, Polygon2D, RoofPlane, SheetPlacement
+from core.models import (
+    CompanyData,
+    GenerationSettings,
+    Material,
+    Point2D,
+    Polygon2D,
+    RoofPlane,
+    SheetPlacement,
+)
 
 
 @dataclass(slots=True)
@@ -27,7 +35,7 @@ class ProjectState:
     app_settings: AppSettings = field(default_factory=AppSettings)
 
     @classmethod
-    def from_config(cls, config_data: dict | None) -> "ProjectState":
+    def from_config(cls, config_data: dict | None) -> ProjectState:
         payload = config_data or {}
         project_payload = payload.get("project_state", {})
         material_payloads = payload.get("materials")

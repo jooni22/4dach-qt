@@ -14,7 +14,15 @@ from core.geometry import (
     make_triangle,
 )
 from core.layout_engine import generate_layout
-from core.models import CompanyData, Material, Point2D, Polygon2D, RoofPlane, SheetPlacement, almost_equal
+from core.models import (
+    CompanyData,
+    Material,
+    Point2D,
+    Polygon2D,
+    RoofPlane,
+    SheetPlacement,
+    almost_equal,
+)
 from core.project_state import ProjectState
 
 

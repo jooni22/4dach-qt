@@ -77,7 +77,7 @@ class AppSettings:
     undo_stack_depth: int = 50
 
     @classmethod
-    def from_dict(cls, data: dict | None) -> "AppSettings":
+    def from_dict(cls, data: dict | None) -> AppSettings:
         d = data or {}
         raw = d.get("partial_cutout_top_extra_cm", 15.0)
         try:

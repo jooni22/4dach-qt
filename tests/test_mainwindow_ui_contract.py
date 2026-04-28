@@ -12,9 +12,15 @@ from core.project_state import ProjectState
 pytest.importorskip("PySide6")
 pytest.importorskip("pytestqt")
 
-from PySide6.QtWidgets import QDialogButtonBox, QFileDialog, QInputDialog, QMenu, QMessageBox
-from PySide6.QtWidgets import QDialog
 from PySide6.QtCore import QPointF
+from PySide6.QtWidgets import (
+    QDialog,
+    QDialogButtonBox,
+    QFileDialog,
+    QInputDialog,
+    QMenu,
+    QMessageBox,
+)
 
 from mainwindow import MainWindow
 from ui.dialogs.material_dialog import BlachyDialog

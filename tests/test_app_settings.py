@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from core.app_settings import (
-    AppSettings,
     EDGE_DRAG_MODE_INSERT_VERTEX,
     LIVE_ANGLE_MODE_RELATIVE_TO_PREV,
+    AppSettings,
 )
 
 

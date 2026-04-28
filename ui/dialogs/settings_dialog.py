@@ -1,4 +1,3 @@
-# This Python file uses the following encoding: utf-8
 """ui/dialogs/settings_dialog.py — Modal application settings dialog."""
 from __future__ import annotations
 
@@ -17,13 +16,13 @@ from PySide6.QtWidgets import (
 )
 
 from core.app_settings import (
-    AppSettings,
     EDGE_DRAG_MODE_INSERT_VERTEX,
     EDGE_DRAG_MODE_MOVE_VERTICES,
     LIVE_ANGLE_MODE_ABSOLUTE,
     LIVE_ANGLE_MODE_RELATIVE_TO_PREV,
     SHIFT_DRAG_BEHAVIOR_FREE_MOVE,
     SHIFT_DRAG_BEHAVIOR_ORTHOGONAL_LOCK,
+    AppSettings,
 )
 
 

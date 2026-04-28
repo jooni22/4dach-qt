@@ -13,7 +13,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from core.app_settings import AppSettings
-from core.geometry import polygon_edges, segment_length
+from core.geometry import point_in_polygon, polygon_edges, segment_length
 from core.layout_engine import generate_layout
 from core.models import Material, Point2D, Polygon2D, RoofPlane
 from ui.drawing_canvas import AXIS_WIDGET_PADDING_PX, CommittedOutlineEdit, DrawingCanvas
@@ -77,6 +77,15 @@ def _apply_layout(canvas: DrawingCanvas, plane: RoofPlane, material: Material) -
     canvas.set_roof_plane(plane)
     canvas.set_material(material)
     canvas.repaint()
+
+
+def _color_delta(left, right) -> int:
+    return max(
+        abs(left.red() - right.red()),
+        abs(left.green() - right.green()),
+        abs(left.blue() - right.blue()),
+        abs(left.alpha() - right.alpha()),
+    )
 
 
 def test_canvas_selects_vertex_handle_on_mouse_press(qtbot):
@@ -1478,6 +1487,53 @@ def test_canvas_partial_cutout_top_sheet_uses_final_length_for_visual_height(qtb
 
     protruding_point = canvas._canvas_mapper().map_point(Point2D(100, -10))
     assert canvas._hit_test_sheet(QPointF(protruding_point)) == top_item.placement_id
+
+
+def test_canvas_partial_cutout_render_items_are_clipped_per_placement(qtbot):
+    outline = Polygon2D.rectangle(1000, 1000)
+    hole = Polygon2D.rectangle(300, 300, origin_x=0, origin_y=300)
+    plane = RoofPlane(id="plane-1", name="PartialVisual", outline=outline, holes=[hole])
+    canvas = _make_canvas(qtbot, outline, holes=[hole])
+
+    _apply_layout(canvas, plane, _material(effective_width_cm=510, max_sheet_length_cm=1000, module_length_cm=0))
+
+    top_item = next(item for item in canvas._sheet_render_items() if item.split_reason == "partial_cutout_top")
+    lower_item = next(
+        item
+        for item in canvas._sheet_render_items()
+        if item.band_index == top_item.band_index and item.placement_id != top_item.placement_id
+    )
+
+    assert any(point_in_polygon(Point2D(100, 150), polygon) for polygon in top_item.polygons)
+    assert not any(point_in_polygon(Point2D(100, 700), polygon) for polygon in top_item.polygons)
+
+    assert any(point_in_polygon(Point2D(100, 700), polygon) for polygon in lower_item.polygons)
+    assert not any(point_in_polygon(Point2D(100, 150), polygon) for polygon in lower_item.polygons)
+    assert not any(point_in_polygon(Point2D(100, 450), polygon) for polygon in lower_item.polygons)
+
+    top_point = canvas._canvas_mapper().map_point(Point2D(100, 150))
+    lower_point = canvas._canvas_mapper().map_point(Point2D(100, 700))
+    hole_point = canvas._canvas_mapper().map_point(Point2D(100, 450))
+    assert canvas._hit_test_sheet(QPointF(top_point)) == top_item.placement_id
+    assert canvas._hit_test_sheet(QPointF(lower_point)) == lower_item.placement_id
+    assert canvas._hit_test_sheet(QPointF(hole_point)) is None
+
+
+def test_canvas_sheet_rendering_does_not_draw_fake_internal_notch_seam(qtbot):
+    outline = Polygon2D.rectangle(1000, 1000)
+    hole = Polygon2D.rectangle(300, 300, origin_x=0, origin_y=300)
+    plane = RoofPlane(id="plane-1", name="PartialVisual", outline=outline, holes=[hole])
+    canvas = _make_canvas(qtbot, outline, holes=[hole])
+
+    _apply_layout(canvas, plane, _material(effective_width_cm=510, max_sheet_length_cm=1000, module_length_cm=0))
+
+    image = canvas.grab().toImage()
+    seam_color = image.pixelColor(_point_on_canvas(canvas, Point2D(300, 150)))
+    left_fill = image.pixelColor(_point_on_canvas(canvas, Point2D(260, 150)))
+    right_fill = image.pixelColor(_point_on_canvas(canvas, Point2D(340, 150)))
+
+    assert _color_delta(seam_color, left_fill) < 50
+    assert _color_delta(seam_color, right_fill) < 50
 
 
 def test_canvas_updates_render_items_after_geometry_edit_and_relayout(qtbot):
