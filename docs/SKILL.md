@@ -50,14 +50,16 @@ indent-style = "space"
 
 # === Vulture: dead-code detection ==========================================
 [tool.vulture]
-exclude = ["ui/", "tests/", ".venv/", "build/", "dist/"]
+exclude = ["ui/", "ui_form.py", "tests/", ".venv/", "build/", "dist/"]
 min_confidence = 80
 paths = ["."]
 
 # === deptry: dependency health ===============================================
 [tool.deptry]
-ignore_unused = ["pillow", "pytest-image-snapshot"]
-per_rule_ignores = { DEP002 = ["pytest-qt"] }
+exclude = [".venv", "build", "dist", ".codex"]
+
+[tool.deptry.per_rule_ignores]
+DEP002 = ["pillow", "pytest-image-snapshot", "pytest-qt", "ruff", "vulture", "deptry"]
 ```
 
 ---
