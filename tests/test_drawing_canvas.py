@@ -6,7 +6,7 @@ pytest.importorskip("PySide6")
 pytest.importorskip("pytestqt")
 
 from PySide6.QtCore import QEvent, QPoint, QPointF, QRectF, Qt
-from PySide6.QtGui import QMouseEvent, QPalette
+from PySide6.QtGui import QMouseEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
@@ -387,8 +387,8 @@ def test_canvas_dragging_origin_forces_grid_visibility_only_during_drag(qtbot):
     canvas = _make_canvas(qtbot, outline)
     canvas.set_origin_edit_enabled(True)
 
-    assert canvas._show_grid is False
-    assert canvas._grid_visible() is False
+    assert canvas._show_grid is True
+    assert canvas._grid_visible() is True
 
     start = _point_on_canvas(canvas, canvas._origin_point())
     QTest.mousePress(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, start)
@@ -399,7 +399,7 @@ def test_canvas_dragging_origin_forces_grid_visibility_only_during_drag(qtbot):
     QTest.mouseRelease(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, start)
 
     assert canvas._dragging_origin is False
-    assert canvas._grid_visible() is False
+    assert canvas._grid_visible() is True
 
 
 def test_canvas_draw_outline_mode_shows_grid_immediately(qtbot):
@@ -507,6 +507,83 @@ def test_canvas_freehand_close_does_not_resnap_with_different_origin(qtbot):
 
     assert closed_domain.x == pytest.approx(275.0, abs=0.1)
     assert closed_domain.y == pytest.approx(50.0, abs=0.1)
+
+
+def test_drawing_hud_hidden_when_grid_off(qtbot, monkeypatch):
+    canvas = DrawingCanvas()
+    canvas.resize(640, 420)
+    qtbot.addWidget(canvas)
+    canvas.show()
+    qtbot.waitExposed(canvas)
+    canvas.set_mode(DrawingCanvas.MODE_DRAW_OUTLINE)
+    canvas.preview_point = QPointF(120.0, 120.0)
+    canvas.toggle_grid(False)
+    calls: list[str] = []
+
+    monkeypatch.setattr(canvas, "_draw_drawing_hud", lambda *args, **kwargs: calls.append("hud"))
+
+    canvas.grab()
+    QApplication.processEvents()
+
+    assert calls == []
+
+
+def test_commit_length_input_places_correct_vertex(qtbot):
+    canvas = DrawingCanvas()
+    canvas.resize(640, 420)
+    canvas.set_app_settings(AppSettings(grid_size_cm=10.0))
+    qtbot.addWidget(canvas)
+    canvas.show()
+    qtbot.waitExposed(canvas)
+    canvas.set_mode(DrawingCanvas.MODE_DRAW_OUTLINE)
+    mapper = canvas._free_draw_mapper()
+
+    canvas.user_points.append(mapper.map_point(Point2D(0.0, 0.0)))
+    canvas.preview_point = mapper.map_point(Point2D(10.0, 0.0))
+    canvas._length_input_text = "30"
+    canvas._length_input_active = True
+
+    canvas._commit_length_input()
+
+    placed_domain = mapper.unmap_point(canvas.user_points[-1])
+    assert placed_domain.x == pytest.approx(30.0, abs=0.1)
+    assert placed_domain.y == pytest.approx(0.0, abs=0.1)
+    assert canvas._length_input_active is False
+    assert canvas._length_input_text == ""
+
+
+def test_length_input_decimal_point(qtbot):
+    canvas = DrawingCanvas()
+    canvas.resize(640, 420)
+    qtbot.addWidget(canvas)
+    canvas.show()
+    qtbot.waitExposed(canvas)
+    canvas.set_mode(DrawingCanvas.MODE_DRAW_OUTLINE)
+    mapper = canvas._free_draw_mapper()
+    canvas.user_points.append(mapper.map_point(Point2D(0.0, 0.0)))
+    canvas.setFocus()
+
+    QTest.keyClicks(canvas, "15.5")
+
+    assert canvas._length_input_text == "15.5"
+    assert canvas._length_input_active is True
+
+
+def test_length_input_duplicate_decimal_rejected(qtbot):
+    canvas = DrawingCanvas()
+    canvas.resize(640, 420)
+    qtbot.addWidget(canvas)
+    canvas.show()
+    qtbot.waitExposed(canvas)
+    canvas.set_mode(DrawingCanvas.MODE_DRAW_OUTLINE)
+    mapper = canvas._free_draw_mapper()
+    canvas.user_points.append(mapper.map_point(Point2D(0.0, 0.0)))
+    canvas.setFocus()
+
+    QTest.keyClicks(canvas, "1.5.")
+
+    assert canvas._length_input_text == "1.5"
+    assert canvas._length_input_active is True
 
 
 def test_canvas_dragging_origin_projects_to_nearest_boundary_when_cursor_leaves_shape(qtbot):

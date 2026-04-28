@@ -21,11 +21,12 @@ Polygon drawing (MODE_DRAW_OUTLINE / MODE_DRAW_CUTOUT)
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from math import ceil, floor, hypot
 
-from PySide6.QtCore import QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QFontMetricsF, QKeyEvent, QMouseEvent, QPainter, QPainterPath, QPalette, QPen, QPolygonF
+from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QFont, QFontMetricsF, QKeyEvent, QMouseEvent, QPainter, QPainterPath, QPalette, QPen, QPolygonF
 from PySide6.QtWidgets import QApplication, QWidget
 
 from core.app_settings import (
@@ -131,10 +132,12 @@ class DrawingCanvas(QWidget):
 
         self._mode: str = self.MODE_VIEW
         self._selected_sheet_id: str | None = None
-        self._show_grid: bool = False
+        self._show_grid: bool = True
         self._show_module_count: bool = False
         self._show_sheet_placements: bool = True
         self._snap_to_grid_enabled: bool = True
+        self._length_input_active: bool = False
+        self._length_input_text: str = ""
 
         self._plane_selected: bool = False
         self._selected_hole_index: int | None = None
@@ -156,6 +159,11 @@ class DrawingCanvas(QWidget):
         self._origin_drag_reference_point: Point2D | None = None
         self._preview_origin_point: Point2D | None = None
         self._last_emitted_selection_state: bool = False
+        self._caret_visible: bool = True
+        self._caret_timer = QTimer(self)
+        self._caret_timer.setInterval(500)
+        self._caret_timer.timeout.connect(self._toggle_caret)
+        self._caret_timer.start()
 
         self.setMouseTracking(True)
         self.setAutoFillBackground(True)
@@ -216,6 +224,8 @@ class DrawingCanvas(QWidget):
         self.user_points.clear()
         self.preview_point = None
         self._snap_active = False
+        self._length_input_active = False
+        self._length_input_text = ""
         self._cancel_geometry_drag()
         if mode != self.MODE_VIEW:
             self._reset_selection()
@@ -862,6 +872,52 @@ class DrawingCanvas(QWidget):
     def _domain_to_pixel_point(self, point: Point2D, mapper: CanvasMapper) -> QPointF:
         return mapper.map_point(point)
 
+    def _toggle_caret(self) -> None:
+        self._caret_visible = not self._caret_visible
+        if self._mode in {self.MODE_DRAW_OUTLINE, self.MODE_DRAW_CUTOUT} and self._length_input_active:
+            self.update()
+
+    def _clear_length_input(self) -> None:
+        self._length_input_text = ""
+        self._length_input_active = False
+
+    def _commit_length_input(self) -> None:
+        try:
+            target_length = float(self._length_input_text)
+        except ValueError:
+            self._clear_length_input()
+            self.update()
+            return
+
+        self._clear_length_input()
+
+        if target_length <= 0 or self.preview_point is None or not self.user_points:
+            self.update()
+            return
+
+        mapper = self._active_mapper()
+        if mapper is None:
+            self.update()
+            return
+
+        last_domain = mapper.unmap_point(self.user_points[-1])
+        preview_domain = mapper.unmap_point(self.preview_point)
+
+        dx = preview_domain.x - last_domain.x
+        dy = preview_domain.y - last_domain.y
+        current_length = math.hypot(dx, dy)
+
+        if current_length < 1e-6:
+            new_domain = Point2D(last_domain.x + target_length, last_domain.y)
+        else:
+            scale = target_length / current_length
+            new_domain = Point2D(last_domain.x + dx * scale, last_domain.y + dy * scale)
+
+        new_domain = self._snap_domain_point(new_domain)
+        new_pixel = mapper.map_point(new_domain)
+        self.user_points.append(new_pixel)
+        self.update()
+
     def _drag_reference_point(self) -> Point2D | None:
         if self._dragging_origin:
             return self._origin_drag_reference_point
@@ -1209,6 +1265,7 @@ class DrawingCanvas(QWidget):
                 self.user_points.clear()
                 self.preview_point = None
                 self._snap_active = False
+                self._clear_length_input()
                 self.update()
                 return
             if self._mode == self.MODE_SELECT_SHEET:
@@ -1268,13 +1325,44 @@ class DrawingCanvas(QWidget):
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
         if self._mode in {self.MODE_DRAW_OUTLINE, self.MODE_DRAW_CUTOUT}:
-            if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
-                self._close_polygon()
+            key = event.key()
+            text = event.text()
+
+            if self.user_points and text and (text.isdigit() or text in (".", ",")):
+                char = "." if text == "," else text
+                if char != "." or "." not in self._length_input_text:
+                    self._length_input_text += char
+                    self._length_input_active = True
+                    self._caret_visible = True
+                    self.update()
                 return
-            if event.key() == Qt.Key.Key_Escape:
+
+            if self._length_input_active and key == Qt.Key.Key_Backspace:
+                self._length_input_text = self._length_input_text[:-1]
+                if not self._length_input_text:
+                    self._length_input_active = False
+                self._caret_visible = True
+                self.update()
+                return
+
+            if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Tab):
+                if self._length_input_active and self._length_input_text:
+                    self._commit_length_input()
+                    return
+                if not self._length_input_active:
+                    self._close_polygon()
+                    return
+                return
+
+            if key == Qt.Key.Key_Escape:
+                if self._length_input_active:
+                    self._clear_length_input()
+                    self.update()
+                    return
                 self.user_points.clear()
                 self.preview_point = None
                 self._snap_active = False
+                self._clear_length_input()
                 self.update()
                 return
         elif self._mode == self.MODE_VIEW:
@@ -1327,6 +1415,15 @@ class DrawingCanvas(QWidget):
         mapper = self._canvas_mapper()
         if mapper is not None:
             self._draw_origin_marker(painter, mapper)
+
+        if (
+            self._mode in {self.MODE_DRAW_OUTLINE, self.MODE_DRAW_CUTOUT}
+            and self._show_grid
+            and self.preview_point is not None
+        ):
+            self._draw_drawing_hud(painter)
+        if self._mode in {self.MODE_DRAW_OUTLINE, self.MODE_DRAW_CUTOUT} and len(self.user_points) >= 1:
+            self._draw_length_input_bar(painter)
 
     def _draw_grid(self, painter: QPainter) -> None:
         grid_context = self._grid_context()
@@ -1387,6 +1484,85 @@ class DrawingCanvas(QWidget):
                 painter.setBrush(accent)
                 painter.setPen(QPen(accent, 1))
             painter.drawEllipse(int(point.x()) - 3, int(point.y()) - 3, 6, 6)
+
+    def _draw_drawing_hud(self, painter: QPainter) -> None:
+        mapper = self._active_mapper()
+        if mapper is None or self.preview_point is None:
+            return
+
+        domain_pt = mapper.unmap_point(self.preview_point)
+        rel = self._relative_coordinate_point(domain_pt)
+        lines = [f"X: {rel.x:.1f}  Y: {rel.y:.1f}"]
+
+        if self.user_points:
+            last_domain = mapper.unmap_point(self.user_points[-1])
+            dx = domain_pt.x - last_domain.x
+            dy = domain_pt.y - last_domain.y
+            length = math.hypot(dx, dy)
+            angle = math.degrees(math.atan2(-dy, dx)) % 360
+            lines.append(f"L: {length:.1f}  ∠: {angle:.1f}°")
+
+        font = QFont("Monospace")
+        font.setStyleHint(QFont.StyleHint.Monospace)
+        font.setPointSize(9)
+        painter.setFont(font)
+
+        metrics = QFontMetricsF(font)
+        line_spacing = metrics.lineSpacing()
+        text_width = max(metrics.horizontalAdvance(line) for line in lines)
+        text_height = line_spacing * len(lines)
+        padding_x = 5.0
+        padding_y = 3.0
+        box_width = text_width + padding_x * 2
+        box_height = text_height + padding_y * 2
+
+        x = self.preview_point.x() + 16.0
+        y = self.preview_point.y() - 16.0 - box_height
+        max_x = max(float(self.rect().left()), float(self.rect().right()) - box_width)
+        max_y = max(float(self.rect().top()), float(self.rect().bottom()) - box_height)
+        x = min(max(x, float(self.rect().left())), max_x)
+        y = min(max(y, float(self.rect().top())), max_y)
+
+        hud_rect = QRectF(x, y, box_width, box_height)
+        text_rect = hud_rect.adjusted(padding_x, padding_y, -padding_x, -padding_y)
+
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(0, 0, 0, 160))
+        painter.drawRoundedRect(hud_rect, 4, 4)
+
+        painter.setPen(QColor(255, 255, 255, 230))
+        painter.drawText(text_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, "\n".join(lines))
+
+    def _draw_length_input_bar(self, painter: QPainter) -> None:
+        bar_width = 180.0
+        bar_height = 28.0
+        bar_x = (self.width() - bar_width) / 2.0
+        bar_y = self.height() - bar_height - 12.0
+        bar_rect = QRectF(bar_x, bar_y, bar_width, bar_height)
+
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(30, 30, 30, 200))
+        painter.drawRoundedRect(bar_rect, 4, 4)
+
+        if self._length_input_active:
+            painter.setPen(QPen(QColor(0, 200, 220), 1))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRoundedRect(bar_rect.adjusted(0.5, 0.5, -0.5, -0.5), 4, 4)
+
+        font = painter.font()
+        font.setPointSize(9)
+        painter.setFont(font)
+
+        label_rect = QRectF(bar_rect.left() + 10.0, bar_rect.top(), 36.0, bar_rect.height())
+        value_rect = QRectF(label_rect.right() + 4.0, bar_rect.top(), bar_rect.width() - 50.0, bar_rect.height())
+        value_text = self._length_input_text if self._length_input_active else "─ ─ ─"
+        if self._length_input_active and self._caret_visible:
+            value_text = f"{value_text}|"
+
+        painter.setPen(QColor(180, 180, 180))
+        painter.drawText(label_rect, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, "L =")
+        painter.setPen(QColor(255, 255, 255))
+        painter.drawText(value_rect, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, value_text)
 
     def _edit_overlay_grid_step_cm(self, mapper: CanvasMapper) -> float:
         return self._grid_step_cm()
