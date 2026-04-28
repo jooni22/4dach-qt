@@ -24,6 +24,12 @@ _VALID_LIVE_ANGLE_MODES = {
     LIVE_ANGLE_MODE_ABSOLUTE,
     LIVE_ANGLE_MODE_RELATIVE_TO_PREV,
 }
+EDGE_DRAG_MODE_MOVE_VERTICES = "move_vertices"
+EDGE_DRAG_MODE_INSERT_VERTEX = "insert_vertex"
+_VALID_EDGE_DRAG_MODES = {
+    EDGE_DRAG_MODE_MOVE_VERTICES,
+    EDGE_DRAG_MODE_INSERT_VERTEX,
+}
 
 
 @dataclass
@@ -62,6 +68,11 @@ class AppSettings:
     snap_axis_threshold_deg: float = 3.0
     snap_45_threshold_deg: float = 2.5
     snap_radius_px: int = 12
+    edge_drag_mode: str = EDGE_DRAG_MODE_MOVE_VERTICES
+    show_edge_length_labels: bool = True
+    show_vertex_angle_labels: bool = False
+    label_always_visible: bool = False
+    undo_stack_depth: int = 50
 
     @classmethod
     def from_dict(cls, data: dict | None) -> "AppSettings":
@@ -98,6 +109,9 @@ class AppSettings:
         live_angle_mode = str(d.get("live_angle_mode", LIVE_ANGLE_MODE_ABSOLUTE))
         if live_angle_mode not in _VALID_LIVE_ANGLE_MODES:
             live_angle_mode = LIVE_ANGLE_MODE_ABSOLUTE
+        edge_drag_mode = str(d.get("edge_drag_mode", EDGE_DRAG_MODE_MOVE_VERTICES))
+        if edge_drag_mode not in _VALID_EDGE_DRAG_MODES:
+            edge_drag_mode = EDGE_DRAG_MODE_MOVE_VERTICES
         try:
             snap_axis_threshold_deg = float(d.get("snap_axis_threshold_deg", 3.0))
         except (TypeError, ValueError):
@@ -116,6 +130,12 @@ class AppSettings:
             snap_radius_px = 12
         if snap_radius_px <= 0:
             snap_radius_px = 12
+        try:
+            undo_stack_depth = int(d.get("undo_stack_depth", 50))
+        except (TypeError, ValueError):
+            undo_stack_depth = 50
+        if undo_stack_depth <= 0:
+            undo_stack_depth = 50
         return cls(
             partial_cutout_top_extra_cm=max(0.0, value),
             grid_size_cm=grid_size,
@@ -138,6 +158,11 @@ class AppSettings:
             snap_axis_threshold_deg=snap_axis_threshold_deg,
             snap_45_threshold_deg=snap_45_threshold_deg,
             snap_radius_px=snap_radius_px,
+            edge_drag_mode=edge_drag_mode,
+            show_edge_length_labels=bool(d.get("show_edge_length_labels", True)),
+            show_vertex_angle_labels=bool(d.get("show_vertex_angle_labels", False)),
+            label_always_visible=bool(d.get("label_always_visible", False)),
+            undo_stack_depth=undo_stack_depth,
         )
 
     def to_dict(self) -> dict:
@@ -163,4 +188,9 @@ class AppSettings:
             "snap_axis_threshold_deg": self.snap_axis_threshold_deg,
             "snap_45_threshold_deg": self.snap_45_threshold_deg,
             "snap_radius_px": self.snap_radius_px,
+            "edge_drag_mode": self.edge_drag_mode,
+            "show_edge_length_labels": self.show_edge_length_labels,
+            "show_vertex_angle_labels": self.show_vertex_angle_labels,
+            "label_always_visible": self.label_always_visible,
+            "undo_stack_depth": self.undo_stack_depth,
         }

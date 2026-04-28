@@ -113,6 +113,7 @@ class ToolbarController:
         self.action_open_project = self._toolbar_actions[1][0]
         self.action_save_project = self._toolbar_actions[2][0]
         self.action_draw_outline = self._toolbar_actions[3][0]
+        self.action_draw_outline.setCheckable(True)
         self.action_base_point_toggle = self._toolbar_actions[4][0]
         self.action_undo = self._toolbar_actions[5][0]
         self.action_new_surface = self._toolbar_actions[6][0]

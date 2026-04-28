@@ -18,6 +18,8 @@ from PySide6.QtWidgets import (
 
 from core.app_settings import (
     AppSettings,
+    EDGE_DRAG_MODE_INSERT_VERTEX,
+    EDGE_DRAG_MODE_MOVE_VERTICES,
     LIVE_ANGLE_MODE_ABSOLUTE,
     LIVE_ANGLE_MODE_RELATIVE_TO_PREV,
     SHIFT_DRAG_BEHAVIOR_FREE_MOVE,
@@ -164,6 +166,31 @@ class SettingsDialog(QDialog):
 
         root.addWidget(grp_live_drawing)
 
+        grp_post_draw = QGroupBox("Edycja po rysowaniu")
+        post_form = QFormLayout(grp_post_draw)
+        post_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+
+        self._combo_edge_drag_mode = QComboBox()
+        self._combo_edge_drag_mode.addItem("Przeciąganie krawędzi przesuwa oba końce", EDGE_DRAG_MODE_MOVE_VERTICES)
+        self._combo_edge_drag_mode.addItem("Przeciąganie krawędzi wstawia nowy wierzchołek", EDGE_DRAG_MODE_INSERT_VERTEX)
+        post_form.addRow("Środek krawędzi:", self._combo_edge_drag_mode)
+
+        self._check_show_edge_length_labels = QCheckBox("Pokaż etykiety długości krawędzi")
+        post_form.addRow("Długości:", self._check_show_edge_length_labels)
+
+        self._check_show_vertex_angle_labels = QCheckBox("Pokaż etykiety kątów wierzchołków")
+        post_form.addRow("Kąty:", self._check_show_vertex_angle_labels)
+
+        self._check_label_always_visible = QCheckBox("Pokazuj etykiety także bez zaznaczenia")
+        post_form.addRow("Widoczność:", self._check_label_always_visible)
+
+        self._spin_undo_stack_depth = QSpinBox()
+        self._spin_undo_stack_depth.setRange(1, 500)
+        self._spin_undo_stack_depth.setSingleStep(1)
+        post_form.addRow("Głębokość undo:", self._spin_undo_stack_depth)
+
+        root.addWidget(grp_post_draw)
+
         # --- Przyciski ---
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok
@@ -194,6 +221,12 @@ class SettingsDialog(QDialog):
         self._check_snap_to_3060deg.setChecked(settings.snap_to_3060deg)
         self._check_snap_to_points.setChecked(settings.snap_to_points)
         self._check_show_inferences.setChecked(settings.show_inferences)
+        edge_drag_mode_index = self._combo_edge_drag_mode.findData(settings.edge_drag_mode)
+        self._combo_edge_drag_mode.setCurrentIndex(max(0, edge_drag_mode_index))
+        self._check_show_edge_length_labels.setChecked(settings.show_edge_length_labels)
+        self._check_show_vertex_angle_labels.setChecked(settings.show_vertex_angle_labels)
+        self._check_label_always_visible.setChecked(settings.label_always_visible)
+        self._spin_undo_stack_depth.setValue(settings.undo_stack_depth)
 
     def get_values(self) -> dict:
         """Return current dialog values as a dict matching AppSettings fields."""
@@ -216,6 +249,11 @@ class SettingsDialog(QDialog):
             "snap_to_3060deg": self._check_snap_to_3060deg.isChecked(),
             "snap_to_points": self._check_snap_to_points.isChecked(),
             "show_inferences": self._check_show_inferences.isChecked(),
+            "edge_drag_mode": self._combo_edge_drag_mode.currentData(),
+            "show_edge_length_labels": self._check_show_edge_length_labels.isChecked(),
+            "show_vertex_angle_labels": self._check_show_vertex_angle_labels.isChecked(),
+            "label_always_visible": self._check_label_always_visible.isChecked(),
+            "undo_stack_depth": self._spin_undo_stack_depth.value(),
         }
 
     def build_settings(self) -> AppSettings:

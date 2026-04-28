@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from core.app_settings import AppSettings, LIVE_ANGLE_MODE_RELATIVE_TO_PREV
+from core.app_settings import (
+    AppSettings,
+    EDGE_DRAG_MODE_INSERT_VERTEX,
+    LIVE_ANGLE_MODE_RELATIVE_TO_PREV,
+)
 
 
 def test_default_value():
@@ -17,6 +21,11 @@ def test_default_value():
     assert s.show_angle_arc is True
     assert s.show_guide_lines is True
     assert s.close_on_rmb is True
+    assert s.edge_drag_mode == "move_vertices"
+    assert s.show_edge_length_labels is True
+    assert s.show_vertex_angle_labels is False
+    assert s.label_always_visible is False
+    assert s.undo_stack_depth == 50
 
 
 def test_round_trip():
@@ -42,6 +51,11 @@ def test_round_trip():
         snap_axis_threshold_deg=4.0,
         snap_45_threshold_deg=3.5,
         snap_radius_px=18,
+        edge_drag_mode=EDGE_DRAG_MODE_INSERT_VERTEX,
+        show_edge_length_labels=False,
+        show_vertex_angle_labels=True,
+        label_always_visible=True,
+        undo_stack_depth=120,
     )
     s2 = AppSettings.from_dict(s.to_dict())
     assert s2.partial_cutout_top_extra_cm == 22.5
@@ -65,6 +79,11 @@ def test_round_trip():
     assert s2.snap_axis_threshold_deg == 4.0
     assert s2.snap_45_threshold_deg == 3.5
     assert s2.snap_radius_px == 18
+    assert s2.edge_drag_mode == EDGE_DRAG_MODE_INSERT_VERTEX
+    assert s2.show_edge_length_labels is False
+    assert s2.show_vertex_angle_labels is True
+    assert s2.label_always_visible is True
+    assert s2.undo_stack_depth == 120
 
 
 def test_negative_clamped_to_zero():
@@ -106,6 +125,11 @@ def test_missing_key_uses_default():
     assert s.show_angle_arc is True
     assert s.show_guide_lines is True
     assert s.close_on_rmb is True
+    assert s.edge_drag_mode == "move_vertices"
+    assert s.show_edge_length_labels is True
+    assert s.show_vertex_angle_labels is False
+    assert s.label_always_visible is False
+    assert s.undo_stack_depth == 50
 
 
 def test_nonpositive_grid_size_uses_default():
@@ -125,6 +149,11 @@ def test_invalid_live_angle_mode_uses_default():
     assert s.live_angle_mode == "absolute"
 
 
+def test_invalid_edge_drag_mode_uses_default():
+    s = AppSettings.from_dict({"edge_drag_mode": "teleport_edge"})
+    assert s.edge_drag_mode == "move_vertices"
+
+
 def test_nonpositive_snap_thresholds_use_defaults():
     s = AppSettings.from_dict(
         {
@@ -136,3 +165,8 @@ def test_nonpositive_snap_thresholds_use_defaults():
     assert s.snap_axis_threshold_deg == 3.0
     assert s.snap_45_threshold_deg == 2.5
     assert s.snap_radius_px == 12
+
+
+def test_nonpositive_undo_depth_uses_default():
+    s = AppSettings.from_dict({"undo_stack_depth": 0})
+    assert s.undo_stack_depth == 50

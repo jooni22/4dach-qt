@@ -86,6 +86,7 @@ def test_canvas_selects_vertex_handle_on_mouse_press(qtbot):
 
     assert canvas._active_vertex_index == 0
     assert canvas._dragging_vertex_index == 0
+    assert canvas.mode() == canvas.MODE_EDIT
 
 
 def test_freehand_axis_origin_moves_to_first_point(qtbot):
@@ -140,6 +141,7 @@ def test_crosshair_axis_uses_dominant_freehand_direction(qtbot):
 def test_canvas_clicking_midpoint_inserts_new_vertex_and_starts_drag(qtbot):
     outline = Polygon2D.rectangle(300, 200)
     canvas = _make_canvas(qtbot, outline)
+    canvas.set_app_settings(AppSettings(edge_drag_mode="insert_vertex"))
 
     midpoint = _point_on_canvas(canvas, Point2D(150, 0))
     QTest.mousePress(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, midpoint)
@@ -155,6 +157,7 @@ def test_canvas_clicking_midpoint_inserts_new_vertex_and_starts_drag(qtbot):
 def test_canvas_dragging_inserted_midpoint_commits_split_edge_outline(qtbot):
     outline = Polygon2D.rectangle(300, 200)
     canvas = _make_canvas(qtbot, outline)
+    canvas.set_app_settings(AppSettings(edge_drag_mode="insert_vertex"))
 
     midpoint = _point_on_canvas(canvas, Point2D(150, 0))
     target_domain = Point2D(150, 40)
@@ -365,6 +368,125 @@ def test_canvas_dragging_hole_center_updates_edit_overlay_domain_point(qtbot):
     assert canvas._edit_overlay.target_kind == "hole_center"
     assert _overlay_point(canvas).x == pytest.approx(target_domain.x, abs=1.5)
     assert _overlay_point(canvas).y == pytest.approx(target_domain.y, abs=1.5)
+    assert canvas.mode() == canvas.MODE_MOVE
+
+
+def test_canvas_dragging_selected_polygon_body_moves_outline_preview(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+
+    inside = _point_on_canvas(canvas, Point2D(150, 100))
+    target_domain = Point2D(180, 130)
+    target = _point_on_canvas(canvas, target_domain)
+
+    QTest.mouseClick(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, inside)
+    assert canvas.mode() == canvas.MODE_EDIT
+
+    QTest.mousePress(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, inside)
+    _send_mouse_move(canvas, target, buttons=Qt.MouseButton.LeftButton)
+
+    preview = canvas.display_outline()
+    assert preview is not None
+    assert canvas.mode() == canvas.MODE_MOVE
+    assert preview.points[0].x == pytest.approx(30.0, abs=1.5)
+    assert preview.points[0].y == pytest.approx(30.0, abs=1.5)
+    assert canvas._delta_overlay_text is not None
+
+
+def test_canvas_dragging_selected_polygon_body_commits_updated_outline(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+
+    inside = _point_on_canvas(canvas, Point2D(150, 100))
+    target_domain = Point2D(180, 130)
+    target = _point_on_canvas(canvas, target_domain)
+
+    QTest.mouseClick(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, inside)
+
+    with qtbot.waitSignal(canvas.outline_edit_committed, timeout=1000) as blocker:
+        QTest.mousePress(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, inside)
+        _send_mouse_move(canvas, target, buttons=Qt.MouseButton.LeftButton)
+        QTest.mouseRelease(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, target)
+
+    committed_outline = blocker.args[0]
+    assert committed_outline.points[0].x == pytest.approx(30.0, abs=1.5)
+    assert committed_outline.points[0].y == pytest.approx(30.0, abs=1.5)
+
+
+def test_canvas_default_edge_drag_mode_moves_both_edge_vertices(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+
+    midpoint = _point_on_canvas(canvas, Point2D(150, 0))
+    target_domain = Point2D(150, 40)
+    target = _point_on_canvas(canvas, target_domain)
+
+    with qtbot.waitSignal(canvas.outline_edit_committed, timeout=1000) as blocker:
+        QTest.mousePress(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, midpoint)
+        _send_mouse_move(canvas, target, buttons=Qt.MouseButton.LeftButton)
+        QTest.mouseRelease(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, target)
+
+    committed_outline = blocker.args[0]
+    assert committed_outline.points[0].y == pytest.approx(40.0, abs=1.5)
+    assert committed_outline.points[1].y == pytest.approx(40.0, abs=1.5)
+    assert len(committed_outline.points) == 4
+
+
+def test_canvas_escape_returns_from_edit_to_idle(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+
+    inside = _point_on_canvas(canvas, Point2D(150, 100))
+    QTest.mouseClick(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, inside)
+    assert canvas.mode() == canvas.MODE_EDIT
+
+    QTest.keyClick(canvas, Qt.Key.Key_Escape)
+
+    assert canvas.mode() == canvas.MODE_IDLE
+    assert canvas.selected_geometry_kind() is None
+
+
+def test_canvas_sketch_local_undo_and_redo_work_during_drawing(qtbot):
+    canvas = DrawingCanvas()
+    canvas.resize(640, 420)
+    qtbot.addWidget(canvas)
+    canvas.set_mode(canvas.MODE_DRAW_PLANE)
+    mapper = canvas._free_draw_mapper()
+
+    first = mapper.map_point(Point2D(100, 100)).toPoint()
+    second = mapper.map_point(Point2D(200, 100)).toPoint()
+
+    QTest.mouseClick(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, first)
+    QTest.mouseClick(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, second)
+    assert len(canvas.user_points) == 2
+
+    QTest.keyClick(canvas, Qt.Key.Key_Z, Qt.KeyboardModifier.ControlModifier)
+    assert len(canvas.user_points) == 1
+
+    QTest.keyClick(canvas, Qt.Key.Key_Z, Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier)
+    assert len(canvas.user_points) == 2
+
+
+def test_canvas_angle_edit_keeps_previous_and_current_vertices_fixed_and_moves_next_vertex(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+    canvas.set_app_settings(AppSettings(show_vertex_angle_labels=True))
+
+    inside = _point_on_canvas(canvas, Point2D(150, 100))
+    QTest.mouseClick(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, inside)
+    mapper = canvas._canvas_mapper()
+    region = canvas._angle_label_regions(mapper, outline, None)[1]
+
+    with qtbot.waitSignal(canvas.outline_edit_committed, timeout=1000) as blocker:
+        QTest.mouseClick(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, region.rect.center().toPoint())
+        canvas._inline_segment_editor.angle_edit.setText("135")
+        QTest.keyClick(canvas._inline_segment_editor.angle_edit, Qt.Key.Key_Return)
+
+    committed_outline = blocker.args[0]
+    # Post-draw angle edit rule: keep previous and edited vertices fixed, move the next vertex.
+    assert committed_outline.points[0] == outline.points[0]
+    assert committed_outline.points[1] == outline.points[1]
+    assert committed_outline.points[2] != outline.points[2]
 
 
 def test_canvas_dragging_hole_center_exposes_coordinate_labels_for_all_cutout_vertices(qtbot):
@@ -382,12 +504,13 @@ def test_canvas_dragging_hole_center_exposes_coordinate_labels_for_all_cutout_ve
 
     labels = canvas._coordinate_overlay_labels()
 
-    assert [label.kind for label in labels] == ["active", "vertex", "vertex", "vertex", "vertex"]
+    assert [label.kind for label in labels[:5]] == ["active", "vertex", "vertex", "vertex", "vertex"]
+    assert labels[-1].kind == "delta"
     assert labels[0].domain_point.x == pytest.approx(target_domain.x, abs=1.5)
     assert labels[0].domain_point.y == pytest.approx(target_domain.y, abs=1.5)
 
     preview_hole = canvas.display_holes()[0]
-    assert [label.domain_point for label in labels[1:]] == preview_hole.points
+    assert [label.domain_point for label in labels[1:5]] == preview_hole.points
 
 
 def test_canvas_origin_defaults_to_outline_bottom_left_corner(qtbot):

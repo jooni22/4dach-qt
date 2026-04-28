@@ -57,6 +57,18 @@ def test_mainwindow_exposes_expected_ui_contract(qtbot):
     assert window._tb_ctrl.action_duplicate_surface.text() == "Duplikuj połać"
     assert window._tb_ctrl.action_overlay_sheet.isCheckable() is True
     assert window._tb_ctrl.action_overlay_sheet.isChecked() is True
+    assert window._mode_label.text() == "Mode: IDLE"
+
+
+def test_mainwindow_mode_indicator_tracks_draw_and_idle_transitions(qtbot):
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window._start_draw_outline()
+    assert window._mode_label.text() == "Mode: DRAW_PLANE"
+
+    window.primary_canvas.set_mode(window.primary_canvas.MODE_IDLE)
+    assert window._mode_label.text() == "Mode: IDLE"
 
 
 def test_mainwindow_refreshes_active_plane_on_primary_canvas(qtbot):

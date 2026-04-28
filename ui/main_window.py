@@ -20,7 +20,6 @@ from PySide6.QtGui import QDesktopServices
 
 from app_icons import build_icon
 
-_UNDO_STACK_MAX = 50
 from persistence import load_config, save_config
 from core.models import Point2D, Polygon2D, SheetPlacement
 from core.project_state import ProjectState
@@ -54,8 +53,9 @@ class MainWindow(QMainWindow):
         self._theme_mgr = ThemeManager()
         self._latest_report_html = ""
         self._latest_report_plane_id: str | None = None
-        self._undo_stack: deque[_HistoryEntry] = deque(maxlen=_UNDO_STACK_MAX)
-        self._redo_stack: deque[_HistoryEntry] = deque(maxlen=_UNDO_STACK_MAX)
+        undo_depth = self.project_state.app_settings.undo_stack_depth
+        self._undo_stack: deque[_HistoryEntry] = deque(maxlen=undo_depth)
+        self._redo_stack: deque[_HistoryEntry] = deque(maxlen=undo_depth)
         self._saved_snapshot_signature = ""
         self._saved_plane_snapshot_signatures: dict[str, str] = {}
         self._unsaved_plane_ids: set[str] = set()
@@ -66,6 +66,8 @@ class MainWindow(QMainWindow):
         self._project_file_path: Path | None = Path(__file__).resolve().parent.parent / "config.json"
 
         self._status_label = QLabel("")
+        self._mode_label = QLabel("Mode: IDLE")
+        self.statusBar().addPermanentWidget(self._mode_label)
         self.statusBar().addPermanentWidget(self._status_label)
 
         self._build_chrome()
@@ -292,6 +294,34 @@ class MainWindow(QMainWindow):
         self._undo_stack.append(_HistoryEntry(label, before_snapshot, after_snapshot))
         self._redo_stack.clear()
 
+    def _set_undo_stack_depth(self, depth: int) -> None:
+        normalized_depth = max(1, int(depth))
+        undo_items = list(self._undo_stack)
+        redo_items = list(self._redo_stack)
+        self._undo_stack = deque(undo_items[-normalized_depth:], maxlen=normalized_depth)
+        self._redo_stack = deque(redo_items[-normalized_depth:], maxlen=normalized_depth)
+
+    def _set_mode_indicator(self, mode: str) -> None:
+        display = {
+            DrawingCanvas.MODE_IDLE: "IDLE",
+            DrawingCanvas.MODE_DRAW_PLANE: "DRAW_PLANE",
+            DrawingCanvas.MODE_DRAW_CUT: "DRAW_CUT",
+            DrawingCanvas.MODE_EDIT: "EDIT",
+            DrawingCanvas.MODE_MOVE: "MOVE",
+            DrawingCanvas.MODE_SELECT_SHEET: "SELECT_SHEET",
+        }.get(mode, str(mode).upper())
+        self._mode_label.setText(f"Mode: {display}")
+        if hasattr(self, "_tb_ctrl"):
+            self._tb_ctrl.action_draw_outline.blockSignals(True)
+            self._tb_ctrl.action_draw_outline.setChecked(mode == DrawingCanvas.MODE_DRAW_PLANE)
+            self._tb_ctrl.action_draw_outline.blockSignals(False)
+
+    def _active_canvas_mode(self) -> str:
+        canvas = getattr(self, "primary_canvas", None)
+        if canvas is None:
+            return DrawingCanvas.MODE_IDLE
+        return canvas.mode()
+
     def _apply_snapshot(self, snapshot: dict) -> None:
         self._config = copy.deepcopy(snapshot)
         self.project_state = ProjectState.from_config(self._config)
@@ -359,6 +389,7 @@ class MainWindow(QMainWindow):
         self._project_file_path = project_file_path
         self._config = payload
         self.project_state = ProjectState.from_config(self._config)
+        self._set_undo_stack_depth(self.project_state.app_settings.undo_stack_depth)
         self._workspace.bind_project_state(self.project_state, self.project_state.material_by_id)
         self._latest_report_html = ""
         self._latest_report_plane_id = None
@@ -502,6 +533,13 @@ class MainWindow(QMainWindow):
                 )
             except TypeError:
                 pass
+            try:
+                candidate.mode_changed.connect(
+                    self._on_canvas_mode_changed,
+                    Qt.ConnectionType.UniqueConnection,
+                )
+            except TypeError:
+                pass
         if plane:
             canvas = self._workspace.canvas_for_plane(plane.id) or self._workspace.primary_canvas
             canvas.set_roof_plane(plane)
@@ -516,6 +554,9 @@ class MainWindow(QMainWindow):
         if self.primary_canvas:
             is_selected = self.primary_canvas._plane_selected or self.primary_canvas._selected_hole_index is not None
             self._on_selection_changed(is_selected)
+            self._set_mode_indicator(self.primary_canvas.mode())
+        else:
+            self._set_mode_indicator(DrawingCanvas.MODE_IDLE)
 
         self._refresh_tab_titles()
         self._refresh_report()
@@ -747,6 +788,14 @@ class MainWindow(QMainWindow):
     def _on_selection_changed(self, is_selected: bool) -> None:
         if hasattr(self, '_tb_ctrl') and hasattr(self._tb_ctrl, 'action_trash'):
             self._tb_ctrl.action_trash.setEnabled(is_selected)
+        if self.primary_canvas is not None and self.primary_canvas.mode() in {DrawingCanvas.MODE_IDLE, DrawingCanvas.MODE_EDIT}:
+            if is_selected:
+                self._set_mode_indicator(DrawingCanvas.MODE_EDIT)
+            else:
+                self._set_mode_indicator(DrawingCanvas.MODE_IDLE)
+
+    def _on_canvas_mode_changed(self, mode: str) -> None:
+        self._set_mode_indicator(mode)
 
     def _delete_selected_geometry(self) -> None:
         canvas = self.primary_canvas
@@ -931,7 +980,7 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
     # Polygon drawing
     def _start_draw_outline(self) -> None:
-        self._begin_polygon_capture(mode=DrawingCanvas.MODE_DRAW_OUTLINE, handler=self._on_polygon_closed)
+        self._begin_polygon_capture(mode=DrawingCanvas.MODE_DRAW_PLANE, handler=self._on_polygon_closed)
 
     def _start_draw_cutout(self) -> None:
         plane = self._active_or_warn()
@@ -940,7 +989,7 @@ class MainWindow(QMainWindow):
         if plane.outline is None:
             QMessageBox.information(self, "Brak obrysu", "Aktywna połać nie ma jeszcze obrysu")
             return
-        self._begin_polygon_capture(mode=DrawingCanvas.MODE_DRAW_CUTOUT, handler=self._on_cutout_closed)
+        self._begin_polygon_capture(mode=DrawingCanvas.MODE_DRAW_CUT, handler=self._on_cutout_closed)
 
     def _begin_polygon_capture(self, *, mode: str, handler) -> None:
         canvas = self._workspace.primary_canvas
@@ -948,7 +997,8 @@ class MainWindow(QMainWindow):
             return
         self._disconnect_canvas_capture_signals(canvas)
         canvas.set_mode(mode)
-        if mode == canvas.MODE_DRAW_CUTOUT:
+        self._set_mode_indicator(mode)
+        if mode == canvas.MODE_DRAW_CUT:
             canvas.cutout_closed.connect(handler)
             self.statusBar().showMessage("Rysuj wycinek wewnątrz połaci. Enter lub klik na pkt 1 = zamknij. Esc = anuluj.", 0)
         else:
@@ -972,7 +1022,8 @@ class MainWindow(QMainWindow):
     def _on_polygon_closed(self, pixel_points: list) -> None:
         canvas = self._workspace.primary_canvas
         self._disconnect_canvas_capture_signals(canvas)
-        canvas.set_mode(canvas.MODE_VIEW)
+        canvas.set_mode(canvas.MODE_IDLE)
+        self._set_mode_indicator(canvas.mode())
 
         if len(pixel_points) < 3:
             self.statusBar().showMessage("Za mało punktów — minimum 3.", 4000)
@@ -993,7 +1044,8 @@ class MainWindow(QMainWindow):
         if canvas is None or plane is None:
             return
         self._disconnect_canvas_capture_signals(canvas)
-        canvas.set_mode(canvas.MODE_VIEW)
+        canvas.set_mode(canvas.MODE_IDLE)
+        self._set_mode_indicator(canvas.mode())
 
         if len(pixel_points) < 3:
             self.statusBar().showMessage("Za mało punktów — minimum 3.", 4000)
@@ -1271,6 +1323,7 @@ class MainWindow(QMainWindow):
             new_settings = dlg.build_settings()
             def _apply_settings() -> None:
                 self.project_state.app_settings = new_settings
+                self._set_undo_stack_depth(new_settings.undo_stack_depth)
                 self._snap_to_grid_enabled = new_settings.snap_to_grid
                 for plane in self.project_state.roof_planes:
                     if plane.outline is not None and plane.layout_dirty_reason != "manual_override":
