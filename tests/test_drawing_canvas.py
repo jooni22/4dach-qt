@@ -433,6 +433,30 @@ def test_canvas_draw_outline_mode_uses_global_free_draw_mapper(qtbot):
     assert top_left.y == pytest.approx(0.0, abs=0.1)
 
 
+def test_canvas_freehand_outline_points_snap_to_same_grid_as_dragging(qtbot):
+    canvas = DrawingCanvas()
+    canvas.resize(640, 420)
+    canvas.set_app_settings(AppSettings(grid_size_cm=25.0))
+    qtbot.addWidget(canvas)
+    canvas.show()
+    qtbot.waitExposed(canvas)
+    canvas.set_mode(DrawingCanvas.MODE_DRAW_OUTLINE)
+    mapper = canvas._free_draw_mapper()
+
+    clicked_domain = Point2D(270.0, 43.0)
+    QTest.mouseClick(
+        canvas,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+        mapper.map_point(clicked_domain).toPoint(),
+    )
+
+    assert canvas.user_points
+    snapped_domain = mapper.unmap_point(canvas.user_points[0])
+    assert snapped_domain.x == pytest.approx(275.0, abs=0.1)
+    assert snapped_domain.y == pytest.approx(50.0, abs=0.1)
+
+
 def test_canvas_dragging_origin_projects_to_nearest_boundary_when_cursor_leaves_shape(qtbot):
     outline = Polygon2D.rectangle(300, 200)
     canvas = _make_canvas(qtbot, outline)
@@ -733,9 +757,9 @@ def test_canvas_origin_drag_grid_extends_beyond_outline_bounds(qtbot, monkeypatc
 
     original = canvas._draw_domain_grid
 
-    def capture_bounds(painter, mapper, bounds):
-        captured_bounds.append(bounds)
-        return original(painter, mapper, bounds)
+    def capture_bounds(painter, grid_context):
+        captured_bounds.append(grid_context.bounds)
+        return original(painter, grid_context)
 
     monkeypatch.setattr(canvas, "_draw_domain_grid", capture_bounds)
 
@@ -761,9 +785,9 @@ def test_canvas_cutout_drag_grid_extends_beyond_outline_bounds(qtbot, monkeypatc
 
     original = canvas._draw_domain_grid
 
-    def capture_bounds(painter, mapper, bounds):
-        captured_bounds.append(bounds)
-        return original(painter, mapper, bounds)
+    def capture_bounds(painter, grid_context):
+        captured_bounds.append(grid_context.bounds)
+        return original(painter, grid_context)
 
     monkeypatch.setattr(canvas, "_draw_domain_grid", capture_bounds)
 

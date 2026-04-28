@@ -728,6 +728,34 @@ def test_mainwindow_freehand_outline_keeps_global_canvas_position_instead_of_bbo
     assert second_outline.points[2].y == pytest.approx(first_outline.points[2].y, abs=0.1)
 
 
+def test_mainwindow_freehand_outline_uses_same_grid_snap_as_canvas(qtbot):
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.project_state.app_settings.grid_size_cm = 25.0
+    window.project_state.delete_roof_plane(window.project_state.active_roof_plane().id)
+    window._refresh_canvas_from_state()
+    canvas = window._workspace.primary_canvas
+    canvas.resize(640, 420)
+    canvas.set_app_settings(window.project_state.app_settings)
+    canvas.set_mode(canvas.MODE_DRAW_OUTLINE)
+    mapper = canvas._free_draw_mapper()
+    point = mapper.map_point(Point2D(270.0, 43.0))
+
+    canvas.polygon_closed.connect(window._on_polygon_closed)
+    window._on_polygon_closed(
+        [
+            point,
+            mapper.map_point(Point2D(320.0, 43.0)),
+            mapper.map_point(Point2D(320.0, 100.0)),
+        ]
+    )
+
+    outline = window.project_state.active_roof_plane().outline
+    assert outline is not None
+    assert outline.points[0].x == pytest.approx(275.0, abs=0.1)
+    assert outline.points[0].y == pytest.approx(50.0, abs=0.1)
+
+
 def test_mainwindow_open_project_resets_cached_report_and_company_title(qtbot, monkeypatch):
     initial_config = {
         "company_data": {"name": "Firma A"},
