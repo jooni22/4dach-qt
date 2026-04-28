@@ -100,6 +100,39 @@ def test_material_definition_supports_min_sheet_length_dual_keys():
     assert payload["min_dlugosc_arkusza"] == 42
 
 
+def test_material_definition_rounds_centimeter_fields_to_ints():
+    material = Material.from_dict(
+        {
+            "id": "MAT1",
+            "display_name": "Material 1",
+            "type": "trapezowa",
+            "effective_width_cm": 51.2,
+            "min_sheet_length_cm": 42.4,
+            "max_sheet_length_cm": 299.6,
+            "top_allowance_cm": 14.6,
+            "bottom_allowance_cm": 9.6,
+            "module_length_cm": 24.6,
+            "odleglosc_miedzy_latami": 34.6,
+            "odleglosc_miedzy_kontrlatami": 19.6,
+        }
+    )
+
+    payload = material.to_dict()
+
+    assert material.effective_width_cm == 51
+    assert material.min_sheet_length_cm == 42
+    assert material.max_sheet_length_cm == 300
+    assert material.top_margin_cm == 15
+    assert material.bottom_margin_cm == 10
+    assert material.module_length_cm == 25
+    assert material.batten_spacing_cm == 35
+    assert material.counter_batten_spacing_cm == 20
+    assert payload["effective_width_cm"] == 51
+    assert payload["top_allowance_cm"] == 15
+    assert payload["bottom_allowance_cm"] == 10
+    assert payload["module_length_cm"] == 25
+
+
 def test_layout_engine_splits_band_by_hole_and_flags_long_sheet():
     plane = RoofPlane(
         id="plane-1",
@@ -636,7 +669,7 @@ def test_project_state_can_create_and_edit_material_definitions():
     assert state.available_material_ids() == ["MAT1"]
     assert state.material_by_id("MAT1") is updated
     assert updated.nazwa == "Material 1 Plus"
-    assert almost_equal(updated.effective_width_cm, 53.0)
+    assert updated.effective_width_cm == 53
     assert almost_equal(updated.price_value, 55.0)
 
 
@@ -740,7 +773,7 @@ def test_project_state_round_trip_preserves_material_registry_and_assignments():
 
     assert reloaded_material is not None
     assert reloaded_material.nazwa == "Material 1 Updated"
-    assert almost_equal(reloaded_material.effective_width_cm, 54.0)
+    assert reloaded_material.effective_width_cm == 54
     assert almost_equal(reloaded_material.price_value, 49.5)
     assert reloaded_plane.selected_material_id == "MAT1"
     assert reloaded_plane.layout_dirty_reason == "material_changed"

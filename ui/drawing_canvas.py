@@ -1354,10 +1354,6 @@ class DrawingCanvas(QWidget):
 
     def _draw_target_polygons(self) -> list[Polygon2D]:
         polygons: list[Polygon2D] = []
-        if len(self.user_points) >= 2:
-            mapper = self._active_mapper()
-            if mapper is not None:
-                polygons.append(Polygon2D([mapper.unmap_point(point) for point in self.user_points]))
         if self.roof_plane is not None:
             outline = getattr(self.roof_plane, "outline", None)
             if outline is not None:
@@ -1367,6 +1363,14 @@ class DrawingCanvas(QWidget):
 
     def _draw_target_edges(self) -> list[tuple[Point2D, Point2D]]:
         edges: list[tuple[Point2D, Point2D]] = []
+        mapper = self._active_mapper()
+        if mapper is not None and len(self.user_points) >= 2:
+            domain_points = [mapper.unmap_point(point) for point in self.user_points]
+            for i in range(len(domain_points) - 1):
+                edges.append((domain_points[i], domain_points[i + 1]))
+            if len(domain_points) >= 3:
+                edges.append((domain_points[-1], domain_points[0]))
+
         for polygon in self._draw_target_polygons():
             if len(polygon.points) >= 2:
                 edges.extend(polygon_edges(polygon))
@@ -1374,6 +1378,10 @@ class DrawingCanvas(QWidget):
 
     def _draw_target_vertices(self) -> list[Point2D]:
         vertices: list[Point2D] = []
+        mapper = self._active_mapper()
+        if mapper is not None:
+            vertices.extend(mapper.unmap_point(point) for point in self.user_points)
+
         for polygon in self._draw_target_polygons():
             vertices.extend(polygon.points)
         return vertices
