@@ -12,10 +12,12 @@ def test_default_value():
     assert s.partial_cutout_top_extra_cm == 15.0
     assert s.grid_size_cm == 10.0
     assert s.shift_drag_behavior == "free_move"
+    assert s.show_grid is True
     assert s.show_axis_overlay is True
     assert s.grid_major_cm == 100
     assert s.grid_minor_cm == 10
     assert s.show_crosshair is True
+    assert s.show_xy_references_during_draw is True
     assert s.live_angle_mode == "absolute"
     assert s.show_decimal_cm is False
     assert s.show_angle_arc is True
@@ -33,10 +35,12 @@ def test_round_trip():
         partial_cutout_top_extra_cm=22.5,
         grid_size_cm=25.0,
         shift_drag_behavior="orthogonal_lock",
+        show_grid=False,
         show_axis_overlay=False,
         grid_major_cm=50,
         grid_minor_cm=5,
         show_crosshair=False,
+        show_xy_references_during_draw=False,
         live_angle_mode=LIVE_ANGLE_MODE_RELATIVE_TO_PREV,
         show_decimal_cm=True,
         show_angle_arc=False,
@@ -61,10 +65,12 @@ def test_round_trip():
     assert s2.partial_cutout_top_extra_cm == 22.5
     assert s2.grid_size_cm == 25.0
     assert s2.shift_drag_behavior == "orthogonal_lock"
+    assert s2.show_grid is False
     assert s2.show_axis_overlay is False
     assert s2.grid_major_cm == 50
     assert s2.grid_minor_cm == 5
     assert s2.show_crosshair is False
+    assert s2.show_xy_references_during_draw is False
     assert s2.live_angle_mode == LIVE_ANGLE_MODE_RELATIVE_TO_PREV
     assert s2.show_decimal_cm is True
     assert s2.show_angle_arc is False
@@ -116,10 +122,12 @@ def test_missing_key_uses_default():
     s = AppSettings.from_dict({})
     assert s.partial_cutout_top_extra_cm == 15.0
     assert s.grid_size_cm == 10.0
+    assert s.show_grid is True
     assert s.show_axis_overlay is True
     assert s.grid_major_cm == 100
     assert s.grid_minor_cm == 10
     assert s.show_crosshair is True
+    assert s.show_xy_references_during_draw is True
     assert s.live_angle_mode == "absolute"
     assert s.show_decimal_cm is False
     assert s.show_angle_arc is True

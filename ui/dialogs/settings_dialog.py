@@ -101,6 +101,10 @@ class SettingsDialog(QDialog):
         shift_label.setWordWrap(True)
         grid_form.addRow(shift_label, self._combo_shift_behavior)
 
+        self._check_show_grid = QCheckBox("Pokaż siatkę roboczą")
+        self._check_show_grid.setToolTip("Steruje tylko widocznością siatki. Nie wyłącza przyciągania ani referencji X/Y.")
+        grid_form.addRow("Widoczność siatki:", self._check_show_grid)
+
         self._check_axis_overlay = QCheckBox("Pokaż wskaźnik osi X/Y")
         self._check_axis_overlay.setToolTip("Pokazuje mały wskaźnik osi podczas rysowania odręcznego.")
         grid_form.addRow("Orientacja:", self._check_axis_overlay)
@@ -161,6 +165,12 @@ class SettingsDialog(QDialog):
         self._check_show_guide_lines = QCheckBox("Pokaż subtelne linie pomocnicze aktywnego segmentu")
         live_form.addRow("Linie pomocnicze:", self._check_show_guide_lines)
 
+        self._check_show_xy_references = QCheckBox("Pokaż referencje X/Y podczas rysowania")
+        self._check_show_xy_references.setToolTip(
+            "Pokazuje lekkie prowadnice CAD z odległościami od aktywnego punktu odniesienia, niezależnie od widoczności siatki."
+        )
+        live_form.addRow("Referencje X/Y:", self._check_show_xy_references)
+
         self._check_close_on_rmb = QCheckBox("Zamykaj wielokąt prawym przyciskiem myszy")
         live_form.addRow("Zamykanie:", self._check_close_on_rmb)
 
@@ -205,10 +215,12 @@ class SettingsDialog(QDialog):
         self._spin_grid_size.setValue(settings.grid_size_cm)
         index = self._combo_shift_behavior.findData(settings.shift_drag_behavior)
         self._combo_shift_behavior.setCurrentIndex(max(0, index))
+        self._check_show_grid.setChecked(settings.show_grid)
         self._check_axis_overlay.setChecked(settings.show_axis_overlay)
         self._spin_grid_major.setValue(settings.grid_major_cm)
         self._spin_grid_minor.setValue(settings.grid_minor_cm)
         self._check_crosshair.setChecked(settings.show_crosshair)
+        self._check_show_xy_references.setChecked(settings.show_xy_references_during_draw)
         live_angle_index = self._combo_live_angle_mode.findData(settings.live_angle_mode)
         self._combo_live_angle_mode.setCurrentIndex(max(0, live_angle_index))
         self._check_show_decimal_cm.setChecked(settings.show_decimal_cm)
@@ -234,10 +246,12 @@ class SettingsDialog(QDialog):
             "partial_cutout_top_extra_cm": self._spin_top_extra.value(),
             "grid_size_cm": self._spin_grid_size.value(),
             "shift_drag_behavior": self._combo_shift_behavior.currentData(),
+            "show_grid": self._check_show_grid.isChecked(),
             "show_axis_overlay": self._check_axis_overlay.isChecked(),
             "grid_major_cm": self._spin_grid_major.value(),
             "grid_minor_cm": self._spin_grid_minor.value(),
             "show_crosshair": self._check_crosshair.isChecked(),
+            "show_xy_references_during_draw": self._check_show_xy_references.isChecked(),
             "live_angle_mode": self._combo_live_angle_mode.currentData(),
             "show_decimal_cm": self._check_show_decimal_cm.isChecked(),
             "show_angle_arc": self._check_show_angle_arc.isChecked(),

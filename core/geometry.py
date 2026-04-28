@@ -208,6 +208,49 @@ def delete_polygon_point(polygon: Polygon2D, point_index: int) -> Polygon2D:
     return Polygon2D(points)
 
 
+def canonicalize_polygon(polygon: Polygon2D, *, clockwise: bool | None = None) -> Polygon2D:
+    points = list(polygon.points)
+    changed = True
+    while changed:
+        changed = False
+        deduped: list[Point2D] = []
+        for point in points:
+            if deduped and segment_length(deduped[-1], point) <= EPSILON:
+                changed = True
+                continue
+            deduped.append(point)
+
+        if len(deduped) >= 2 and segment_length(deduped[0], deduped[-1]) <= EPSILON:
+            deduped.pop()
+            changed = True
+
+        if len(deduped) < 3:
+            raise ValueError("Polygon po normalizacji musi mieć co najmniej 3 unikalne wierzchołki")
+
+        filtered: list[Point2D] = []
+        count = len(deduped)
+        for index, point in enumerate(deduped):
+            previous = deduped[index - 1]
+            next_point = deduped[(index + 1) % count]
+            if _point_is_redundant_collinear(point, previous, next_point):
+                changed = True
+                continue
+            filtered.append(point)
+
+        if len(filtered) < 3:
+            raise ValueError("Polygon po normalizacji musi mieć co najmniej 3 wierzchołki")
+        points = filtered
+
+    normalized = Polygon2D(points)
+    if clockwise is None or abs(normalized.signed_area()) <= EPSILON:
+        return normalized
+    wants_negative_area = clockwise
+    has_negative_area = normalized.signed_area() < 0.0
+    if has_negative_area == wants_negative_area:
+        return normalized
+    return Polygon2D(list(reversed(normalized.points)))
+
+
 def point_in_polygon(point: Point2D, polygon: Polygon2D) -> bool:
     inside = False
     points = polygon.points
@@ -296,6 +339,24 @@ def polygons_overlap(left: Polygon2D, right: Polygon2D) -> bool:
     return False
 
 
+def polygon_is_inside_polygon(inner: Polygon2D, outer: Polygon2D) -> bool:
+    if any(not _point_in_polygon_or_on_boundary(point, outer) for point in inner.points):
+        return False
+
+    for inner_start, inner_end in polygon_edges(inner):
+        midpoint = Point2D((inner_start.x + inner_end.x) / 2.0, (inner_start.y + inner_end.y) / 2.0)
+        if not _point_in_polygon_or_on_boundary(midpoint, outer):
+            return False
+        for outer_start, outer_end in polygon_edges(outer):
+            if not segments_intersect(inner_start, inner_end, outer_start, outer_end):
+                continue
+            if _point_on_segment(inner_start, outer_start, outer_end) or _point_on_segment(inner_end, outer_start, outer_end):
+                continue
+            return False
+
+    return True
+
+
 def subtract_segments(base_segments: list[tuple[float, float]], cut_segments: list[tuple[float, float]]) -> list[tuple[float, float]]:
     result = list(base_segments)
     for cut_top, cut_bottom in cut_segments:
@@ -325,3 +386,17 @@ def vertical_segments_for_band(outline: Polygon2D, holes: list[Polygon2D], x_lef
         if hole_segments:
             result = subtract_segments(result, hole_segments)
     return result
+
+
+def _point_is_redundant_collinear(point: Point2D, previous: Point2D, next_point: Point2D) -> bool:
+    if segment_length(previous, next_point) <= EPSILON:
+        return True
+    if not isclose(_orientation(previous, point, next_point), 0.0, abs_tol=EPSILON):
+        return False
+    return _point_on_segment(point, previous, next_point)
+
+
+def _point_in_polygon_or_on_boundary(point: Point2D, polygon: Polygon2D) -> bool:
+    if point_in_polygon(point, polygon):
+        return True
+    return any(_point_on_segment(point, start, end) for start, end in polygon_edges(polygon))

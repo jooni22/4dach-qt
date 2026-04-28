@@ -423,6 +423,45 @@ def test_project_state_allows_outline_edit_when_it_breaks_hole_containment():
     assert updated_plane.outline.points[0] == Point2D(80, 0)
 
 
+def test_project_state_rebuilds_sheet_split_inputs_after_outline_edit_moves_hole_outside_outline():
+    state = ProjectState(
+        materials=[
+            Material(
+                id="MAT",
+                nazwa="Material",
+                type="trapezowa",
+                effective_width_cm=50,
+                module_length_cm=0,
+                bottom_margin_cm=0,
+                top_margin_cm=0,
+                min_sheet_length_cm=0,
+                max_sheet_length_cm=400,
+            )
+        ]
+    )
+    plane = state.add_roof_plane(build_rectangle_outline(150, 150), selected_material_id="MAT")
+    state.add_hole_to_plane(Polygon2D.rectangle(20, 50, origin_x=20, origin_y=40), plane.id)
+
+    state.generate_layout_for_plane(plane.id)
+    assert plane.layout_bands[0]["segments"][0]["cutout_interaction"] == "partial"
+
+    updated_outline = Polygon2D(
+        [
+            Point2D(0, 80),
+            Point2D(150, 0),
+            Point2D(150, 150),
+            Point2D(0, 150),
+        ]
+    )
+    state.set_roof_plane_outline(updated_outline, plane.id)
+    result = state.generate_layout_for_plane(plane.id)
+
+    band_segment = result.bands[0].segments[0]
+    assert band_segment.cutout_interaction is None
+    assert band_segment.partial_cut_line_y_cm is None
+    assert len(band_segment.coverage_polygons) == 1
+
+
 def test_project_state_delete_hole_marks_geometry_changed():
     state = ProjectState()
     plane = state.add_roof_plane(build_rectangle_outline(300, 200))

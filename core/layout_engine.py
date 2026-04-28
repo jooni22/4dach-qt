@@ -1,14 +1,23 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from math import ceil
 
 from core.app_settings import AppSettings
-from core.geometry import polygon_edges, validate_polygon, vertical_segments_for_band
+from core.geometry import (
+    canonicalize_polygon,
+    polygon_edges,
+    polygon_is_inside_polygon,
+    validate_hole_polygon,
+    validate_polygon,
+    vertical_segments_for_band,
+)
 from core.models import Material, Point2D, Polygon2D, RoofPlane, SheetPlacement
 
 
 EPSILON = 1e-6
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -161,15 +170,9 @@ def generate_layout(
         )
         return result
 
-    result.warnings.extend(
-        LayoutWarning(code="invalid_outline", message=issue, data={"plane_id": plane.id})
-        for issue in validate_polygon(plane.outline)
-    )
-    for hole_index, hole in enumerate(plane.holes):
-        result.warnings.extend(
-            LayoutWarning(code="invalid_hole", message=issue, data={"plane_id": plane.id, "hole_index": hole_index})
-            for issue in validate_polygon(hole)
-        )
+    layout_plane = _prepare_plane_for_layout(plane, result)
+    if layout_plane is None:
+        return result
 
     width = material.effective_width_cm
     if width <= 0:
@@ -182,12 +185,12 @@ def generate_layout(
         )
         return result
 
-    for band_index, (x_left, x_right) in enumerate(_iter_band_ranges(plane, width)):
-        band_segments = _build_band_segments(plane, band_index, x_left, x_right)
+    for band_index, (x_left, x_right) in enumerate(_iter_band_ranges(layout_plane, width)):
+        band_segments = _build_band_segments(layout_plane, band_index, x_left, x_right)
         layout_band = LayoutBand(band_index=band_index, x_left_cm=x_left, x_right_cm=x_right)
 
         for band_segment in band_segments:
-            _detect_cutout_interaction(plane, band_segment, _settings)
+            _detect_cutout_interaction(layout_plane, band_segment, _settings)
 
         for segment_index, band_segment in enumerate(band_segments):
             y_bottom = band_segment.y_bottom_cm
@@ -383,6 +386,74 @@ def generate_layout(
         result.bands.append(layout_band)
 
     return result
+
+
+def _prepare_plane_for_layout(plane: RoofPlane, result: LayoutResult) -> RoofPlane | None:
+    raw_outline = plane.outline
+    if raw_outline is None:
+        return None
+
+    _log_split_geometry("raw", plane.id, raw_outline, plane.holes)
+    try:
+        outline = canonicalize_polygon(raw_outline, clockwise=False)
+    except ValueError as exc:
+        result.warnings.append(
+            LayoutWarning(code="invalid_outline", message=str(exc), data={"plane_id": plane.id})
+        )
+        return None
+
+    outline_issues = validate_polygon(outline)
+    if outline_issues:
+        result.warnings.extend(
+            LayoutWarning(code="invalid_outline", message=issue, data={"plane_id": plane.id})
+            for issue in outline_issues
+        )
+        return None
+
+    normalized_holes: list[Polygon2D] = []
+    for hole_index, raw_hole in enumerate(plane.holes):
+        try:
+            hole = canonicalize_polygon(raw_hole, clockwise=True)
+        except ValueError as exc:
+            result.warnings.append(
+                LayoutWarning(code="invalid_hole", message=str(exc), data={"plane_id": plane.id, "hole_index": hole_index})
+            )
+            continue
+
+        hole_issues = validate_polygon(hole)
+        if hole_issues:
+            result.warnings.extend(
+                LayoutWarning(code="invalid_hole", message=issue, data={"plane_id": plane.id, "hole_index": hole_index})
+                for issue in hole_issues
+            )
+            continue
+        if not polygon_is_inside_polygon(hole, outline):
+            result.warnings.append(
+                LayoutWarning(
+                    code="hole_outside_outline",
+                    message="Wycinek pominięto przy podziale arkuszy, bo po edycji wychodzi poza obrys połaci",
+                    data={"plane_id": plane.id, "hole_index": hole_index},
+                )
+            )
+            continue
+        overlap_issues = validate_hole_polygon(outline, hole, normalized_holes)
+        if overlap_issues:
+            result.warnings.extend(
+                LayoutWarning(code="invalid_hole", message=issue, data={"plane_id": plane.id, "hole_index": hole_index})
+                for issue in overlap_issues
+            )
+            continue
+        normalized_holes.append(hole)
+
+    _log_split_geometry("normalized", plane.id, outline, normalized_holes)
+    return RoofPlane(
+        id=plane.id,
+        name=plane.name,
+        outline=outline,
+        holes=normalized_holes,
+        selected_material_id=plane.selected_material_id,
+        generation_settings=plane.generation_settings,
+    )
 
 
 
@@ -640,3 +711,19 @@ def _point_on_edge_at_x(start: Point2D, end: Point2D, x_value: float) -> Point2D
 
 def _polygon_to_dict(polygon: Polygon2D) -> list[list[float]]:
     return [[point.x, point.y] for point in polygon.points]
+
+
+def _log_split_geometry(label: str, plane_id: str, outline: Polygon2D, holes: list[Polygon2D]) -> None:
+    if not logger.isEnabledFor(logging.DEBUG):
+        return
+    logger.debug(
+        "sheet_split_geometry[%s] plane=%s outline=%s holes=%s",
+        label,
+        plane_id,
+        _polygon_points(outline),
+        [_polygon_points(hole) for hole in holes],
+    )
+
+
+def _polygon_points(polygon: Polygon2D) -> list[tuple[float, float]]:
+    return [(point.x, point.y) for point in polygon.points]

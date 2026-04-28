@@ -50,10 +50,12 @@ class AppSettings:
     partial_cutout_top_extra_cm: float = 15.0
     grid_size_cm: float = 10.0
     shift_drag_behavior: str = SHIFT_DRAG_BEHAVIOR_FREE_MOVE
+    show_grid: bool = True
     show_axis_overlay: bool = True
     grid_major_cm: int = 100
     grid_minor_cm: int = 10
     show_crosshair: bool = True
+    show_xy_references_during_draw: bool = True
     live_angle_mode: str = LIVE_ANGLE_MODE_ABSOLUTE
     show_decimal_cm: bool = False
     show_angle_arc: bool = True
@@ -92,8 +94,10 @@ class AppSettings:
         shift_drag_behavior = str(d.get("shift_drag_behavior", SHIFT_DRAG_BEHAVIOR_FREE_MOVE))
         if shift_drag_behavior not in _VALID_SHIFT_DRAG_BEHAVIORS:
             shift_drag_behavior = SHIFT_DRAG_BEHAVIOR_FREE_MOVE
+        show_grid = bool(d.get("show_grid", True))
         show_axis_overlay = bool(d.get("show_axis_overlay", True))
         show_crosshair = bool(d.get("show_crosshair", True))
+        show_xy_references_during_draw = bool(d.get("show_xy_references_during_draw", True))
         try:
             grid_major_cm = int(d.get("grid_major_cm", 100))
         except (TypeError, ValueError):
@@ -140,10 +144,12 @@ class AppSettings:
             partial_cutout_top_extra_cm=max(0.0, value),
             grid_size_cm=grid_size,
             shift_drag_behavior=shift_drag_behavior,
+            show_grid=show_grid,
             show_axis_overlay=show_axis_overlay,
             grid_major_cm=grid_major_cm,
             grid_minor_cm=grid_minor_cm,
             show_crosshair=show_crosshair,
+            show_xy_references_during_draw=show_xy_references_during_draw,
             live_angle_mode=live_angle_mode,
             show_decimal_cm=bool(d.get("show_decimal_cm", False)),
             show_angle_arc=bool(d.get("show_angle_arc", True)),
@@ -170,10 +176,12 @@ class AppSettings:
             "partial_cutout_top_extra_cm": self.partial_cutout_top_extra_cm,
             "grid_size_cm": self.grid_size_cm,
             "shift_drag_behavior": self.shift_drag_behavior,
+            "show_grid": self.show_grid,
             "show_axis_overlay": self.show_axis_overlay,
             "grid_major_cm": self.grid_major_cm,
             "grid_minor_cm": self.grid_minor_cm,
             "show_crosshair": self.show_crosshair,
+            "show_xy_references_during_draw": self.show_xy_references_during_draw,
             "live_angle_mode": self.live_angle_mode,
             "show_decimal_cm": self.show_decimal_cm,
             "show_angle_arc": self.show_angle_arc,

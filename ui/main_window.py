@@ -27,7 +27,7 @@ from core.reporting import build_project_report, build_project_report_html
 from core.geometry import make_rectangle, make_trapezoid, make_triangle
 
 from ui.theme_manager import ThemeManager
-from ui.drawing_canvas import DrawingCanvas
+from ui.drawing_canvas import CommittedOutlineEdit, DrawingCanvas
 from ui.workspace import WorkspaceController
 from ui.report_view import ReportController
 from ui.dialogs import BlachyDialog, DaneFirmyDialog, ProstokatDialog, TrapezDialog, TrojkatDialog
@@ -190,7 +190,7 @@ class MainWindow(QMainWindow):
         self._tb_ctrl.action_trash.triggered.connect(self._delete_selected_geometry)
         self._tb_ctrl.action_trash.setEnabled(False)
         self._tb_ctrl.action_grid.triggered.connect(self._on_grid_toggled)
-        self._tb_ctrl.action_grid.setChecked(self.project_state.app_settings.snap_to_grid)
+        self._tb_ctrl.action_grid.setChecked(self.project_state.app_settings.show_grid)
         self._tb_ctrl.action_module_count.triggered.connect(self._on_module_count_toggled)
         self._tb_ctrl.action_base_point_toggle.triggered.connect(self._on_origin_mode_toggled)
         self._tb_ctrl.action_from_left.triggered.connect(self._on_from_left_toggled)
@@ -484,12 +484,13 @@ class MainWindow(QMainWindow):
         self._snap_to_grid_enabled = self.project_state.app_settings.snap_to_grid
         if hasattr(self, "_tb_ctrl"):
             self._tb_ctrl.action_grid.blockSignals(True)
-            self._tb_ctrl.action_grid.setChecked(self.project_state.app_settings.snap_to_grid)
+            self._tb_ctrl.action_grid.setChecked(self.project_state.app_settings.show_grid)
             self._tb_ctrl.action_grid.blockSignals(False)
         self.primary_canvas = self._workspace.primary_canvas
         self.workspace_tabs = self._workspace.tabs
         for candidate in self._workspace.plane_canvases():
             candidate.set_app_settings(self.project_state.app_settings)
+            candidate.toggle_grid(self.project_state.app_settings.show_grid)
             candidate.set_snap_to_grid_enabled(self._snap_to_grid_enabled)
             try:
                 candidate.outline_edit_committed.connect(
@@ -545,9 +546,11 @@ class MainWindow(QMainWindow):
             canvas.set_roof_plane(plane)
             canvas.set_material(self.project_state.material_by_id(plane.selected_material_id))
             canvas.set_app_settings(self.project_state.app_settings)
+            canvas.toggle_grid(self.project_state.app_settings.show_grid)
             canvas.set_snap_to_grid_enabled(self._snap_to_grid_enabled)
         elif self.primary_canvas is not None:
             self.primary_canvas.set_app_settings(self.project_state.app_settings)
+            self.primary_canvas.toggle_grid(self.project_state.app_settings.show_grid)
             self.primary_canvas.set_snap_to_grid_enabled(self._snap_to_grid_enabled)
         self._apply_origin_edit_mode_to_canvases()
             
@@ -868,14 +871,20 @@ class MainWindow(QMainWindow):
             label=f"Zmiana materiału połaci {plane.name}",
         )
 
-    def _on_outline_edit_committed(self, outline: Polygon2D) -> None:
+    def _on_outline_edit_committed(self, outline: Polygon2D | CommittedOutlineEdit) -> None:
         canvas = self.sender() if isinstance(self.sender(), DrawingCanvas) else self.primary_canvas
         selection_snapshot = canvas.selection_snapshot() if isinstance(canvas, DrawingCanvas) else None
         plane = self.project_state.active_roof_plane()
         plane_id = plane.id if plane is not None else None
+        committed_outline = outline.outline if isinstance(outline, CommittedOutlineEdit) else outline
+        committed_holes = outline.holes if isinstance(outline, CommittedOutlineEdit) else None
+        edit_operation = outline.operation if isinstance(outline, CommittedOutlineEdit) else "outline_edit"
         self._edit(
-            lambda: self.project_state.set_roof_plane_outline(outline, plane_id),
+            lambda: self.project_state.set_roof_plane_geometry(committed_outline, committed_holes, plane_id)
+            if committed_holes is not None
+            else self.project_state.set_roof_plane_outline(committed_outline, plane_id),
             "Zaktualizowano geometrię połaci",
+            label=f"Zmiana geometrii połaci ({edit_operation})",
             after_refresh=lambda: self._restore_canvas_selection(plane_id, selection_snapshot),
         )
 
@@ -905,9 +914,8 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Odrzucono zmianę geometrii połaci", 4000)
 
     def _on_grid_toggled(self, checked: bool) -> None:
-        self._snap_to_grid_enabled = checked
-        self.project_state.app_settings.snap_to_grid = checked
-        self._workspace.set_snap_to_grid_enabled(checked)
+        self.project_state.app_settings.show_grid = checked
+        self._workspace.toggle_grid(checked)
         self._refresh_dirty_state()
 
     def _on_sheet_visibility_toggled(self, checked: bool) -> None:
@@ -1264,7 +1272,7 @@ class MainWindow(QMainWindow):
         if plane is None:
             return
         sheets = self.project_state.active_sheet_placements_for_plane(plane.id)
-        lines = "\n".join(f"{i}. {s.id} | pas {s.band_index} | {s.final_length_cm:.1f} cm" for i, s in enumerate(sheets)) or "Brak"
+        lines = "\n".join(f"{i}. {s.id} | pas {s.band_index} | {round(s.final_length_cm):.0f} cm" for i, s in enumerate(sheets)) or "Brak"
         QMessageBox.information(self, f"Arkusze — {plane.name}", lines)
 
     def _dlg_active_sheets(self) -> None:

@@ -288,6 +288,20 @@ class ProjectState:
         self._mark_layout_inputs_changed(plane, "geometry_changed")
         return plane
 
+    def set_roof_plane_geometry(
+        self,
+        outline: Polygon2D,
+        holes: list[Polygon2D] | None = None,
+        plane_id: str | None = None,
+    ) -> RoofPlane:
+        plane = self._require_plane(plane_id)
+        next_holes = list(plane.holes if holes is None else holes)
+        self._validate_plane_geometry(outline, next_holes)
+        plane.outline = outline
+        plane.holes = next_holes
+        self._mark_layout_inputs_changed(plane, "geometry_changed")
+        return plane
+
     def move_roof_plane(self, dx: float, dy: float, plane_id: str | None = None) -> RoofPlane:
         plane = self._require_plane(plane_id)
         outline = self._require_plane_outline(plane)

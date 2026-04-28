@@ -18,6 +18,7 @@ from PySide6.QtCore import QPointF
 
 from mainwindow import MainWindow
 from ui.dialogs.material_dialog import BlachyDialog
+from ui.drawing_canvas import CommittedOutlineEdit
 
 
 @pytest.fixture(autouse=True)
@@ -310,6 +311,42 @@ def test_mainwindow_commits_canvas_outline_edits_to_project_state(qtbot):
     assert len(plane.layout_bands) > 0
 
 
+def test_mainwindow_commits_whole_plane_move_outline_and_holes_to_project_state(qtbot):
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.project_state = ProjectState(materials=window.project_state.materials)
+    window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
+    plane = window.project_state.add_roof_plane(build_rectangle_outline(320, 180), selected_material_id="PD510")
+    original_hole = Polygon2D.rectangle(60, 50, origin_x=40, origin_y=30)
+    window.project_state.add_hole_to_plane(original_hole, plane.id)
+    window._refresh_canvas_from_state()
+
+    moved_outline = Polygon2D(
+        [
+            Point2D(30, 20),
+            Point2D(350, 20),
+            Point2D(350, 200),
+            Point2D(30, 200),
+        ]
+    )
+    moved_hole = Polygon2D.rectangle(60, 50, origin_x=70, origin_y=50)
+    canvas = window._workspace.canvas_for_plane(plane.id)
+
+    canvas.outline_edit_committed.emit(
+        CommittedOutlineEdit(
+            outline=moved_outline,
+            holes=[moved_hole],
+            operation="plane_move",
+        )
+    )
+
+    assert plane.outline == moved_outline
+    assert plane.holes == [moved_hole]
+    assert plane.layout_dirty_reason is None
+    assert len(plane.layout_bands) > 0
+
+
 def test_mainwindow_allows_canvas_outline_edit_even_when_cutout_moves_outside_outline(qtbot, monkeypatch):
     messages: list[str] = []
     monkeypatch.setattr(QMessageBox, "warning", staticmethod(lambda *args: messages.append(args[2])))
@@ -421,10 +458,12 @@ def test_mainwindow_settings_dialog_updates_grid_size_on_project_state_and_canva
                 partial_cutout_top_extra_cm=self._settings.partial_cutout_top_extra_cm,
                 grid_size_cm=25.0,
                 shift_drag_behavior="orthogonal_lock",
+                show_grid=False,
                 show_axis_overlay=False,
                 grid_major_cm=50,
                 grid_minor_cm=5,
                 show_crosshair=False,
+                show_xy_references_during_draw=False,
                 live_angle_mode="relative_to_prev",
                 show_decimal_cm=True,
                 show_angle_arc=False,
@@ -445,10 +484,12 @@ def test_mainwindow_settings_dialog_updates_grid_size_on_project_state_and_canva
     canvas = window._workspace.canvas_for_plane(plane.id)
     assert window.project_state.app_settings.grid_size_cm == pytest.approx(25.0)
     assert window.project_state.app_settings.shift_drag_behavior == "orthogonal_lock"
+    assert window.project_state.app_settings.show_grid is False
     assert window.project_state.app_settings.show_axis_overlay is False
     assert window.project_state.app_settings.grid_major_cm == 50
     assert window.project_state.app_settings.grid_minor_cm == 5
     assert window.project_state.app_settings.show_crosshair is False
+    assert window.project_state.app_settings.show_xy_references_during_draw is False
     assert window.project_state.app_settings.live_angle_mode == "relative_to_prev"
     assert window.project_state.app_settings.show_decimal_cm is True
     assert window.project_state.app_settings.show_angle_arc is False
@@ -465,15 +506,17 @@ def test_mainwindow_settings_dialog_updates_grid_size_on_project_state_and_canva
     assert canvas._app_settings.live_angle_mode == "relative_to_prev"
     assert canvas._app_settings.close_on_rmb is False
     assert canvas._app_settings.shift_drag_behavior == "orthogonal_lock"
+    assert canvas._show_grid is False
     assert canvas._app_settings.show_axis_overlay is False
     assert canvas._app_settings.grid_major_cm == 50
     assert canvas._app_settings.grid_minor_cm == 5
     assert canvas._app_settings.show_crosshair is False
+    assert canvas._app_settings.show_xy_references_during_draw is False
     assert canvas.snap_to_grid_enabled() is False
     assert window._tb_ctrl.action_grid.isChecked() is False
 
 
-def test_mainwindow_toolbar_snap_toggle_updates_canvas_snap_state(qtbot):
+def test_mainwindow_toolbar_grid_toggle_updates_canvas_grid_visibility_only(qtbot):
     window = MainWindow()
     qtbot.addWidget(window)
 
@@ -484,16 +527,20 @@ def test_mainwindow_toolbar_snap_toggle_updates_canvas_snap_state(qtbot):
 
     canvas = window._workspace.canvas_for_plane(plane.id)
     assert canvas is not None
-    assert window._tb_ctrl.action_grid.text() == "Snap to Grid"
+    assert window._tb_ctrl.action_grid.text() == "Pokaż siatkę"
     assert window._tb_ctrl.action_grid.isCheckable() is True
     assert window._tb_ctrl.action_grid.isChecked() is True
+    assert canvas._show_grid is True
     assert canvas.snap_to_grid_enabled() is True
 
     window._tb_ctrl.action_grid.trigger()
 
     assert window._tb_ctrl.action_grid.isChecked() is False
-    assert canvas.snap_to_grid_enabled() is False
-    assert window.project_state.app_settings.snap_to_grid is False
+    assert canvas._show_grid is False
+    assert canvas.snap_to_grid_enabled() is True
+    assert canvas._app_settings.show_axis_overlay is True
+    assert window.project_state.app_settings.show_grid is False
+    assert window.project_state.app_settings.snap_to_grid is True
 
 
 def test_mainwindow_toolbar_sheet_toggle_switches_wireframe_mode_without_recalc(qtbot, monkeypatch):

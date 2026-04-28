@@ -73,6 +73,12 @@ ANGLE_ARC_RADIUS_PX = 20.0
 INLINE_EDITOR_OFFSET_X = 16.0
 INLINE_EDITOR_OFFSET_Y = 14.0
 INLINE_EDITOR_MARGIN_PX = 8.0
+DRAW_REFERENCE_DASH_PATTERN = [4.0, 5.0]
+DRAW_REFERENCE_DIMENSION_OFFSET_PX = 12.0
+DRAW_REFERENCE_LABEL_MIN_OFFSET_PX = 18.0
+DRAW_REFERENCE_LABEL_MAX_OFFSET_PX = 42.0
+DRAW_REFERENCE_LABEL_VERTICAL_GAP_PX = 12.0
+DRAW_REFERENCE_LABEL_HORIZONTAL_GAP_PX = 8.0
 
 LIVE_ANGLE_MODE_ABSOLUTE = "absolute"
 LIVE_ANGLE_MODE_RELATIVE_TO_PREV = "relative_to_prev"
@@ -214,6 +220,29 @@ class _CoordinateOverlayLabel:
     text: str | None = None
 
 
+@dataclass(slots=True)
+class CommittedOutlineEdit:
+    outline: Polygon2D
+    holes: list[Polygon2D] | None = None
+    operation: str = "outline_edit"
+
+
+@dataclass(slots=True, frozen=True)
+class _DrawingReferenceSpan:
+    axis: str
+    start: Point2D
+    end: Point2D
+    label_text: str
+
+
+@dataclass(slots=True, frozen=True)
+class _DrawingReferenceOverlay:
+    origin: Point2D
+    active_point: Point2D
+    horizontal_span: _DrawingReferenceSpan
+    vertical_span: _DrawingReferenceSpan
+
+
 @dataclass(slots=True, frozen=True)
 class _GridContext:
     mapper: CanvasMapper
@@ -323,9 +352,11 @@ class DrawingCanvas(QWidget):
         self._dragging_hole_center_index: int | None = None
         self._dragging_plane_body: bool = False
         self._drag_start_outline: Polygon2D | None = None
+        self._drag_start_plane_holes: list[Polygon2D] | None = None
         self._drag_start_hole: Polygon2D | None = None
         self._drag_start_pos: Point2D | None = None
         self._preview_outline: Polygon2D | None = None
+        self._preview_plane_holes: list[Polygon2D] | None = None
         self._preview_hole: Polygon2D | None = None
         self._drag_mapper: CanvasMapper | None = None
         self._edit_overlay: _EditOverlayState | None = None
@@ -366,6 +397,7 @@ class DrawingCanvas(QWidget):
 
     def toggle_grid(self, enabled: bool | None = None) -> None:
         self._show_grid = not self._show_grid if enabled is None else enabled
+        self._app_settings.show_grid = self._show_grid
         self.update()
 
     def toggle_module_count(self, enabled: bool | None = None) -> None:
@@ -394,6 +426,7 @@ class DrawingCanvas(QWidget):
 
     def set_app_settings(self, settings: AppSettings | None) -> None:
         self._app_settings = settings or AppSettings()
+        self._show_grid = self._app_settings.show_grid
         self._snap_to_grid_enabled = self._app_settings.snap_to_grid
         self.update()
 
@@ -470,6 +503,8 @@ class DrawingCanvas(QWidget):
     def display_holes(self) -> list[Polygon2D]:
         if self.roof_plane is None:
             return []
+        if self._preview_plane_holes is not None:
+            return list(self._preview_plane_holes)
         holes = list(self.roof_plane.holes)
         if self._preview_hole is not None and self._dragging_hole_index is not None:
             holes[self._dragging_hole_index] = self._preview_hole
@@ -807,8 +842,10 @@ class DrawingCanvas(QWidget):
         self._dragging_plane_body = True
         self._drag_start_pos = mapper.unmap_point(pos)
         self._drag_start_outline = outline
+        self._drag_start_plane_holes = list(self.roof_plane.holes) if self.roof_plane is not None else []
         self._drag_start_hole = None
         self._preview_outline = outline
+        self._preview_plane_holes = list(self._drag_start_plane_holes)
         self._preview_hole = None
         self._drag_mapper = mapper
         self._delta_overlay_point = self._drag_start_pos
@@ -865,6 +902,11 @@ class DrawingCanvas(QWidget):
             dx = domain_point.x - self._drag_start_pos.x
             dy = domain_point.y - self._drag_start_pos.y
             self._preview_outline = Polygon2D([Point2D(p.x + dx, p.y + dy) for p in self._drag_start_outline.points])
+            if self._drag_start_plane_holes is not None:
+                self._preview_plane_holes = [
+                    Polygon2D([Point2D(p.x + dx, p.y + dy) for p in hole.points])
+                    for hole in self._drag_start_plane_holes
+                ]
             self._delta_overlay_point = domain_point
             self._delta_overlay_text = self._delta_text(dx, dy)
             self.update()
@@ -946,9 +988,16 @@ class DrawingCanvas(QWidget):
 
         if self._dragging_plane_body and self._preview_outline is not None:
             committed_outline = self._preview_outline
+            committed_holes = list(self._preview_plane_holes or self.display_holes())
             self._cancel_geometry_drag()
             self.update()
-            self.outline_edit_committed.emit(committed_outline)
+            self.outline_edit_committed.emit(
+                CommittedOutlineEdit(
+                    outline=committed_outline,
+                    holes=committed_holes,
+                    operation="plane_move",
+                )
+            )
             return
 
         if self._preview_hole is not None and self._dragging_hole_index is not None and self.roof_plane is not None:
@@ -999,6 +1048,8 @@ class DrawingCanvas(QWidget):
                 self._drag_start_outline,
                 self._drag_start_hole,
                 self._preview_outline,
+                self._drag_start_plane_holes,
+                self._preview_plane_holes,
                 self._preview_hole,
                 self._drag_mapper,
             )
@@ -1012,8 +1063,10 @@ class DrawingCanvas(QWidget):
         self._dragging_plane_body = False
         self._drag_start_pos = None
         self._drag_start_outline = None
+        self._drag_start_plane_holes = None
         self._drag_start_hole = None
         self._preview_outline = None
+        self._preview_plane_holes = None
         self._preview_hole = None
         self._drag_mapper = None
         self._delta_overlay_text = None
@@ -1084,7 +1137,7 @@ class DrawingCanvas(QWidget):
         return None
 
     def _delta_text(self, dx: float, dy: float) -> str:
-        return f"ΔX: {dx:+.1f} cm, ΔY: {-dy:+.1f} cm"
+        return f"ΔX: {round(dx):+.0f} cm, ΔY: {round(-dy):+.0f} cm"
 
     def _edge_label_regions(self, mapper: CanvasMapper, outline: Polygon2D, hole_index: int | None) -> list[_PolygonLabelRect]:
         polygon_f = QPolygonF([mapper.map_point(point) for point in outline.points])
@@ -1246,6 +1299,49 @@ class DrawingCanvas(QWidget):
     def _relative_coordinate_point(self, point: Point2D) -> Point2D:
         origin = self._origin_point()
         return Point2D(point.x - origin.x, origin.y - point.y)
+
+    def _drawing_reference_origin(self, mapper: CanvasMapper) -> Point2D:
+        if self._mode == self.MODE_DRAW_OUTLINE and self.user_points:
+            return mapper.unmap_point(self.user_points[0])
+        if self._mode == self.MODE_DRAW_OUTLINE:
+            return self._snap_origin_point(mapper)
+        return self._origin_point()
+
+    def _format_reference_distance_label(self, axis: str, value_cm: float) -> str:
+        return f"{axis}: {int(round(value_cm))} cm"
+
+    def _active_drawing_reference_overlay(self) -> _DrawingReferenceOverlay | None:
+        if self._mode not in {self.MODE_DRAW_OUTLINE, self.MODE_DRAW_CUTOUT}:
+            return None
+        if not getattr(self._app_settings, "show_xy_references_during_draw", True):
+            return None
+        mapper = self._active_mapper()
+        if mapper is None:
+            return None
+        active_point = self._active_preview_domain_point()
+        if active_point is None and self.user_points:
+            active_point = mapper.unmap_point(self.user_points[-1])
+        if active_point is None:
+            return None
+        origin = self._drawing_reference_origin(mapper)
+        horizontal_span = _DrawingReferenceSpan(
+            axis="x",
+            start=Point2D(origin.x, active_point.y),
+            end=active_point,
+            label_text=self._format_reference_distance_label("X", active_point.x - origin.x),
+        )
+        vertical_span = _DrawingReferenceSpan(
+            axis="y",
+            start=Point2D(active_point.x, origin.y),
+            end=active_point,
+            label_text=self._format_reference_distance_label("Y", origin.y - active_point.y),
+        )
+        return _DrawingReferenceOverlay(
+            origin=origin,
+            active_point=active_point,
+            horizontal_span=horizontal_span,
+            vertical_span=vertical_span,
+        )
 
     def _grid_step_cm(self) -> float:
         return max(0.1, self._app_settings.grid_size_cm)
@@ -1673,8 +1769,6 @@ class DrawingCanvas(QWidget):
         return 0.0
 
     def _format_live_length_label(self, length_cm: float) -> str:
-        if getattr(self._app_settings, "show_decimal_cm", False):
-            return f"{length_cm:.1f} cm"
         return f"{int(round(length_cm))} cm"
 
     def _format_live_angle_label(self, angle_deg: float) -> str:
@@ -2132,13 +2226,11 @@ class DrawingCanvas(QWidget):
 
     @staticmethod
     def _format_length(length_cm: float) -> str:
-        if abs(length_cm - round(length_cm)) < 0.05:
-            return f"{round(length_cm):.0f}"
-        return f"{length_cm:.1f}"
+        return f"{round(length_cm):.0f}"
 
     @staticmethod
     def _format_coordinate_value(value_cm: float) -> str:
-        return f"{value_cm:.1f}"
+        return f"{round(value_cm):.0f}"
 
     def _coordinate_label_text(self, point: Point2D) -> str:
         relative_point = self._relative_coordinate_point(point)
@@ -2154,7 +2246,7 @@ class DrawingCanvas(QWidget):
         return f"X: {self._format_coordinate_value(relative_point.x)} | Y: {self._format_coordinate_value(relative_point.y)}"
 
     def _grid_visible(self) -> bool:
-        return self._show_grid or self._dragging_origin or self._mode == self.MODE_DRAW_OUTLINE
+        return self._show_grid or self._dragging_origin
 
     def _grid_context(self) -> _GridContext | None:
         mapper = self._active_mapper()
@@ -2451,6 +2543,7 @@ class DrawingCanvas(QWidget):
             self._draw_empty_state(painter)
 
         if self._mode in {self.MODE_DRAW_OUTLINE, self.MODE_DRAW_CUTOUT}:
+            self._draw_active_drawing_references(painter)
             self._draw_user_path(painter)
 
         if self._selected_sheet_id and self._mode == self.MODE_SELECT_SHEET:
@@ -2681,8 +2774,6 @@ class DrawingCanvas(QWidget):
         guide_color.setAlpha(85)
         painter.save()
         painter.setPen(QPen(guide_color, 1.0, Qt.PenStyle.DotLine))
-        painter.drawLine(QPointF(self.rect().left(), vertex_point.y()), QPointF(self.rect().right(), vertex_point.y()))
-        painter.drawLine(QPointF(vertex_point.x(), self.rect().top()), QPointF(vertex_point.x(), self.rect().bottom()))
         if len(self.user_points) >= 2:
             radians = math.radians(baseline_angle)
             direction_x = math.cos(radians)
@@ -2832,9 +2923,7 @@ class DrawingCanvas(QWidget):
         active_point = overlay.domain_point
 
         if not self._grid_visible():
-            grid_context = self._grid_context()
-            if grid_context is not None:
-                self._draw_domain_grid(painter, grid_context)
+            return
 
         axis_color = self.palette().color(QPalette.ColorRole.Highlight)
         axis_color.setAlpha(170)
@@ -2986,8 +3075,145 @@ class DrawingCanvas(QWidget):
             painter.setPen(QPen(QColor(255, 255, 255, 120), 0.8))
             painter.setBrush(QColor(18, 18, 18, 215))
             painter.drawRoundedRect(label_rect, 4.0, 4.0)
-            painter.setPen(QColor(255, 255, 255))
-            painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, label_text)
+        painter.setPen(QColor(255, 255, 255))
+        painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, label_text)
+        painter.restore()
+
+    def _draw_active_drawing_references(self, painter: QPainter) -> None:
+        overlay = self._active_drawing_reference_overlay()
+        mapper = self._active_mapper()
+        if overlay is None or mapper is None:
+            return
+
+        viewport = self.rect().adjusted(6, 6, -6, -6)
+        leader_color = QColor(166, 226, 240, 86)
+        span_color = QColor(166, 226, 240, 122)
+        leader_pen = QPen(leader_color, 0.8, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+        span_pen = QPen(span_color, 0.9, Qt.PenStyle.CustomDashLine, Qt.PenCapStyle.RoundCap)
+        span_pen.setDashPattern(DRAW_REFERENCE_DASH_PATTERN)
+
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        for span in (overlay.horizontal_span, overlay.vertical_span):
+            raw_start = mapper.map_point(span.start)
+            raw_end = mapper.map_point(span.end)
+            display_start, display_end = self._drawing_reference_display_points(
+                raw_start,
+                raw_end,
+                axis=span.axis,
+                viewport=viewport,
+            )
+            painter.setPen(leader_pen)
+            painter.drawLine(raw_start, display_start)
+            painter.drawLine(raw_end, display_end)
+            painter.setPen(span_pen)
+            painter.drawLine(display_start, display_end)
+
+        active_point = mapper.map_point(overlay.active_point)
+        marker_pen = QPen(QColor(196, 235, 244, 170), 1.0)
+        painter.setPen(marker_pen)
+        painter.setBrush(QColor(196, 235, 244, 54))
+        painter.drawEllipse(active_point, 2.8, 2.8)
+        painter.restore()
+
+        self._draw_drawing_reference_labels(painter, mapper, overlay)
+
+    def _drawing_reference_display_points(
+        self,
+        start_point: QPointF,
+        end_point: QPointF,
+        *,
+        axis: str,
+        viewport: QRectF,
+    ) -> tuple[QPointF, QPointF]:
+        if axis == "x":
+            direction = -1.0
+            if min(start_point.y(), end_point.y()) - DRAW_REFERENCE_DIMENSION_OFFSET_PX < viewport.top():
+                direction = 1.0
+            offset_y = direction * DRAW_REFERENCE_DIMENSION_OFFSET_PX
+            return (
+                QPointF(start_point.x(), start_point.y() + offset_y),
+                QPointF(end_point.x(), end_point.y() + offset_y),
+            )
+
+        direction = 1.0
+        if max(start_point.x(), end_point.x()) + DRAW_REFERENCE_DIMENSION_OFFSET_PX > viewport.right():
+            direction = -1.0
+        offset_x = direction * DRAW_REFERENCE_DIMENSION_OFFSET_PX
+        return (
+            QPointF(start_point.x() + offset_x, start_point.y()),
+            QPointF(end_point.x() + offset_x, end_point.y()),
+        )
+
+    def _draw_drawing_reference_labels(
+        self,
+        painter: QPainter,
+        mapper: CanvasMapper,
+        overlay: _DrawingReferenceOverlay,
+    ) -> None:
+        painter.save()
+        font = painter.font()
+        font.setPointSize(7)
+        painter.setFont(font)
+        metrics = QFontMetricsF(font)
+        viewport = self.rect().adjusted(6, 6, -6, -6)
+        label_border = QColor(166, 226, 240, 80)
+        label_text_color = QColor(225, 241, 245, 190)
+        label_background = QColor(10, 18, 24, 136)
+
+        for span in (overlay.horizontal_span, overlay.vertical_span):
+            raw_start = mapper.map_point(span.start)
+            raw_end = mapper.map_point(span.end)
+            start_point, end_point = self._drawing_reference_display_points(
+                raw_start,
+                raw_end,
+                axis=span.axis,
+                viewport=viewport,
+            )
+            dx = end_point.x() - start_point.x()
+            dy = end_point.y() - start_point.y()
+            span_length_px = max(1.0, hypot(dx, dy))
+            offset_px = min(
+                DRAW_REFERENCE_LABEL_MAX_OFFSET_PX,
+                max(DRAW_REFERENCE_LABEL_MIN_OFFSET_PX, span_length_px * 0.28),
+            )
+            anchor_point = QPointF(
+                end_point.x() - (dx / span_length_px) * offset_px,
+                end_point.y() - (dy / span_length_px) * offset_px,
+            )
+            label_rect = QRectF(
+                0.0,
+                0.0,
+                metrics.horizontalAdvance(span.label_text) + 12.0,
+                metrics.height() + 6.0,
+            )
+            if span.axis == "x":
+                label_rect.moveCenter(
+                    QPointF(anchor_point.x(), anchor_point.y() - DRAW_REFERENCE_LABEL_VERTICAL_GAP_PX)
+                )
+                if label_rect.top() < viewport.top():
+                    label_rect.moveTop(anchor_point.y() + DRAW_REFERENCE_LABEL_HORIZONTAL_GAP_PX)
+            else:
+                label_rect.moveCenter(
+                    QPointF(
+                        anchor_point.x() + label_rect.width() / 2.0 + DRAW_REFERENCE_LABEL_HORIZONTAL_GAP_PX,
+                        anchor_point.y(),
+                    )
+                )
+            if label_rect.right() > viewport.right():
+                label_rect.moveRight(viewport.right())
+            if label_rect.left() < viewport.left():
+                label_rect.moveLeft(viewport.left())
+            if label_rect.top() < viewport.top():
+                label_rect.moveTop(viewport.top())
+            if label_rect.bottom() > viewport.bottom():
+                label_rect.moveBottom(viewport.bottom())
+            painter.setPen(QPen(label_border, 0.7))
+            painter.setBrush(label_background)
+            painter.drawRoundedRect(label_rect, 4.0, 4.0)
+            painter.setPen(label_text_color)
+            painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, span.label_text)
+
         painter.restore()
 
     def _axis_indicator_origin(self) -> QPointF:
