@@ -967,10 +967,13 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Za mało punktów — minimum 3.", 4000)
             return
 
-        from PySide6.QtCore import QRectF
-
-        mapper = DrawingCanvas.build_free_draw_mapper(QRectF(canvas.rect()))
-        outline = Polygon2D([mapper.unmap_point(point) for point in pixel_points])
+        mapper = canvas._free_draw_mapper()
+        outline = Polygon2D(
+            [
+                mapper.unmap_point(point)
+                for point in pixel_points
+            ]
+        )
         self._set_active_plane_geometry(outline, "Ustawiono obrys z odręcznego rysowania")
 
     def _on_cutout_closed(self, pixel_points: list) -> None:

@@ -88,6 +88,13 @@ class _CoordinateOverlayLabel:
 
 
 @dataclass(slots=True, frozen=True)
+class _GridContext:
+    mapper: CanvasMapper
+    bounds: Bounds2D
+    origin: Point2D
+
+
+@dataclass(slots=True, frozen=True)
 class _SelectionSnapshot:
     kind: str | None
     hole_index: int | None = None
@@ -342,11 +349,29 @@ class DrawingCanvas(QWidget):
             return self._drag_mapper
         return self.build_view_mapper(outline.bounds(), QRectF(self.rect()))
 
+    def _active_mapper(self) -> CanvasMapper | None:
+        if self._mode == self.MODE_DRAW_OUTLINE:
+            return self._free_draw_mapper()
+        mapper = self._canvas_mapper()
+        if mapper is not None:
+            return mapper
+        return None
+
     def _free_draw_mapper(self) -> CanvasMapper:
         return self.build_free_draw_mapper(QRectF(self.rect()))
 
     def _free_draw_bounds(self) -> Bounds2D:
         return self.free_draw_bounds_for_rect(QRectF(self.rect()))
+
+    def _free_draw_grid_origin(self, mapper: CanvasMapper | None = None) -> Point2D:
+        effective_mapper = self._free_draw_mapper() if mapper is None else mapper
+        visible_bounds = effective_mapper.bounds
+        return Point2D(visible_bounds.min_x, visible_bounds.max_y)
+
+    def _snap_origin_point(self, mapper: CanvasMapper | None = None) -> Point2D:
+        if self._mode == self.MODE_DRAW_OUTLINE:
+            return self._free_draw_grid_origin(mapper)
+        return self._origin_point()
 
     def _visible_sheet_placements(self) -> list:
         if self.roof_plane is None:
@@ -531,14 +556,14 @@ class DrawingCanvas(QWidget):
     def _update_geometry_drag(self, pos: QPointF, modifiers: Qt.KeyboardModifier = Qt.KeyboardModifier.NoModifier) -> None:
         if self._drag_mapper is None:
             return
-        raw_domain_point = self._drag_mapper.unmap_point(pos)
         if self._shift_orthogonal_lock_active(modifiers):
+            raw_domain_point = self._drag_mapper.unmap_point(pos)
             domain_point = self._apply_shift_orthogonal_lock(
                 raw_domain_point,
                 reference_point=self._drag_reference_point(),
             )
         else:
-            domain_point = self._snap_domain_point(raw_domain_point, modifiers=modifiers)
+            domain_point = self._pixel_to_domain_point(pos, self._drag_mapper, modifiers=modifiers)
         
         if self._dragging_hole_center_index is not None and self._drag_start_pos is not None:
             if self._drag_start_hole is not None:
@@ -752,7 +777,7 @@ class DrawingCanvas(QWidget):
             return self._preview_origin_point
         outline = self.display_outline()
         if outline is None:
-            return Point2D(0.0, 0.0)
+            return self._free_draw_grid_origin()
         if self.roof_plane is not None:
             settings = self.roof_plane.generation_settings
             if settings.origin_x_cm is not None and settings.origin_y_cm is not None:
@@ -819,6 +844,23 @@ class DrawingCanvas(QWidget):
         snapped_x = anchor.x + round((point.x - anchor.x) / step_cm) * step_cm
         snapped_y = anchor.y - round((anchor.y - point.y) / step_cm) * step_cm
         return Point2D(snapped_x, snapped_y)
+
+    def _pixel_to_domain_point(
+        self,
+        pos: QPointF,
+        mapper: CanvasMapper,
+        *,
+        origin: Point2D | None = None,
+        modifiers: Qt.KeyboardModifier = Qt.KeyboardModifier.NoModifier,
+    ) -> Point2D:
+        return self._snap_domain_point(
+            mapper.unmap_point(pos),
+            origin=self._snap_origin_point(mapper) if origin is None else origin,
+            modifiers=modifiers,
+        )
+
+    def _domain_to_pixel_point(self, point: Point2D, mapper: CanvasMapper) -> QPointF:
+        return mapper.map_point(point)
 
     def _drag_reference_point(self) -> Point2D | None:
         if self._dragging_origin:
@@ -1055,6 +1097,17 @@ class DrawingCanvas(QWidget):
     def _grid_visible(self) -> bool:
         return self._show_grid or self._dragging_origin or self._mode == self.MODE_DRAW_OUTLINE
 
+    def _grid_context(self) -> _GridContext | None:
+        mapper = self._active_mapper()
+        if mapper is None:
+            return None
+        outline = self.display_outline()
+        if outline is None or self._mode == self.MODE_DRAW_OUTLINE:
+            bounds = self._free_draw_bounds()
+        else:
+            bounds = self._grid_bounds_for_current_paint(mapper)
+        return _GridContext(mapper=mapper, bounds=bounds, origin=self._snap_origin_point(mapper))
+
     def _coordinate_overlay_labels(self) -> list[_CoordinateOverlayLabel]:
         if self._edit_overlay is None:
             return []
@@ -1080,7 +1133,11 @@ class DrawingCanvas(QWidget):
                 if self._snap_active:
                     self._close_polygon()
                 else:
-                    self.user_points.append(pos)
+                    mapper = self._active_mapper()
+                    if mapper is None:
+                        return
+                    domain_point = self._pixel_to_domain_point(pos, mapper, modifiers=event.modifiers())
+                    self.user_points.append(self._domain_to_pixel_point(domain_point, mapper))
                     self.update()
                 return
 
@@ -1170,6 +1227,10 @@ class DrawingCanvas(QWidget):
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
         if self._mode in {self.MODE_DRAW_OUTLINE, self.MODE_DRAW_CUTOUT}:
             pos = event.position()
+            mapper = self._active_mapper()
+            if mapper is not None:
+                domain_point = self._pixel_to_domain_point(pos, mapper, modifiers=event.modifiers())
+                pos = self._domain_to_pixel_point(domain_point, mapper)
             self.preview_point = pos
             near = self._is_near_first_vertex(pos)
             if near != self._snap_active:
@@ -1268,15 +1329,9 @@ class DrawingCanvas(QWidget):
             self._draw_origin_marker(painter, mapper)
 
     def _draw_grid(self, painter: QPainter) -> None:
-        outline = self.display_outline()
-        mapper = self._canvas_mapper()
-        if outline is not None and mapper is not None:
-            self._draw_domain_grid(painter, mapper, self._grid_bounds_for_current_paint(mapper))
-            return
-
-        if self._mode == self.MODE_DRAW_OUTLINE:
-            mapper = self._free_draw_mapper()
-            self._draw_domain_grid(painter, mapper, self._free_draw_bounds())
+        grid_context = self._grid_context()
+        if grid_context is not None:
+            self._draw_domain_grid(painter, grid_context)
             return
 
         grid_color = self.palette().color(QPalette.ColorRole.Mid)
@@ -1361,12 +1416,12 @@ class DrawingCanvas(QWidget):
             return self._canvas_domain_bounds(mapper)
         return outline.bounds()
 
-    def _draw_domain_grid(self, painter: QPainter, mapper: CanvasMapper, bounds) -> None:
+    def _draw_domain_grid(self, painter: QPainter, grid_context: _GridContext) -> None:
+        mapper = grid_context.mapper
+        bounds = grid_context.bounds
         domain_rect = mapper.map_rect(bounds.min_x, bounds.max_x, bounds.min_y, bounds.max_y)
         step_cm = self._edit_overlay_grid_step_cm(mapper)
-        origin = self._origin_point()
-        if self.display_outline() is None and self._mode == self.MODE_DRAW_OUTLINE:
-            origin = Point2D(bounds.min_x, bounds.max_y)
+        origin = grid_context.origin
         grid_color = self.palette().color(QPalette.ColorRole.Mid)
         grid_color.setAlpha(50)
 
@@ -1397,7 +1452,10 @@ class DrawingCanvas(QWidget):
         domain_rect = mapper.map_rect(bounds.min_x, bounds.max_x, bounds.min_y, bounds.max_y)
         active_point = overlay.domain_point
 
-        self._draw_domain_grid(painter, mapper, self._grid_bounds_for_current_paint(mapper))
+        if not self._grid_visible():
+            grid_context = self._grid_context()
+            if grid_context is not None:
+                self._draw_domain_grid(painter, grid_context)
 
         axis_color = self.palette().color(QPalette.ColorRole.Highlight)
         axis_color.setAlpha(170)

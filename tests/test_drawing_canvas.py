@@ -433,6 +433,82 @@ def test_canvas_draw_outline_mode_uses_global_free_draw_mapper(qtbot):
     assert top_left.y == pytest.approx(0.0, abs=0.1)
 
 
+def test_canvas_freehand_outline_points_snap_to_same_grid_as_dragging(qtbot):
+    canvas = DrawingCanvas()
+    canvas.resize(640, 420)
+    canvas.set_app_settings(AppSettings(grid_size_cm=25.0))
+    qtbot.addWidget(canvas)
+    canvas.show()
+    qtbot.waitExposed(canvas)
+    canvas.set_mode(DrawingCanvas.MODE_DRAW_OUTLINE)
+    mapper = canvas._free_draw_mapper()
+
+    clicked_domain = Point2D(270.0, 43.0)
+    QTest.mouseClick(
+        canvas,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+        mapper.map_point(clicked_domain).toPoint(),
+    )
+
+    assert canvas.user_points
+    snapped_domain = mapper.unmap_point(canvas.user_points[0])
+    assert snapped_domain.x == pytest.approx(275.0, abs=0.1)
+    assert snapped_domain.y == pytest.approx(50.0, abs=0.1)
+
+
+def test_canvas_draw_outline_mode_uses_free_draw_mapper_even_with_existing_outline(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+    canvas.set_app_settings(AppSettings(grid_size_cm=25.0))
+    canvas.set_mode(DrawingCanvas.MODE_DRAW_OUTLINE)
+    free_mapper = canvas._free_draw_mapper()
+    view_mapper = canvas._canvas_mapper()
+    clicked_domain = Point2D(270.0, 43.0)
+
+    QTest.mouseClick(
+        canvas,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+        free_mapper.map_point(clicked_domain).toPoint(),
+    )
+
+    assert view_mapper is not None
+    assert canvas.user_points
+    assert view_mapper.unmap_point(canvas.user_points[0]).x != pytest.approx(275.0, abs=1.0)
+    snapped_domain = free_mapper.unmap_point(canvas.user_points[0])
+    assert snapped_domain.x == pytest.approx(275.0, abs=0.1)
+    assert snapped_domain.y == pytest.approx(50.0, abs=0.1)
+
+
+def test_canvas_draw_outline_mode_grid_uses_free_draw_bounds_with_existing_outline(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+    canvas.set_mode(DrawingCanvas.MODE_DRAW_OUTLINE)
+
+    grid_context = canvas._grid_context()
+
+    assert grid_context is not None
+    assert grid_context.bounds == canvas._free_draw_bounds()
+
+
+def test_canvas_freehand_close_does_not_resnap_with_different_origin(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+    canvas.roof_plane.generation_settings.origin_x_cm = 10.0
+    canvas.roof_plane.generation_settings.origin_y_cm = 183.0
+    canvas.set_app_settings(AppSettings(grid_size_cm=25.0))
+    canvas.set_mode(DrawingCanvas.MODE_DRAW_OUTLINE)
+    mapper = canvas._free_draw_mapper()
+    clicked_domain = Point2D(270.0, 43.0)
+    clicked_point = mapper.map_point(clicked_domain)
+    snapped_point = canvas._domain_to_pixel_point(canvas._pixel_to_domain_point(clicked_point, mapper), mapper)
+    closed_domain = canvas._pixel_to_domain_point(snapped_point, mapper)
+
+    assert closed_domain.x == pytest.approx(275.0, abs=0.1)
+    assert closed_domain.y == pytest.approx(50.0, abs=0.1)
+
+
 def test_canvas_dragging_origin_projects_to_nearest_boundary_when_cursor_leaves_shape(qtbot):
     outline = Polygon2D.rectangle(300, 200)
     canvas = _make_canvas(qtbot, outline)
@@ -733,9 +809,9 @@ def test_canvas_origin_drag_grid_extends_beyond_outline_bounds(qtbot, monkeypatc
 
     original = canvas._draw_domain_grid
 
-    def capture_bounds(painter, mapper, bounds):
-        captured_bounds.append(bounds)
-        return original(painter, mapper, bounds)
+    def capture_bounds(painter, grid_context):
+        captured_bounds.append(grid_context.bounds)
+        return original(painter, grid_context)
 
     monkeypatch.setattr(canvas, "_draw_domain_grid", capture_bounds)
 
@@ -761,9 +837,9 @@ def test_canvas_cutout_drag_grid_extends_beyond_outline_bounds(qtbot, monkeypatc
 
     original = canvas._draw_domain_grid
 
-    def capture_bounds(painter, mapper, bounds):
-        captured_bounds.append(bounds)
-        return original(painter, mapper, bounds)
+    def capture_bounds(painter, grid_context):
+        captured_bounds.append(grid_context.bounds)
+        return original(painter, grid_context)
 
     monkeypatch.setattr(canvas, "_draw_domain_grid", capture_bounds)
 
