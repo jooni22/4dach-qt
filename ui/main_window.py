@@ -1262,7 +1262,7 @@ class MainWindow(QMainWindow):
             def _apply_settings() -> None:
                 self.project_state.app_settings = new_settings
                 for plane in self.project_state.roof_planes:
-                    if plane.outline is not None:
+                    if plane.outline is not None and plane.layout_dirty_reason != "manual_override":
                         plane.layout_dirty_reason = "settings_changed"
             self._edit(_apply_settings, "Zaktualizowano ustawienia aplikacji",
                        label="Zmiana ustawień aplikacji")

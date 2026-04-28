@@ -1086,3 +1086,42 @@ def test_mainwindow_triangle_dialog_shows_validation_error_without_mutating_stat
 
     assert not window.project_state.roof_planes
     assert messages
+
+
+def test_mainwindow_settings_dialog_does_not_overwrite_manual_override_on_planes(qtbot, monkeypatch):
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.project_state = ProjectState(materials=window.project_state.materials)
+    window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
+    plane = window.project_state.add_roof_plane(build_rectangle_outline(320, 180), selected_material_id="PD510")
+    window.project_state.generate_layout_for_plane(plane.id)
+    window._refresh_canvas_from_state()
+
+    assert len(plane.auto_sheet_placements) > 0
+    removed_auto_id = plane.auto_sheet_placements[0].id
+    window.project_state.remove_sheet_placement(removed_auto_id, plane.id)
+    assert plane.layout_dirty_reason == "manual_override"
+    original_removed_ids = list(plane.manually_removed_auto_sheet_ids)
+    assert removed_auto_id in original_removed_ids
+
+    class FakeSettingsDialog:
+        def __init__(self, settings, parent=None) -> None:
+            self._settings = settings
+
+        def exec(self) -> int:
+            return QDialog.DialogCode.Accepted
+
+        def build_settings(self):
+            return AppSettings(
+                partial_cutout_top_extra_cm=self._settings.partial_cutout_top_extra_cm,
+                grid_size_cm=25.0,
+                shift_drag_behavior="orthogonal_lock",
+            )
+
+    monkeypatch.setattr("ui.dialogs.settings_dialog.SettingsDialog", FakeSettingsDialog)
+
+    window._dlg_settings()
+
+    assert plane.layout_dirty_reason == "manual_override"
+    assert list(plane.manually_removed_auto_sheet_ids) == original_removed_ids
