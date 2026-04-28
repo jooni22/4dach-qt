@@ -968,16 +968,9 @@ class MainWindow(QMainWindow):
             return
 
         mapper = canvas._free_draw_mapper()
-        modifiers = QApplication.keyboardModifiers()
-        grid_origin = canvas._free_draw_grid_origin(mapper)
         outline = Polygon2D(
             [
-                canvas._pixel_to_domain_point(
-                    point,
-                    mapper,
-                    origin=grid_origin,
-                    modifiers=modifiers,
-                )
+                mapper.unmap_point(point)
                 for point in pixel_points
             ]
         )

@@ -368,6 +368,11 @@ class DrawingCanvas(QWidget):
         visible_bounds = effective_mapper.bounds
         return Point2D(visible_bounds.min_x, visible_bounds.max_y)
 
+    def _snap_origin_point(self, mapper: CanvasMapper | None = None) -> Point2D:
+        if self._mode == self.MODE_DRAW_OUTLINE:
+            return self._free_draw_grid_origin(mapper)
+        return self._origin_point()
+
     def _visible_sheet_placements(self) -> list:
         if self.roof_plane is None:
             return []
@@ -850,7 +855,7 @@ class DrawingCanvas(QWidget):
     ) -> Point2D:
         return self._snap_domain_point(
             mapper.unmap_point(pos),
-            origin=origin,
+            origin=self._snap_origin_point(mapper) if origin is None else origin,
             modifiers=modifiers,
         )
 
@@ -1097,11 +1102,11 @@ class DrawingCanvas(QWidget):
         if mapper is None:
             return None
         outline = self.display_outline()
-        if outline is None:
+        if outline is None or self._mode == self.MODE_DRAW_OUTLINE:
             bounds = self._free_draw_bounds()
         else:
             bounds = self._grid_bounds_for_current_paint(mapper)
-        return _GridContext(mapper=mapper, bounds=bounds, origin=self._origin_point())
+        return _GridContext(mapper=mapper, bounds=bounds, origin=self._snap_origin_point(mapper))
 
     def _coordinate_overlay_labels(self) -> list[_CoordinateOverlayLabel]:
         if self._edit_overlay is None:

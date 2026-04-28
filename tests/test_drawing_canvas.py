@@ -481,6 +481,34 @@ def test_canvas_draw_outline_mode_uses_free_draw_mapper_even_with_existing_outli
     assert snapped_domain.y == pytest.approx(50.0, abs=0.1)
 
 
+def test_canvas_draw_outline_mode_grid_uses_free_draw_bounds_with_existing_outline(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+    canvas.set_mode(DrawingCanvas.MODE_DRAW_OUTLINE)
+
+    grid_context = canvas._grid_context()
+
+    assert grid_context is not None
+    assert grid_context.bounds == canvas._free_draw_bounds()
+
+
+def test_canvas_freehand_close_does_not_resnap_with_different_origin(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+    canvas.roof_plane.generation_settings.origin_x_cm = 10.0
+    canvas.roof_plane.generation_settings.origin_y_cm = 183.0
+    canvas.set_app_settings(AppSettings(grid_size_cm=25.0))
+    canvas.set_mode(DrawingCanvas.MODE_DRAW_OUTLINE)
+    mapper = canvas._free_draw_mapper()
+    clicked_domain = Point2D(270.0, 43.0)
+    clicked_point = mapper.map_point(clicked_domain)
+    snapped_point = canvas._domain_to_pixel_point(canvas._pixel_to_domain_point(clicked_point, mapper), mapper)
+    closed_domain = canvas._pixel_to_domain_point(snapped_point, mapper)
+
+    assert closed_domain.x == pytest.approx(275.0, abs=0.1)
+    assert closed_domain.y == pytest.approx(50.0, abs=0.1)
+
+
 def test_canvas_dragging_origin_projects_to_nearest_boundary_when_cursor_leaves_shape(qtbot):
     outline = Polygon2D.rectangle(300, 200)
     canvas = _make_canvas(qtbot, outline)
