@@ -350,11 +350,11 @@ class DrawingCanvas(QWidget):
         return self.build_view_mapper(outline.bounds(), QRectF(self.rect()))
 
     def _active_mapper(self) -> CanvasMapper | None:
+        if self._mode == self.MODE_DRAW_OUTLINE:
+            return self._free_draw_mapper()
         mapper = self._canvas_mapper()
         if mapper is not None:
             return mapper
-        if self._mode == self.MODE_DRAW_OUTLINE:
-            return self._free_draw_mapper()
         return None
 
     def _free_draw_mapper(self) -> CanvasMapper:

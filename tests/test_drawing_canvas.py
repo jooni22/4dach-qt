@@ -457,6 +457,30 @@ def test_canvas_freehand_outline_points_snap_to_same_grid_as_dragging(qtbot):
     assert snapped_domain.y == pytest.approx(50.0, abs=0.1)
 
 
+def test_canvas_draw_outline_mode_uses_free_draw_mapper_even_with_existing_outline(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+    canvas.set_app_settings(AppSettings(grid_size_cm=25.0))
+    canvas.set_mode(DrawingCanvas.MODE_DRAW_OUTLINE)
+    free_mapper = canvas._free_draw_mapper()
+    view_mapper = canvas._canvas_mapper()
+    clicked_domain = Point2D(270.0, 43.0)
+
+    QTest.mouseClick(
+        canvas,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+        free_mapper.map_point(clicked_domain).toPoint(),
+    )
+
+    assert view_mapper is not None
+    assert canvas.user_points
+    assert view_mapper.unmap_point(canvas.user_points[0]).x != pytest.approx(275.0, abs=1.0)
+    snapped_domain = free_mapper.unmap_point(canvas.user_points[0])
+    assert snapped_domain.x == pytest.approx(275.0, abs=0.1)
+    assert snapped_domain.y == pytest.approx(50.0, abs=0.1)
+
+
 def test_canvas_dragging_origin_projects_to_nearest_boundary_when_cursor_leaves_shape(qtbot):
     outline = Polygon2D.rectangle(300, 200)
     canvas = _make_canvas(qtbot, outline)
