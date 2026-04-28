@@ -47,7 +47,9 @@ class ToolbarController:
         tb.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         tb.setStyleSheet(
             "QToolBar { spacing: 2px; padding: 1px; }"
-            "QToolButton { padding: 1px; margin: 0px; }"
+            "QToolButton { padding: 1px; margin: 0px; border: 1px solid transparent; border-radius: 4px; }"
+            "QToolButton:checked { background: rgba(90, 150, 255, 0.22); border-color: rgba(90, 150, 255, 0.75); }"
+            "QToolButton:pressed { background: rgba(90, 150, 255, 0.30); border-color: rgba(90, 150, 255, 0.85); }"
         )
         self._win.addToolBar(tb)
         return tb
@@ -89,10 +91,12 @@ class ToolbarController:
             ("open_folder",    "Otwórz projekt",                              False, None),
             ("save_floppy",    "Zapisz projekt",                              False, None),
             ("roof_outline",   "Rysowanie krawędzi połaci",                   False, None),
-            ("base_point_toggle", "Pokaż/ukryj punkt bazowy",                 False, None),
+            ("base_point_toggle", "Ustaw punkt zerowy",                       True,  None),
             ("undo",           "Cofnij",                                       False, None),
-            ("plus",           "Dodaj / Plus",                                False, None),
+            ("plus",           "Nowa połać",                                  False, None),
+            ("duplicate_surface", "Duplikuj połać",                           False, None),
             ("minus",          "Odejmij / Minus",                             False, None),
+            ("trash",          "Usuń zaznaczone (Del)",                       False, None),
             ("module_count",   "Włącz/wyłącz pokazywanie ilości modułów",     False, None),
             ("zoom_out",       "Oddal / Pomniejsz",                           False, None),
             ("fit_view",       "Pokaż wszystko / Dopasuj do ekranu",          False, None),
@@ -105,7 +109,16 @@ class ToolbarController:
                 tb.addSeparator()
 
         # Named action references that controllers need
-        self.action_module_count = self._toolbar_actions[8][0]
+        self.action_new_project = self._toolbar_actions[0][0]
+        self.action_open_project = self._toolbar_actions[1][0]
+        self.action_save_project = self._toolbar_actions[2][0]
+        self.action_draw_outline = self._toolbar_actions[3][0]
+        self.action_base_point_toggle = self._toolbar_actions[4][0]
+        self.action_undo = self._toolbar_actions[5][0]
+        self.action_new_surface = self._toolbar_actions[6][0]
+        self.action_duplicate_surface = self._toolbar_actions[7][0]
+        self.action_trash = self._toolbar_actions[9][0]
+        self.action_module_count = self._toolbar_actions[10][0]
 
         # Material selector button + combo
         self.material_button = QToolButton(self._win)
@@ -137,9 +150,10 @@ class ToolbarController:
 
         # Trailing toggle actions
         trailing: list[tuple[str, str, bool, object]] = [
-            ("overlay_sheet",    "Nakładanie blachy na powierzchnie", False, None),
-            ("grid",             "Siatka",                             False, None),
+            ("overlay_sheet",    "Pokaż arkusze",                    True,  None),
+            ("grid",             "Snap to Grid",                       True,  None),
             ("select_properties","Właściwości / Wybierz",             False, None),
+            ("from_left",        "Układaj od lewej",                  True,  None),
             ("from_right",       "Od prawej",                          True,  None),
             ("from_base",        "Od bazy",                            True,  None),
         ]
@@ -147,9 +161,10 @@ class ToolbarController:
             action = self._add_action(icon_kind, text, checkable=checkable, callback=callback)
 
         # Named references for trailing actions
-        trailing_actions = [t[0] for t in self._toolbar_actions[-5:]]
+        trailing_actions = [t[0] for t in self._toolbar_actions[-6:]]
         self.action_overlay_sheet   = trailing_actions[0]
         self.action_grid            = trailing_actions[1]
         self.action_select_props    = trailing_actions[2]
-        self.action_from_right      = trailing_actions[3]
-        self.action_from_base       = trailing_actions[4]
+        self.action_from_left       = trailing_actions[3]
+        self.action_from_right      = trailing_actions[4]
+        self.action_from_base       = trailing_actions[5]

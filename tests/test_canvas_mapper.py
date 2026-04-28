@@ -46,3 +46,16 @@ def test_mapper_applies_margin():
     p = mapper.map_point(Point2D(0.0, 0.0))
     assert p.x() >= 20.0
     assert p.y() >= 20.0
+
+
+def test_mapper_can_unmap_canvas_points_back_to_domain():
+    bounds = Bounds2D(10.0, 20.0, 110.0, 70.0)
+    rect = QRectF(0, 0, 400, 300)
+    mapper = CanvasMapper(bounds, rect, margin=0)
+
+    original = Point2D(55.0, 35.0)
+    mapped = mapper.map_point(original)
+    unmapped = mapper.unmap_point(mapped)
+
+    assert unmapped.x == pytest.approx(original.x, abs=0.01)
+    assert unmapped.y == pytest.approx(original.y, abs=0.01)

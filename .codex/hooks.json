@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/bin/bash --noprofile --norc -c 'repo_root=\"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\"; cd \"$repo_root\"; uv_bin=\"$(command -v uv)\"; \"$uv_bin\" run python3 \"$repo_root/.codex/hooks/user_prompt_branch_snapshot.py\"'",
+            "statusMessage": "Saving branch-guard snapshot"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/bin/bash --noprofile --norc -c 'repo_root=\"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\"; cd \"$repo_root\"; uv_bin=\"$(command -v uv)\"; \"$uv_bin\" run python3 \"$repo_root/.codex/hooks/stop_branch_guard.py\"'",
+            "statusMessage": "Checking branch/task alignment"
+          }
+        ]
+      }
+    ]
+  }
+}

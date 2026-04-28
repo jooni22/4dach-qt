@@ -1,7 +1,11 @@
 [project]
 name = "4dach"
+version = "0.1.0"
 optional-dependencies = { test = ["pytest>=8.0", "pytest-qt>=4.4"] }
-python_requires = "==3.11"
+requires-python = ">=3.11"
+dependencies = [
+    "pyside6>=6.11.0",
+]
 [tool.pyside6-project]
 files = [
   "mainwindow.py",
@@ -19,3 +23,9 @@ files = [
 [tool.pytest.ini_options]
 addopts = "-ra"
 testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+    "pytest-qt>=4.5.0",
+]

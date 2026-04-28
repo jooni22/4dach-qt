@@ -8,11 +8,21 @@ from core.models import Bounds2D, Point2D
 class CanvasMapper:
     """Transforms domain coordinates (cm) to canvas pixels and back."""
 
-    def __init__(self, bounds: Bounds2D, canvas_rect: QRectF, margin: float = 30.0):
+    def __init__(
+        self,
+        bounds: Bounds2D,
+        canvas_rect: QRectF,
+        margin: float = 30.0,
+        *,
+        margin_x: float | None = None,
+        margin_y: float | None = None,
+    ):
         self.bounds = bounds
         self.canvas_rect = canvas_rect
         self.margin = margin
-        available = canvas_rect.adjusted(margin, margin, -margin, -margin)
+        self.margin_x = margin if margin_x is None else margin_x
+        self.margin_y = margin if margin_y is None else margin_y
+        available = canvas_rect.adjusted(self.margin_x, self.margin_y, -self.margin_x, -self.margin_y)
         domain_width = max(bounds.width, 1.0)
         domain_height = max(bounds.height, 1.0)
         self.scale = min(available.width() / domain_width, available.height() / domain_height)
@@ -23,6 +33,12 @@ class CanvasMapper:
         return QPointF(
             self.offset_x + (point.x - self.bounds.min_x) * self.scale,
             self.offset_y + (point.y - self.bounds.min_y) * self.scale,
+        )
+
+    def unmap_point(self, point: QPointF) -> Point2D:
+        return Point2D(
+            self.bounds.min_x + (point.x() - self.offset_x) / self.scale,
+            self.bounds.min_y + (point.y() - self.offset_y) / self.scale,
         )
 
     def map_x(self, x_cm: float) -> float:

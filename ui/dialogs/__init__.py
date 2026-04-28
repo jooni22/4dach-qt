@@ -3,6 +3,7 @@
 from ui.dialogs.shape_dialogs import ProstokatDialog, TrojkatDialog, TrapezDialog
 from ui.dialogs.material_dialog import BlachyDialog, DaneBlachyDialog
 from ui.dialogs.company_dialog import DaneFirmyDialog
+from ui.dialogs.settings_dialog import SettingsDialog
 
 __all__ = [
     "ProstokatDialog",
@@ -11,4 +12,5 @@ __all__ = [
     "BlachyDialog",
     "DaneBlachyDialog",
     "DaneFirmyDialog",
+    "SettingsDialog",
 ]

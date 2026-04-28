@@ -7,17 +7,19 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import tempfile
 
 _CONFIG_PATH = Path(__file__).parent / "config.json"
 
 
-def load_config() -> dict:
+def load_config(path: Path | str | None = None) -> dict:
     """Load configuration from config.json.
 
     Returns an empty dict if the file does not exist or cannot be parsed.
     """
+    config_path = Path(path) if path is not None else _CONFIG_PATH
     try:
-        with open(_CONFIG_PATH, "r", encoding="utf-8") as fh:
+        with open(config_path, "r", encoding="utf-8") as fh:
             return json.load(fh)
     except FileNotFoundError:
         return {}
@@ -25,16 +27,25 @@ def load_config() -> dict:
         return {}
 
 
-def save_config(config_data: dict, parent_widget=None) -> bool:
+def save_config(config_data: dict, parent_widget=None, path: Path | str | None = None) -> bool:
     """Persist *config_data* to config.json.
 
     Returns ``True`` on success.  On ``OSError`` the method returns ``False``
     and, when *parent_widget* is not ``None``, shows a ``QMessageBox.critical``
     dialog so the user is informed about the failure.
     """
+    config_path = Path(path) if path is not None else _CONFIG_PATH
     try:
-        with open(_CONFIG_PATH, "w", encoding="utf-8") as fh:
-            json.dump(config_data, fh, ensure_ascii=False, indent=2)
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=config_path.parent,
+            delete=False,
+            suffix=".tmp",
+        ) as fh:
+            json.dump(config_data, fh, ensure_ascii=False, separators=(",", ":"))
+            temp_path = Path(fh.name)
+        temp_path.replace(config_path)
         return True
     except OSError as exc:
         if parent_widget is not None:

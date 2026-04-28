@@ -8,6 +8,7 @@ Responsibilities:
 """
 from __future__ import annotations
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QTabWidget, QVBoxLayout, QWidget
 
 from ui.drawing_canvas import DrawingCanvas
@@ -24,7 +25,9 @@ class WorkspaceController:
         self.tabs = QTabWidget(parent)
         self.tabs.setObjectName("workspace_tabs")
         self.tabs.setDocumentMode(True)
-        self.tabs.setTabsClosable(False)
+        self.tabs.setTabsClosable(True)
+        self.tabs.setMovable(False)
+        self.tabs.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
 
         # Build the report tab content — parent is tabs so it lives inside the tab widget
         from PySide6.QtWidgets import QTextBrowser  # noqa: PLC0415
@@ -38,10 +41,15 @@ class WorkspaceController:
 
         # primary_canvas is assigned in sync() — never create a floating one here
         self.primary_canvas: DrawingCanvas | None = None
+        self._sheets_visible: bool = True
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    def bind_project_state(self, project_state, get_material_fn) -> None:
+        self._project_state = project_state
+        self._get_material = get_material_fn
 
     def sync(self) -> None:
         """Rebuild all tabs from current ProjectState."""
@@ -68,6 +76,9 @@ class WorkspaceController:
             self.tabs.addTab(placeholder, "1")
 
         self.tabs.addTab(self.report_tab, "Raport")
+        report_index = self.report_tab_index()
+        self.tabs.tabBar().setTabButton(report_index, self.tabs.tabBar().ButtonPosition.RightSide, None)
+        self.tabs.tabBar().setTabButton(report_index, self.tabs.tabBar().ButtonPosition.LeftSide, None)
 
         target_index = self._active_plane_tab_index() if ps.roof_planes else 0
         self.tabs.setCurrentIndex(target_index)
@@ -76,11 +87,46 @@ class WorkspaceController:
     def report_tab_index(self) -> int:
         return self.tabs.count() - 1
 
+    def plane_id_for_tab_index(self, index: int) -> str | None:
+        if index < 0 or index >= self.report_tab_index():
+            return None
+        widget = self.tabs.widget(index)
+        return widget.property("plane_id") if widget is not None else None
+
+    def tab_index_for_plane(self, plane_id: str | None) -> int:
+        if plane_id is None:
+            return -1
+        for index in range(self.report_tab_index()):
+            if self.plane_id_for_tab_index(index) == plane_id:
+                return index
+        return -1
+
+    def update_tab_title(self, plane_id: str, title: str) -> None:
+        index = self.tab_index_for_plane(plane_id)
+        if index >= 0:
+            self.tabs.setTabText(index, title)
+
+    def is_report_tab_index(self, index: int) -> bool:
+        return index == self.report_tab_index()
+
     def toggle_grid(self, enabled: bool) -> None:
         if self.primary_canvas is not None:
             self.primary_canvas.toggle_grid(enabled)
         for canvas in self._plane_tab_canvases.values():
             canvas.toggle_grid(enabled)
+
+    def set_snap_to_grid_enabled(self, enabled: bool) -> None:
+        if self.primary_canvas is not None:
+            self.primary_canvas.set_snap_to_grid_enabled(enabled)
+        for canvas in self._plane_tab_canvases.values():
+            canvas.set_snap_to_grid_enabled(enabled)
+
+    def set_sheet_visibility(self, visible: bool) -> None:
+        self._sheets_visible = visible
+        if self.primary_canvas is not None:
+            self.primary_canvas.set_sheet_visibility(visible)
+        for canvas in self._plane_tab_canvases.values():
+            canvas.set_sheet_visibility(visible)
 
     def toggle_module_count(self, enabled: bool) -> None:
         if self.primary_canvas is not None:
@@ -90,6 +136,9 @@ class WorkspaceController:
 
     def canvas_for_plane(self, plane_id: str) -> DrawingCanvas | None:
         return self._plane_tab_canvases.get(plane_id)
+
+    def plane_canvases(self) -> list[DrawingCanvas]:
+        return list(self._plane_tab_canvases.values())
 
     def update_all_canvases(self) -> None:
         if self.primary_canvas is not None:
@@ -109,6 +158,7 @@ class WorkspaceController:
         canvas.set_roof_plane(plane)
         material = self._get_material(plane.selected_material_id)
         canvas.set_material(material)
+        canvas.set_sheet_visibility(self._sheets_visible)
         layout.addWidget(canvas)
         tab.setProperty("plane_id", plane.id)
         self._plane_tab_canvases[plane.id] = canvas
