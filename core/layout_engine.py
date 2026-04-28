@@ -193,6 +193,18 @@ def generate_layout(
             y_bottom = band_segment.y_bottom_cm
             y_top = band_segment.y_top_cm
             max_len = material.max_sheet_length_cm
+            
+            # Fix #1: Prevent infinite loop when max_len <= 0
+            if max_len <= 0:
+                result.warnings.append(
+                    LayoutWarning(
+                        code="invalid_max_sheet_length",
+                        message="Maksymalna długość arkusza musi być dodatnia",
+                        data={"material_id": material.id, "max_sheet_length_cm": max_len},
+                    )
+                )
+                continue
+            
             row_index = 0
 
             if (
@@ -208,6 +220,18 @@ def generate_layout(
                     sheet_height = min(max_len, y_cursor - cut_y)
                     sheet_top = y_cursor - sheet_height
                     sheet_bottom = y_cursor
+                    
+                    # Fix #1: Defensive guard to prevent infinite loop
+                    if sheet_height <= EPSILON:
+                        result.warnings.append(
+                            LayoutWarning(
+                                code="zero_sheet_height",
+                                message="Wysokość arkusza wynosi zero - przerwano generowanie",
+                                data={"band_index": band_index, "segment_index": segment_index},
+                            )
+                        )
+                        break
+                    
                     if sheet_height >= material.min_sheet_length_cm - EPSILON:
                         placement_id = f"{plane.id}-b{band_index}-s{segment_index}-r{row_index}"
                         result.placements.append(
@@ -245,9 +269,17 @@ def generate_layout(
                     sheet_top = y_cursor - sheet_height
                     sheet_bottom = y_cursor
                     is_top_sheet = sheet_top <= y_top + EPSILON
-                    actual_length = sheet_height + (extra if is_top_sheet else 0.0)
+                    
+                    # Fix #2: Clamp actual_length to respect max_sheet_length_cm
+                    effective_extra = 0.0
+                    if is_top_sheet:
+                        effective_extra = min(extra, max(0.0, max_len - sheet_height))
+                    actual_length = sheet_height + effective_extra
                     placement_split = "partial_cutout_top" if is_top_sheet else None
-                    if sheet_height >= material.min_sheet_length_cm - EPSILON:
+                    
+                    # Fix #3: Validate actual_length instead of sheet_height for top sheets
+                    final_length_to_check = actual_length if is_top_sheet else sheet_height
+                    if final_length_to_check >= material.min_sheet_length_cm - EPSILON:
                         placement_id = f"{plane.id}-b{band_index}-s{segment_index}-r{row_index}"
                         result.placements.append(
                             SheetPlacement(
@@ -271,7 +303,7 @@ def generate_layout(
                                 y_top_cm=sheet_top,
                                 y_bottom_cm=sheet_bottom,
                                 raw_length_cm=sheet_height,
-                                reason=f"Arkusz za krótki: {sheet_height:.1f} cm (min. {material.min_sheet_length_cm:.1f} cm)",
+                                reason=f"Arkusz za krótki: {actual_length:.1f} cm (min. {material.min_sheet_length_cm:.1f} cm)",
                             )
                         )
                     y_cursor -= sheet_height
@@ -284,6 +316,18 @@ def generate_layout(
                     sheet_height = min(max_len, y_cursor - y_top)
                     sheet_top = y_cursor - sheet_height
                     sheet_bottom = y_cursor
+                    
+                    # Fix #1: Defensive guard to prevent infinite loop
+                    if sheet_height <= EPSILON:
+                        result.warnings.append(
+                            LayoutWarning(
+                                code="zero_sheet_height",
+                                message="Wysokość arkusza wynosi zero - przerwano generowanie",
+                                data={"band_index": band_index, "segment_index": segment_index},
+                            )
+                        )
+                        break
+                    
                     if sheet_height >= material.min_sheet_length_cm - EPSILON:
                         placement_id = f"{plane.id}-b{band_index}-s{segment_index}-r{row_index}"
                         result.placements.append(

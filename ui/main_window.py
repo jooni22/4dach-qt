@@ -424,7 +424,8 @@ class MainWindow(QMainWindow):
             return False
 
         for plane in self.project_state.roof_planes:
-            if plane.layout_dirty_reason:
+            # Fix #7: Skip auto-regeneration for manual_override to preserve user intent
+            if plane.layout_dirty_reason and plane.layout_dirty_reason != "manual_override":
                 try:
                     self.project_state.generate_layout_for_plane(plane.id)
                 except Exception:

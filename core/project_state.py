@@ -392,13 +392,30 @@ class ProjectState:
         )
         return self.set_hole_polygon(hole_index, updated_hole, plane.id)
 
+    def _is_placement_removed(self, placement_id: str, removed_ids: set[str]) -> bool:
+        """Check if placement ID matches any removed ID (exact or legacy prefix match).
+        
+        Legacy IDs don't have -r{row} suffix. For backward compatibility,
+        if a removed ID lacks -r, treat it as a prefix and remove all placements
+        whose IDs start with that prefix + "-r".
+        """
+        if placement_id in removed_ids:
+            return True
+        
+        # Check for legacy ID prefix match
+        for removed_id in removed_ids:
+            if "-r" not in removed_id and placement_id.startswith(f"{removed_id}-r"):
+                return True
+        
+        return False
+    
     def active_sheet_placements_for_plane(self, plane_id: str | None = None) -> list[SheetPlacement]:
         plane = self.roof_plane_by_id(plane_id or self.active_plane_id)
         if plane is None:
             return []
 
         removed_ids = set(plane.manually_removed_auto_sheet_ids)
-        placements = [placement for placement in plane.auto_sheet_placements if placement.id not in removed_ids]
+        placements = [placement for placement in plane.auto_sheet_placements if not self._is_placement_removed(placement.id, removed_ids)]
         placements.extend(plane.manual_sheet_placements)
         return sorted(placements, key=lambda placement: (placement.band_index, placement.x_left_cm, placement.y_top_cm, placement.id))
 

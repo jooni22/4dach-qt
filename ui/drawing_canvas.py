@@ -408,7 +408,16 @@ class DrawingCanvas(QWidget):
                 placement = placements_by_id.get(placement_id)
                 if placement is None:
                     continue
-                coverage_polygons = [self._placement_polygon(placement)]
+                
+                # Fix #5: Use coverage_polygons from layout engine instead of fallback
+                coverage_polygons = [
+                    Polygon2D([Point2D(p[0], p[1]) for p in poly_pts])
+                    for poly_pts in segment.get("coverage_polygons", [])
+                    if len(poly_pts) >= 3
+                ]
+                if not coverage_polygons:
+                    coverage_polygons = [self._placement_polygon(placement)]
+                
                 render_items.append(
                     _SheetRenderItem(
                         placement_id=placement.id,
@@ -459,9 +468,32 @@ class DrawingCanvas(QWidget):
         if mapper is None or self.roof_plane is None:
             return None
         domain_point = mapper.unmap_point(pos)
-        for sheet in self._visible_sheet_placements():
-            if point_in_polygon(domain_point, self._placement_polygon(sheet)):
-                return sheet.id
+        
+        # Fix #6: Use coverage polygons from layout engine for accurate hit testing
+        for band in self.roof_plane.layout_bands:
+            for segment in band.get("segments", []):
+                placement_id = segment.get("placement_id")
+                if not placement_id:
+                    continue
+                
+                # Get coverage polygons from layout engine
+                coverage_polygons = [
+                    Polygon2D([Point2D(p[0], p[1]) for p in poly_pts])
+                    for poly_pts in segment.get("coverage_polygons", [])
+                    if len(poly_pts) >= 3
+                ]
+                
+                # Fallback to placement polygon if no coverage polygons
+                if not coverage_polygons:
+                    placement = next((p for p in self._visible_sheet_placements() if p.id == placement_id), None)
+                    if placement:
+                        coverage_polygons = [self._placement_polygon(placement)]
+                
+                # Check if point is in any coverage polygon
+                for polygon in coverage_polygons:
+                    if point_in_polygon(domain_point, polygon):
+                        return placement_id
+        
         return None
 
     def _is_near_first_vertex(self, pos: QPointF) -> bool:
