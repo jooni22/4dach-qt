@@ -60,6 +60,7 @@ class AppSettings:
     show_decimal_cm: bool = False
     show_angle_arc: bool = True
     show_guide_lines: bool = True
+    ui_element_scale: float = 1.6
     close_on_rmb: bool = True
     snap_to_grid: bool = True
     snap_to_axis: bool = True
@@ -117,6 +118,12 @@ class AppSettings:
         if edge_drag_mode not in _VALID_EDGE_DRAG_MODES:
             edge_drag_mode = EDGE_DRAG_MODE_MOVE_VERTICES
         try:
+            ui_element_scale = float(d.get("ui_element_scale", 1.6))
+        except (TypeError, ValueError):
+            ui_element_scale = 1.6
+        if ui_element_scale <= 0:
+            ui_element_scale = 1.6
+        try:
             snap_axis_threshold_deg = float(d.get("snap_axis_threshold_deg", 3.0))
         except (TypeError, ValueError):
             snap_axis_threshold_deg = 3.0
@@ -154,6 +161,7 @@ class AppSettings:
             show_decimal_cm=bool(d.get("show_decimal_cm", False)),
             show_angle_arc=bool(d.get("show_angle_arc", True)),
             show_guide_lines=bool(d.get("show_guide_lines", True)),
+            ui_element_scale=ui_element_scale,
             close_on_rmb=bool(d.get("close_on_rmb", True)),
             snap_to_grid=bool(d.get("snap_to_grid", True)),
             snap_to_axis=bool(d.get("snap_to_axis", True)),
@@ -186,6 +194,7 @@ class AppSettings:
             "show_decimal_cm": self.show_decimal_cm,
             "show_angle_arc": self.show_angle_arc,
             "show_guide_lines": self.show_guide_lines,
+            "ui_element_scale": self.ui_element_scale,
             "close_on_rmb": self.close_on_rmb,
             "snap_to_grid": self.snap_to_grid,
             "snap_to_axis": self.snap_to_axis,

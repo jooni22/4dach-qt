@@ -22,6 +22,7 @@ def test_default_value():
     assert s.show_decimal_cm is False
     assert s.show_angle_arc is True
     assert s.show_guide_lines is True
+    assert s.ui_element_scale == 1.6
     assert s.close_on_rmb is True
     assert s.edge_drag_mode == "move_vertices"
     assert s.show_edge_length_labels is True
@@ -45,6 +46,7 @@ def test_round_trip():
         show_decimal_cm=True,
         show_angle_arc=False,
         show_guide_lines=False,
+        ui_element_scale=2.1,
         close_on_rmb=False,
         snap_to_grid=False,
         snap_to_axis=False,
@@ -75,6 +77,7 @@ def test_round_trip():
     assert s2.show_decimal_cm is True
     assert s2.show_angle_arc is False
     assert s2.show_guide_lines is False
+    assert s2.ui_element_scale == 2.1
     assert s2.close_on_rmb is False
     assert s2.snap_to_grid is False
     assert s2.snap_to_axis is False
@@ -132,6 +135,7 @@ def test_missing_key_uses_default():
     assert s.show_decimal_cm is False
     assert s.show_angle_arc is True
     assert s.show_guide_lines is True
+    assert s.ui_element_scale == 1.6
     assert s.close_on_rmb is True
     assert s.edge_drag_mode == "move_vertices"
     assert s.show_edge_length_labels is True
@@ -173,6 +177,7 @@ def test_nonpositive_snap_thresholds_use_defaults():
     assert s.snap_axis_threshold_deg == 3.0
     assert s.snap_45_threshold_deg == 2.5
     assert s.snap_radius_px == 12
+    assert s.ui_element_scale == 1.6
 
 
 def test_nonpositive_undo_depth_uses_default():

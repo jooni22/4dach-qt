@@ -253,6 +253,8 @@ class _DrawingReferenceOverlay:
     active_point: Point2D
     horizontal_span: _DrawingReferenceSpan
     vertical_span: _DrawingReferenceSpan
+    direct_horizontal_span: _DrawingReferenceSpan | None = None
+    direct_vertical_span: _DrawingReferenceSpan | None = None
 
 
 @dataclass(slots=True, frozen=True)
@@ -1607,6 +1609,22 @@ class DrawingCanvas(QWidget):
         if active_point is None:
             return None
         origin = self._drawing_reference_origin(mapper)
+        direct_horizontal_span = None
+        direct_vertical_span = None
+        if self._mode == self.MODE_DRAW_CUTOUT and self.display_outline() is not None:
+            outline_bounds = self.display_outline().bounds()
+            direct_horizontal_span = _DrawingReferenceSpan(
+                axis="x",
+                start=Point2D(outline_bounds.min_x, active_point.y),
+                end=active_point,
+                label_text=self._format_reference_distance_label("X", active_point.x - outline_bounds.min_x),
+            )
+            direct_vertical_span = _DrawingReferenceSpan(
+                axis="y",
+                start=Point2D(active_point.x, outline_bounds.max_y),
+                end=active_point,
+                label_text=self._format_reference_distance_label("Y", outline_bounds.max_y - active_point.y),
+            )
         horizontal_span = _DrawingReferenceSpan(
             axis="x",
             start=Point2D(origin.x, active_point.y),
@@ -1624,6 +1642,8 @@ class DrawingCanvas(QWidget):
             active_point=active_point,
             horizontal_span=horizontal_span,
             vertical_span=vertical_span,
+            direct_horizontal_span=direct_horizontal_span,
+            direct_vertical_span=direct_vertical_span,
         )
 
     def _grid_step_cm(self) -> float:
@@ -1726,7 +1746,7 @@ class DrawingCanvas(QWidget):
         return Point2D(start.x + math.cos(radians) * radius, start.y - math.sin(radians) * radius)
 
     def _snap_radius_cm(self, mapper: CanvasMapper) -> float:
-        return max(float(getattr(self._app_settings, "snap_radius_px", 12)), 1.0) / max(mapper.scale, 1e-9)
+        return max(float(getattr(self._app_settings, "snap_radius_px", 12)) * self._ui_scale(), 1.0) / max(mapper.scale, 1e-9)
 
     def _grid_snap_radius_cm(self, mapper: CanvasMapper) -> float:
         return GRID_SNAP_THRESHOLD_PX / max(mapper.scale, 1e-9)
@@ -1842,6 +1862,40 @@ class DrawingCanvas(QWidget):
             if distance <= radius and (best is None or distance < best[0]):
                 best = (distance, _DrawSnapState(kind, point))
         return None if best is None else best[1]
+
+    @staticmethod
+    def _line_intersection(first: _InferenceLine, second: _InferenceLine) -> Point2D | None:
+        horizontal: _InferenceLine | None = None
+        vertical: _InferenceLine | None = None
+        if first.kind == "horizontal" and second.kind == "vertical":
+            horizontal = first
+            vertical = second
+        elif first.kind == "vertical" and second.kind == "horizontal":
+            horizontal = second
+            vertical = first
+        if horizontal is None or vertical is None:
+            return None
+        return Point2D(vertical.start.x, horizontal.start.y)
+
+    def _resolve_inference_snap(self, raw_point: Point2D, mapper: CanvasMapper) -> _DrawSnapState | None:
+        if not self._draw_inference_lines:
+            return None
+        line_candidates: list[tuple[str, Point2D]] = []
+        intersection_candidates: list[tuple[str, Point2D]] = []
+        for line in self._draw_inference_lines:
+            if line.kind == "horizontal":
+                line_candidates.append(("horizontal", Point2D(raw_point.x, line.start.y)))
+            elif line.kind == "vertical":
+                line_candidates.append(("vertical", Point2D(line.start.x, raw_point.y)))
+        for index, first in enumerate(self._draw_inference_lines):
+            for second in self._draw_inference_lines[index + 1 :]:
+                intersection = self._line_intersection(first, second)
+                if intersection is not None:
+                    intersection_candidates.append(("intersection", intersection))
+        intersection_state = self._best_near_point(intersection_candidates, raw_point, mapper)
+        if intersection_state is not None:
+            return intersection_state
+        return self._best_near_point(line_candidates, raw_point, mapper)
 
     def _resolve_axis_snap(self, raw_point: Point2D, start: Point2D) -> _DrawSnapState | None:
         if not getattr(self._app_settings, "snap_to_axis", True):
@@ -1977,6 +2031,10 @@ class DrawingCanvas(QWidget):
         if not self._draw_snap_enabled(modifiers):
             return raw_point
         self._draw_inference_lines = self._build_draw_inferences(raw_point, start, mapper)
+        inference_state = self._resolve_inference_snap(raw_point, mapper)
+        if inference_state is not None:
+            self._draw_snap_state = inference_state
+            return inference_state.point
         if start is not None:
             for resolver in (
                 self._resolve_axis_snap,
@@ -2584,6 +2642,46 @@ class DrawingCanvas(QWidget):
     def _format_coordinate_value(value_cm: float) -> str:
         return f"{round(value_cm):.0f}"
 
+    def _ui_scale(self) -> float:
+        return max(float(getattr(self._app_settings, "ui_element_scale", 1.6)), 1.0)
+
+    def _scaled_px(self, value: float) -> float:
+        return value * self._ui_scale()
+
+    def _scaled_font_point_size(self, base_size: int, *, minimum: int | None = None) -> int:
+        scaled = max(int(round(base_size * self._ui_scale())), base_size)
+        if minimum is not None:
+            scaled = max(scaled, minimum)
+        return scaled
+
+    def _draw_badge(
+        self,
+        painter: QPainter,
+        rect: QRectF,
+        text: str,
+        *,
+        active: bool = False,
+        text_color: QColor | None = None,
+        background_color: QColor | None = None,
+        border_color: QColor | None = None,
+        font_point_size: int | None = None,
+        radius: float = 4.0,
+    ) -> None:
+        background = background_color or (QColor(0, 100, 200, 220) if active else QColor(30, 30, 30, 200))
+        border = border_color or QColor(100, 200, 255, 180)
+        foreground = text_color or QColor(255, 255, 255)
+        painter.save()
+        if font_point_size is not None:
+            font = painter.font()
+            font.setPointSize(font_point_size)
+            painter.setFont(font)
+        painter.setPen(QPen(border, 1.0))
+        painter.setBrush(background)
+        painter.drawRoundedRect(rect, radius, radius)
+        painter.setPen(foreground)
+        painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, text)
+        painter.restore()
+
     def _coordinate_label_text(self, point: Point2D) -> str:
         relative_point = self._relative_coordinate_point(point)
         return f"X: {self._format_coordinate_value(relative_point.x)} | Y: {self._format_coordinate_value(relative_point.y)}"
@@ -2605,7 +2703,9 @@ class DrawingCanvas(QWidget):
         if mapper is None:
             return None
         outline = self.display_outline()
-        if outline is None or self._mode == self.MODE_DRAW_OUTLINE:
+        if outline is None:
+            return None
+        if self._mode == self.MODE_DRAW_OUTLINE:
             bounds = self._free_draw_bounds()
         else:
             bounds = self._grid_bounds_for_current_paint(mapper)
@@ -2903,7 +3003,6 @@ class DrawingCanvas(QWidget):
             self._draw_empty_state(painter)
 
         if self._mode in {self.MODE_DRAW_OUTLINE, self.MODE_DRAW_CUTOUT}:
-            self._draw_active_drawing_references(painter)
             self._draw_user_path(painter)
 
         if self._selected_sheet_id and self._mode == self.MODE_SELECT_SHEET:
@@ -2914,12 +3013,16 @@ class DrawingCanvas(QWidget):
             self._draw_origin_marker(painter, mapper)
 
         self._draw_freehand_axis_overlay(painter)
+        if self._mode in {self.MODE_DRAW_OUTLINE, self.MODE_DRAW_CUTOUT}:
+            self._draw_active_drawing_references(painter)
         self._draw_crosshair(painter)
 
     def _draw_grid(self, painter: QPainter) -> None:
         grid_context = self._grid_context()
         if grid_context is not None:
             self._draw_domain_grid(painter, grid_context)
+            return
+        if self.roof_plane is None or self.display_outline() is None:
             return
 
         grid_color = self.palette().color(QPalette.ColorRole.Mid)
@@ -2994,14 +3097,12 @@ class DrawingCanvas(QWidget):
         if mapper is None:
             return
         painter.save()
+        dash_pattern = [segment * self._ui_scale() for segment in (5.0, 4.0)]
         for line in self._draw_inference_lines:
-            if line.kind == "edge_extension":
-                inference_color = QColor(255, 196, 120, 110)
-            elif line.kind == "continuation":
-                inference_color = QColor(184, 220, 255, 120)
-            else:
-                inference_color = QColor(150, 205, 255, 105)
-            painter.setPen(QPen(inference_color, 1.0, Qt.PenStyle.DotLine))
+            inference_color = QColor(0, 120, 220, 180)
+            pen = QPen(inference_color, 1.2, Qt.PenStyle.CustomDashLine)
+            pen.setDashPattern(dash_pattern)
+            painter.setPen(pen)
             painter.drawLine(mapper.map_point(line.start), mapper.map_point(line.end))
         painter.restore()
 
@@ -3018,7 +3119,8 @@ class DrawingCanvas(QWidget):
         if state.kind == "grid":
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QColor(0, 220, 255, 230))
-            painter.drawEllipse(point, 4.0, 4.0)
+            radius = self._scaled_px(4.0)
+            painter.drawEllipse(point, radius, radius)
         elif state.kind == "vertex":
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.setPen(QPen(QColor(80, 255, 120, 235), 2.0))
@@ -3026,10 +3128,12 @@ class DrawingCanvas(QWidget):
         elif state.kind == "midpoint":
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.setPen(QPen(QColor(0, 220, 255, 235), 2.0))
+            triangle_half = self._scaled_px(6.0)
+            triangle_bottom = self._scaled_px(5.0)
             triangle = QPolygonF([
-                QPointF(point.x(), point.y() - 6.0),
-                QPointF(point.x() + 6.0, point.y() + 5.0),
-                QPointF(point.x() - 6.0, point.y() + 5.0),
+                QPointF(point.x(), point.y() - triangle_half),
+                QPointF(point.x() + triangle_half, point.y() + triangle_bottom),
+                QPointF(point.x() - triangle_half, point.y() + triangle_bottom),
             ])
             painter.drawPolygon(triangle)
         elif state.kind == "perpendicular":
@@ -3038,14 +3142,21 @@ class DrawingCanvas(QWidget):
             painter.drawLine(QPointF(point.x() - 5.0, point.y() + 5.0), QPointF(point.x() + 5.0, point.y() + 5.0))
         elif state.kind == "intersection":
             painter.setPen(QPen(QColor(255, 220, 0, 235), 2.0))
-            painter.drawLine(QPointF(point.x() - 5.0, point.y() - 5.0), QPointF(point.x() + 5.0, point.y() + 5.0))
-            painter.drawLine(QPointF(point.x() - 5.0, point.y() + 5.0), QPointF(point.x() + 5.0, point.y() - 5.0))
+            marker = self._scaled_px(5.0)
+            painter.drawLine(QPointF(point.x() - marker, point.y() - marker), QPointF(point.x() + marker, point.y() + marker))
+            painter.drawLine(QPointF(point.x() - marker, point.y() + marker), QPointF(point.x() + marker, point.y() - marker))
         elif state.kind in {"axis", "angle"}:
             painter.setPen(QPen(QColor(0, 220, 255, 235), 1.5))
             painter.setBrush(QColor(0, 220, 255, 60))
-            painter.drawEllipse(point, 5.0, 5.0)
+            radius = self._scaled_px(5.0)
+            painter.drawEllipse(point, radius, radius)
             if state.label:
-                self._draw_live_angle_label(painter, QPointF(point.x() + 22.0, point.y() - 16.0), state.label, QColor(0, 220, 255, 235))
+                self._draw_live_angle_label(
+                    painter,
+                    QPointF(point.x() + self._scaled_px(22.0), point.y() - self._scaled_px(16.0)),
+                    state.label,
+                    QColor(0, 220, 255, 235),
+                )
         painter.restore()
 
     def _draw_start_point_marker(self, painter: QPainter, point: QPointF) -> None:
@@ -3073,7 +3184,7 @@ class DrawingCanvas(QWidget):
 
     def _draw_live_length_label(self, painter: QPainter, start_point: QPointF, end_point: QPointF, label_text: str) -> None:
         font = painter.font()
-        font.setPointSize(9)
+        font.setPointSize(self._scaled_font_point_size(9, minimum=9))
         painter.save()
         painter.setFont(font)
         metrics = QFontMetricsF(font)
@@ -3091,11 +3202,7 @@ class DrawingCanvas(QWidget):
             label_rect.moveTop(mid_y + 8.0)
         if label_rect.bottom() > viewport.bottom():
             label_rect.moveBottom(viewport.bottom())
-        painter.setPen(QPen(QColor(255, 255, 255, 120), 0.8))
-        painter.setBrush(QColor(18, 18, 18, 210))
-        painter.drawRoundedRect(label_rect, 5.0, 5.0)
-        painter.setPen(QColor(255, 255, 255))
-        painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, label_text)
+        self._draw_badge(painter, label_rect, label_text, font_point_size=self._scaled_font_point_size(9, minimum=9), radius=5.0)
         painter.restore()
 
     def _draw_live_angle_feedback(self, painter: QPainter, mapper: CanvasMapper, angle_deg: float) -> None:
@@ -3113,11 +3220,12 @@ class DrawingCanvas(QWidget):
         signed_display_angle = angle_deg if self._angle_mode() == LIVE_ANGLE_MODE_RELATIVE_TO_PREV else self._normalize_signed_angle(preview_angle)
         start_angle_qt = -baseline_angle * 16.0
         span_angle_qt = -signed_display_angle * 16.0
+        arc_radius = self._scaled_px(ANGLE_ARC_RADIUS_PX)
         arc_rect = QRectF(
-            vertex_point.x() - ANGLE_ARC_RADIUS_PX,
-            vertex_point.y() - ANGLE_ARC_RADIUS_PX,
-            ANGLE_ARC_RADIUS_PX * 2.0,
-            ANGLE_ARC_RADIUS_PX * 2.0,
+            vertex_point.x() - arc_radius,
+            vertex_point.y() - arc_radius,
+            arc_radius * 2.0,
+            arc_radius * 2.0,
         )
         arc_color = QColor(84, 210, 111, 230)
         painter.save()
@@ -3128,17 +3236,18 @@ class DrawingCanvas(QWidget):
         label_angle = baseline_angle + signed_display_angle
         radians = math.radians(label_angle)
         label_point = QPointF(
-            vertex_point.x() + math.cos(radians) * (ANGLE_ARC_RADIUS_PX + 14.0),
-            vertex_point.y() - math.sin(radians) * (ANGLE_ARC_RADIUS_PX + 14.0),
+            vertex_point.x() + math.cos(radians) * self._scaled_px(ANGLE_ARC_RADIUS_PX + 14.0),
+            vertex_point.y() - math.sin(radians) * self._scaled_px(ANGLE_ARC_RADIUS_PX + 14.0),
         )
         self._draw_live_angle_label(painter, label_point, self._format_live_angle_label(angle_deg), arc_color)
         painter.restore()
 
     def _draw_live_angle_guides(self, painter: QPainter, mapper: CanvasMapper, vertex_point: QPointF, baseline_angle: float) -> None:
-        guide_color = self.palette().color(QPalette.ColorRole.Highlight)
-        guide_color.setAlpha(85)
+        guide_color = QColor(0, 120, 220, 180)
         painter.save()
-        painter.setPen(QPen(guide_color, 1.0, Qt.PenStyle.DotLine))
+        pen = QPen(guide_color, 1.2, Qt.PenStyle.CustomDashLine)
+        pen.setDashPattern([segment * self._ui_scale() for segment in (5.0, 4.0)])
+        painter.setPen(pen)
         if len(self.user_points) >= 2:
             radians = math.radians(baseline_angle)
             direction_x = math.cos(radians)
@@ -3152,7 +3261,7 @@ class DrawingCanvas(QWidget):
 
     def _draw_live_angle_label(self, painter: QPainter, anchor_point: QPointF, label_text: str, label_color: QColor) -> None:
         font = painter.font()
-        font.setPointSize(8)
+        font.setPointSize(self._scaled_font_point_size(8, minimum=9))
         painter.save()
         painter.setFont(font)
         metrics = QFontMetricsF(font)
@@ -3171,40 +3280,18 @@ class DrawingCanvas(QWidget):
             label_rect.moveTop(viewport.top())
         if label_rect.bottom() > viewport.bottom():
             label_rect.moveBottom(viewport.bottom())
-        painter.setPen(QPen(label_color, 0.8))
-        painter.setBrush(QColor(18, 18, 18, 200))
-        painter.drawRoundedRect(label_rect, 4.0, 4.0)
-        painter.setPen(label_color)
-        painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, label_text)
+        self._draw_badge(
+            painter,
+            label_rect,
+            label_text,
+            active=True,
+            text_color=QColor(255, 255, 255),
+            font_point_size=self._scaled_font_point_size(8, minimum=9),
+        )
         painter.restore()
 
     def _draw_close_hint(self, painter: QPainter) -> None:
-        hint_text = "RMB to close"
-        font = painter.font()
-        font.setPointSize(8)
-        painter.save()
-        painter.setFont(font)
-        metrics = QFontMetricsF(font)
-        anchor = self.user_points[0]
-        label_rect = QRectF(
-            anchor.x() + 12.0,
-            anchor.y() - metrics.height() - 10.0,
-            metrics.horizontalAdvance(hint_text) + 12.0,
-            metrics.height() + 6.0,
-        )
-        viewport = self.rect().adjusted(6, 6, -6, -6)
-        if label_rect.right() > viewport.right():
-            label_rect.moveRight(viewport.right())
-        if label_rect.left() < viewport.left():
-            label_rect.moveLeft(viewport.left())
-        if label_rect.top() < viewport.top():
-            label_rect.moveTop(anchor.y() + 12.0)
-        painter.setPen(QPen(QColor(255, 255, 255, 110), 0.8))
-        painter.setBrush(QColor(18, 18, 18, 180))
-        painter.drawRoundedRect(label_rect, 4.0, 4.0)
-        painter.setPen(QColor(255, 255, 255, 225))
-        painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, hint_text)
-        painter.restore()
+        return
 
     def _edit_overlay_grid_step_cm(self, mapper: CanvasMapper) -> float:
         return self._grid_step_cm()
@@ -3452,16 +3539,23 @@ class DrawingCanvas(QWidget):
 
         viewport = self.rect().adjusted(6, 6, -6, -6)
         leader_color = QColor(166, 226, 240, 86)
-        span_color = QColor(166, 226, 240, 122)
+        span_color = QColor(0, 120, 220, 180)
         leader_pen = QPen(leader_color, 0.8, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
-        span_pen = QPen(span_color, 0.9, Qt.PenStyle.CustomDashLine, Qt.PenCapStyle.RoundCap)
-        span_pen.setDashPattern(DRAW_REFERENCE_DASH_PATTERN)
+        span_pen = QPen(span_color, 1.2, Qt.PenStyle.CustomDashLine, Qt.PenCapStyle.RoundCap)
+        span_pen.setDashPattern([segment * self._ui_scale() for segment in DRAW_REFERENCE_DASH_PATTERN])
 
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        for span in (overlay.horizontal_span, overlay.vertical_span):
+        spans = [overlay.horizontal_span, overlay.vertical_span]
+        if overlay.direct_horizontal_span is not None:
+            spans.append(overlay.direct_horizontal_span)
+        if overlay.direct_vertical_span is not None:
+            spans.append(overlay.direct_vertical_span)
+        for span in spans:
             raw_start = mapper.map_point(span.start)
             raw_end = mapper.map_point(span.end)
+            painter.setPen(span_pen)
+            painter.drawLine(raw_start, raw_end)
             display_start, display_end = self._drawing_reference_display_points(
                 raw_start,
                 raw_end,
@@ -3478,7 +3572,7 @@ class DrawingCanvas(QWidget):
         marker_pen = QPen(QColor(196, 235, 244, 170), 1.0)
         painter.setPen(marker_pen)
         painter.setBrush(QColor(196, 235, 244, 54))
-        painter.drawEllipse(active_point, 2.8, 2.8)
+        painter.drawEllipse(active_point, self._scaled_px(2.8), self._scaled_px(2.8))
         painter.restore()
 
         self._draw_drawing_reference_labels(painter, mapper, overlay)
@@ -3518,7 +3612,7 @@ class DrawingCanvas(QWidget):
     ) -> None:
         painter.save()
         font = painter.font()
-        font.setPointSize(7)
+        font.setPointSize(self._scaled_font_point_size(7, minimum=9))
         painter.setFont(font)
         metrics = QFontMetricsF(font)
         viewport = self.rect().adjusted(6, 6, -6, -6)
@@ -3526,7 +3620,12 @@ class DrawingCanvas(QWidget):
         label_text_color = QColor(225, 241, 245, 190)
         label_background = QColor(10, 18, 24, 136)
 
-        for span in (overlay.horizontal_span, overlay.vertical_span):
+        spans = [overlay.horizontal_span, overlay.vertical_span]
+        if overlay.direct_horizontal_span is not None:
+            spans.append(overlay.direct_horizontal_span)
+        if overlay.direct_vertical_span is not None:
+            spans.append(overlay.direct_vertical_span)
+        for span in spans:
             raw_start = mapper.map_point(span.start)
             raw_end = mapper.map_point(span.end)
             start_point, end_point = self._drawing_reference_display_points(
@@ -3573,11 +3672,13 @@ class DrawingCanvas(QWidget):
                 label_rect.moveTop(viewport.top())
             if label_rect.bottom() > viewport.bottom():
                 label_rect.moveBottom(viewport.bottom())
-            painter.setPen(QPen(label_border, 0.7))
-            painter.setBrush(label_background)
-            painter.drawRoundedRect(label_rect, 4.0, 4.0)
-            painter.setPen(label_text_color)
-            painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, span.label_text)
+            self._draw_badge(
+                painter,
+                label_rect,
+                span.label_text,
+                text_color=QColor(label_text_color),
+                font_point_size=self._scaled_font_point_size(7, minimum=9),
+            )
 
         painter.restore()
 
@@ -3622,22 +3723,31 @@ class DrawingCanvas(QWidget):
         x_color = QColor(220, 70, 70, 255)
         y_color = QColor(70, 180, 80, 255)
         label_font = painter.font()
-        label_font.setPointSize(max(label_font.pointSize(), 9))
+        label_font.setPointSize(self._scaled_font_point_size(max(label_font.pointSize(), 9), minimum=9))
+        arrow_size = self._scaled_px(AXIS_WIDGET_ARROW_SIZE_PX)
 
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         painter.setFont(label_font)
         painter.setPen(QPen(x_color, 1.6, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
         painter.drawLine(origin, x_tip)
-        painter.drawLine(x_tip, QPointF(x_tip.x() - AXIS_WIDGET_ARROW_SIZE_PX, x_tip.y() - AXIS_WIDGET_ARROW_SIZE_PX / 2.0))
-        painter.drawLine(x_tip, QPointF(x_tip.x() - AXIS_WIDGET_ARROW_SIZE_PX, x_tip.y() + AXIS_WIDGET_ARROW_SIZE_PX / 2.0))
-        painter.drawText(QRectF(x_tip.x() + 4.0, x_tip.y() - 12.0, 16.0, 16.0), Qt.AlignmentFlag.AlignCenter, "X")
+        painter.drawLine(x_tip, QPointF(x_tip.x() - arrow_size, x_tip.y() - arrow_size / 2.0))
+        painter.drawLine(x_tip, QPointF(x_tip.x() - arrow_size, x_tip.y() + arrow_size / 2.0))
+        painter.drawText(
+            QRectF(x_tip.x() + self._scaled_px(4.0), x_tip.y() - self._scaled_px(12.0), self._scaled_px(16.0), self._scaled_px(16.0)),
+            Qt.AlignmentFlag.AlignCenter,
+            "X",
+        )
 
         painter.setPen(QPen(y_color, 1.6, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
         painter.drawLine(origin, y_tip)
-        painter.drawLine(y_tip, QPointF(y_tip.x() - AXIS_WIDGET_ARROW_SIZE_PX / 2.0, y_tip.y() + AXIS_WIDGET_ARROW_SIZE_PX))
-        painter.drawLine(y_tip, QPointF(y_tip.x() + AXIS_WIDGET_ARROW_SIZE_PX / 2.0, y_tip.y() + AXIS_WIDGET_ARROW_SIZE_PX))
-        painter.drawText(QRectF(y_tip.x() - 8.0, y_tip.y() - 18.0, 16.0, 16.0), Qt.AlignmentFlag.AlignCenter, "Y")
+        painter.drawLine(y_tip, QPointF(y_tip.x() - arrow_size / 2.0, y_tip.y() + arrow_size))
+        painter.drawLine(y_tip, QPointF(y_tip.x() + arrow_size / 2.0, y_tip.y() + arrow_size))
+        painter.drawText(
+            QRectF(y_tip.x() - self._scaled_px(8.0), y_tip.y() - self._scaled_px(18.0), self._scaled_px(16.0), self._scaled_px(16.0)),
+            Qt.AlignmentFlag.AlignCenter,
+            "Y",
+        )
         painter.restore()
 
     def _draw_crosshair(self, painter: QPainter) -> None:
@@ -3667,6 +3777,35 @@ class DrawingCanvas(QWidget):
         painter.drawLine(QPointF(point.x(), point.y() - CROSSHAIR_LENGTH_PX), QPointF(point.x(), point.y() + CROSSHAIR_LENGTH_PX))
         painter.restore()
 
+    def _projection_vertices_for_edit_mode(self, outline: Polygon2D) -> list[Point2D]:
+        if len(outline.points) <= 6:
+            return list(outline.points)
+        active_index = self._active_vertex_index
+        if active_index is None and self._edit_overlay is not None and self._edit_overlay.target_kind == "outline_vertex":
+            active_index = self._edit_overlay.vertex_index
+        if active_index is None or active_index >= len(outline.points):
+            return []
+        return [outline.points[active_index]]
+
+    def _draw_vertex_axis_projections(self, painter: QPainter, mapper: CanvasMapper, outline: Polygon2D) -> None:
+        if not self._plane_selected or self._mode not in {self.MODE_EDIT, self.MODE_MOVE}:
+            return
+        bounds = outline.bounds()
+        vertices = self._projection_vertices_for_edit_mode(outline)
+        if not vertices:
+            return
+        pen = QPen(QColor(0, 100, 200, 140), 1.0, Qt.PenStyle.CustomDashLine)
+        pen.setDashPattern([5.0, 4.0])
+        painter.save()
+        painter.setPen(pen)
+        for vertex in vertices:
+            mapped_vertex = mapper.map_point(vertex)
+            left_axis = mapper.map_point(Point2D(bounds.min_x, vertex.y))
+            bottom_axis = mapper.map_point(Point2D(vertex.x, bounds.min_y))
+            painter.drawLine(mapped_vertex, QPointF(left_axis.x(), mapped_vertex.y()))
+            painter.drawLine(mapped_vertex, QPointF(mapped_vertex.x(), bottom_axis.y()))
+        painter.restore()
+
     def _draw_roof_plane(self, painter: QPainter) -> None:
         plane = self.roof_plane
         outline = self.display_outline()
@@ -3690,6 +3829,8 @@ class DrawingCanvas(QWidget):
             outline_color = QColor("#d44848")
             fill_color = QColor(fill_color)
             fill_color.setAlpha(90)
+
+        self._draw_vertex_axis_projections(painter, mapper, outline)
 
         painter.setPen(QPen(outline_color, 2))
         painter.setBrush(fill_color if self._show_sheet_placements else Qt.BrushStyle.NoBrush)
@@ -3738,7 +3879,7 @@ class DrawingCanvas(QWidget):
             mapped_center = mapper.map_point(Point2D(center_x, center_y))
             is_active = hole_index == self._selected_hole_index
             painter.setBrush(selected_hole_color.lighter(140) if is_active else hole_color)
-            radius = MIDPOINT_HANDLE_RADIUS + (2 if is_active else 0)
+            radius = self._scaled_px(MIDPOINT_HANDLE_RADIUS + (2 if is_active else 0))
             painter.drawEllipse(mapped_center, radius, radius)
 
         if (self._app_settings.show_edge_length_labels or self._app_settings.label_always_visible) and (
@@ -3764,7 +3905,7 @@ class DrawingCanvas(QWidget):
             mapped = mapper.map_point(point)
             is_active = index == active_vertex_index
             painter.setBrush(outline_color.lighter(140) if is_active else outline_color)
-            radius = VERTEX_HANDLE_RADIUS + (2 if is_active else 0)
+            radius = self._scaled_px(VERTEX_HANDLE_RADIUS + (2 if is_active else 0))
             painter.drawEllipse(mapped, radius, radius)
 
     def _draw_midpoint_handles(self, painter: QPainter, mapper: CanvasMapper, outline: Polygon2D, outline_color: QColor) -> None:
@@ -3774,7 +3915,7 @@ class DrawingCanvas(QWidget):
         for index, midpoint in enumerate(self._edge_midpoints(mapper, outline)):
             is_active = index == self._active_edge_index
             painter.setBrush(midpoint_color.lighter(140) if is_active else self.palette().color(QPalette.ColorRole.Base))
-            radius = MIDPOINT_HANDLE_RADIUS + (1 if is_active else 0)
+            radius = self._scaled_px(MIDPOINT_HANDLE_RADIUS + (1 if is_active else 0))
             painter.drawEllipse(midpoint, radius, radius)
 
     def _draw_edge_measurements(
@@ -3790,7 +3931,9 @@ class DrawingCanvas(QWidget):
         guide_pen = QPen(outline_color)
         guide_pen.setStyle(Qt.PenStyle.DotLine)
         guide_pen.setWidthF(1.0)
-        painter.setFont(painter.font())
+        font = painter.font()
+        font.setPointSize(self._scaled_font_point_size(max(font.pointSize(), 8), minimum=9))
+        painter.setFont(font)
         
         polygon_f = QPolygonF([mapper.map_point(point) for point in outline.points])
         
@@ -3823,17 +3966,24 @@ class DrawingCanvas(QWidget):
             label_rect = region.rect
             background = self.palette().color(QPalette.ColorRole.Base)
             background.setAlpha(220)
-            painter.setPen(label_pen)
-            painter.setBrush(background)
-            painter.drawRoundedRect(label_rect, 4.0, 4.0)
-
             length_cm = segment_length(start, end)
-            painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, self._format_length(length_cm))
+            self._draw_badge(
+                painter,
+                label_rect,
+                self._format_length(length_cm),
+                text_color=QColor(200, 45, 45),
+                background_color=QColor(255, 255, 255, 235),
+                border_color=QColor(200, 45, 45, 140),
+                font_point_size=self._scaled_font_point_size(max(font.pointSize(), 8), minimum=9),
+            )
 
     def _draw_angle_measurements(self, painter: QPainter, mapper: CanvasMapper, polygon: Polygon2D, text_color: QColor) -> None:
         regions = self._angle_label_regions(mapper, polygon, None)
         self._label_hit_regions.extend(regions)
         painter.save()
+        font = painter.font()
+        font.setPointSize(self._scaled_font_point_size(max(font.pointSize(), 8), minimum=9))
+        painter.setFont(font)
         for region in regions:
             if region.point_index is None:
                 continue
@@ -3841,11 +3991,13 @@ class DrawingCanvas(QWidget):
             current = polygon.points[region.point_index]
             next_point = polygon.points[(region.point_index + 1) % len(polygon.points)]
             angle = self._vertex_angle_degrees(previous, current, next_point)
-            painter.setPen(QPen(text_color, 0.8))
-            painter.setBrush(QColor(18, 18, 18, 220))
-            painter.drawRoundedRect(region.rect, 4.0, 4.0)
-            painter.setPen(text_color)
-            painter.drawText(region.rect, Qt.AlignmentFlag.AlignCenter, f"{int(round(angle))}°")
+            self._draw_badge(
+                painter,
+                region.rect,
+                f"{int(round(angle))}°",
+                text_color=QColor(255, 255, 255),
+                font_point_size=self._scaled_font_point_size(max(font.pointSize(), 8), minimum=9),
+            )
         painter.restore()
 
     def _draw_sheet_placements(self, painter: QPainter, plane, mapper: CanvasMapper, text_color: QColor) -> None:

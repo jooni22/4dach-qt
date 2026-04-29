@@ -8,7 +8,7 @@ pytest.importorskip("PySide6")
 pytest.importorskip("pytestqt")
 
 from PySide6.QtCore import QEvent, QPoint, QPointF, QRectF, Qt
-from PySide6.QtGui import QMouseEvent, QPalette
+from PySide6.QtGui import QImage, QMouseEvent, QPainter, QPalette
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
@@ -776,6 +776,39 @@ def test_canvas_inference_state_tracks_horizontal_and_vertical_alignment(qtbot):
     assert any(line.kind == "vertical" for line in canvas._draw_inference_lines)
 
 
+def test_canvas_inference_intersection_snap_precedes_grid(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+    canvas.set_app_settings(AppSettings(snap_to_axis=False, snap_to_45deg=False, snap_to_points=False, snap_to_grid=True))
+    canvas.set_mode(DrawingCanvas.MODE_DRAW_CUTOUT)
+    mapper = canvas._active_mapper()
+    assert mapper is not None
+
+    canvas.user_points.append(mapper.map_point(Point2D(50.0, 50.0)))
+
+    snapped = canvas._resolve_draw_preview_endpoint(Point2D(1.0, 198.0), mapper)
+
+    assert snapped == Point2D(0.0, 200.0)
+    assert canvas._draw_snap_state is not None
+    assert canvas._draw_snap_state.kind == "intersection"
+
+
+def test_canvas_vertical_inference_snap_forces_x_coordinate(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+    canvas.set_app_settings(AppSettings(snap_to_axis=False, snap_to_45deg=False, snap_to_points=False, snap_to_grid=False))
+    canvas.set_mode(DrawingCanvas.MODE_DRAW_CUTOUT)
+    mapper = canvas._active_mapper()
+    assert mapper is not None
+
+    snapped = canvas._resolve_draw_preview_endpoint(Point2D(0.5, 120.0), mapper)
+
+    assert snapped.x == pytest.approx(0.0, abs=0.01)
+    assert snapped.y == pytest.approx(120.0, abs=0.01)
+    assert canvas._draw_snap_state is not None
+    assert canvas._draw_snap_state.kind == "vertical"
+
+
 def test_canvas_draw_outline_mode_grid_uses_free_draw_bounds_with_existing_outline(qtbot):
     outline = Polygon2D.rectangle(300, 200)
     canvas = _make_canvas(qtbot, outline)
@@ -785,6 +818,23 @@ def test_canvas_draw_outline_mode_grid_uses_free_draw_bounds_with_existing_outli
 
     assert grid_context is not None
     assert grid_context.bounds == canvas._free_draw_bounds()
+
+
+def test_canvas_empty_state_does_not_draw_fallback_grid(qtbot, monkeypatch):
+    canvas = DrawingCanvas()
+    canvas.resize(640, 420)
+    qtbot.addWidget(canvas)
+    canvas.show()
+    qtbot.waitExposed(canvas)
+    calls: list[str] = []
+
+    monkeypatch.setattr(canvas, "_draw_domain_grid", lambda *args, **kwargs: calls.append("domain_grid"))
+    monkeypatch.setattr(canvas, "_draw_empty_state", lambda *args, **kwargs: calls.append("empty_state"))
+
+    canvas.grab()
+    QApplication.processEvents()
+
+    assert calls == ["empty_state"]
 
 
 def test_canvas_freehand_close_does_not_resnap_with_different_origin(qtbot):
@@ -990,6 +1040,34 @@ def test_canvas_label_always_visible_overrides_edge_label_visibility(qtbot, monk
     assert calls == ["edges"]
 
 
+def test_edge_measurement_badge_uses_light_background_with_red_text(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+    canvas._plane_selected = True
+    mapper = canvas._canvas_mapper()
+    assert mapper is not None
+    image = QImage(canvas.size(), QImage.Format.Format_ARGB32_Premultiplied)
+    image.fill(0)
+    painter = QPainter(image)
+
+    canvas._draw_edge_measurements(
+        painter,
+        mapper,
+        outline,
+        canvas.palette().color(QPalette.ColorRole.Text),
+        canvas.palette().color(QPalette.ColorRole.Highlight),
+    )
+    painter.end()
+
+    region = canvas._edge_label_regions(mapper, outline, None)[0]
+    center = region.rect.center().toPoint()
+    color = image.pixelColor(center)
+
+    assert color.red() > 200
+    assert color.green() > 200
+    assert color.blue() > 200
+
+
 def test_canvas_builds_edge_extension_inference_for_existing_polygon_edge(qtbot):
     outline = Polygon2D([
         Point2D(0.0, 0.0),
@@ -1004,6 +1082,36 @@ def test_canvas_builds_edge_extension_inference_for_existing_polygon_edge(qtbot)
     lines = canvas._build_draw_inferences(raw_point, None, mapper)
 
     assert any(line.kind == "edge_extension" for line in lines)
+
+
+def test_cutout_reference_overlay_draws_direct_span_lines(qtbot, monkeypatch):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+    canvas.toggle_grid(False)
+    canvas.set_mode(canvas.MODE_DRAW_CUTOUT)
+    mapper = canvas._canvas_mapper()
+    assert mapper is not None
+
+    first_point = mapper.map_point(Point2D(60.0, 160.0)).toPoint()
+    preview_point = mapper.map_point(Point2D(130.0, 110.0)).toPoint()
+    QTest.mousePress(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, first_point)
+    _send_mouse_move(canvas, preview_point)
+
+    lines: list[tuple[QPointF, QPointF]] = []
+    original_draw_line = QPainter.drawLine
+
+    def capture_draw_line(self, *args):
+        if len(args) == 2 and isinstance(args[0], QPointF) and isinstance(args[1], QPointF):
+            lines.append((QPointF(args[0]), QPointF(args[1])))
+        return original_draw_line(self, *args)
+
+    monkeypatch.setattr(QPainter, "drawLine", capture_draw_line)
+
+    canvas.grab()
+    QApplication.processEvents()
+
+    assert any(abs(start.y() - end.y()) < 0.1 for start, end in lines)
+    assert any(abs(start.x() - end.x()) < 0.1 for start, end in lines)
 
 
 def test_canvas_dragging_origin_projects_to_nearest_boundary_when_cursor_leaves_shape(qtbot):
@@ -1150,6 +1258,35 @@ def test_canvas_draws_origin_marker_after_edit_handles(qtbot, monkeypatch):
     assert "vertex" in calls
     assert "overlay" in calls
     assert calls[-1] == "origin"
+
+
+def test_canvas_draws_vertex_axis_projections_before_outline(qtbot, monkeypatch):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+    canvas._plane_selected = True
+    canvas.set_mode(canvas.MODE_EDIT)
+    calls: list[str] = []
+
+    monkeypatch.setattr(canvas, "_draw_vertex_axis_projections", lambda *args, **kwargs: calls.append("projections"))
+    monkeypatch.setattr(canvas, "_draw_sheet_placements", lambda *args, **kwargs: None)
+    monkeypatch.setattr(canvas, "_draw_midpoint_handles", lambda *args, **kwargs: None)
+    monkeypatch.setattr(canvas, "_draw_vertex_handles", lambda *args, **kwargs: None)
+    monkeypatch.setattr(canvas, "_draw_axis_indicator", lambda *args, **kwargs: None)
+    monkeypatch.setattr(canvas, "_draw_edit_overlay", lambda *args, **kwargs: None)
+
+    original_draw_polygon = DrawingCanvas.__dict__["_draw_roof_plane"]
+
+    def wrapped_draw_roof_plane(painter):
+        calls.append("roof_start")
+        return original_draw_polygon(canvas, painter)
+
+    monkeypatch.setattr(canvas, "_draw_roof_plane", wrapped_draw_roof_plane)
+
+    canvas.grab()
+    QApplication.processEvents()
+
+    assert "projections" in calls
+    assert calls.index("projections") > calls.index("roof_start")
 
 
 def test_canvas_dragging_vertex_snaps_to_configured_grid_size(qtbot):
@@ -1380,6 +1517,10 @@ def test_canvas_hidden_grid_keeps_snap_and_xy_references_in_draw_cut(qtbot):
     assert overlay.active_point == Point2D(130.0, 110.0)
     assert overlay.horizontal_span.label_text == "X: 130 cm"
     assert overlay.vertical_span.label_text == "Y: 90 cm"
+    assert overlay.direct_horizontal_span is not None
+    assert overlay.direct_vertical_span is not None
+    assert overlay.direct_horizontal_span.start == Point2D(0.0, 110.0)
+    assert overlay.direct_vertical_span.start == Point2D(130.0, 200.0)
 
 
 def test_canvas_draw_outline_xy_references_use_first_point_origin_rule(qtbot):

@@ -78,6 +78,7 @@ class ProjectReport:
     company_name: str
     company_address_lines: list[str]
     company_website: str
+    sheet_length_precision: int = 1
     plane_sections: list[RoofPlaneSection] = field(default_factory=list)
     aggregated_bom_rows: list[BomRow] = field(default_factory=list)
     totals: ProjectTotals = field(
@@ -90,6 +91,29 @@ class ProjectReport:
             total_sheet_count=0,
         )
     )
+
+
+def _sheet_length_precision(project_state: ProjectState | None) -> int:
+    settings = getattr(project_state, "app_settings", None)
+    if getattr(settings, "round_sheet_length_to_int", False):
+        return 0
+    return 1
+
+
+def _format_sheet_length_cm(value_cm: float, *, precision: int) -> str:
+    return f"{value_cm:.{precision}f}"
+
+
+def _format_area_m2(value_m2: float) -> str:
+    return f"{value_m2:.2f}"
+
+
+def _format_percent(value_percent: float) -> str:
+    return f"{value_percent:.1f}"
+
+
+def _format_cost(value_cost: float) -> str:
+    return f"{value_cost:.2f}"
 
 
 def build_report(
@@ -195,6 +219,7 @@ def build_project_report(project_state: ProjectState) -> ProjectReport:
             if line.strip()
         ],
         company_website=project_state.company_data.website,
+        sheet_length_precision=_sheet_length_precision(project_state),
         plane_sections=plane_sections,
         aggregated_bom_rows=sorted(
             aggregated_rows.values(),
@@ -251,6 +276,7 @@ def build_report_html(
             if line.strip()
         ],
         company_website=project_state.company_data.website,
+        sheet_length_precision=_sheet_length_precision(project_state),
         plane_sections=[section],
         aggregated_bom_rows=list(report.bom_rows),
         totals=ProjectTotals(
@@ -266,6 +292,7 @@ def build_report_html(
         project_report,
         include_aggregated_bom=include_bom,
         title_override=title,
+        sheet_length_precision=_sheet_length_precision(project_state),
     )
 
 
@@ -277,8 +304,10 @@ def build_project_report_html(
     include_plane_sheet_tables: bool = True,
     page_break_between_planes: bool = True,
     title_override: str | None = None,
+    sheet_length_precision: int | None = None,
 ) -> str:
     title = title_override or report.title
+    resolved_sheet_length_precision = report.sheet_length_precision if sheet_length_precision is None else sheet_length_precision
     if title_suffix:
         title = f"{title} ({title_suffix})"
     company_address_html = "<br>".join(escape(line) for line in report.company_address_lines) or "-"
@@ -289,6 +318,7 @@ def build_project_report_html(
             section,
             include_sheet_table=include_plane_sheet_tables,
             page_break=(page_break_between_planes and index < len(report.plane_sections) - 1),
+            sheet_length_precision=resolved_sheet_length_precision,
         )
         for index, section in enumerate(report.plane_sections)
     ) or '<section class="plane-section"><h2>Połacie</h2><p>Brak połaci w projekcie.</p></section>'
@@ -299,7 +329,11 @@ def build_project_report_html(
             [
                 '<section class="summary-section">',
                 "<h2>Zbiorcze zestawienie materiałów</h2>",
-                _render_bom_table(report.aggregated_bom_rows, empty_label="Brak arkuszy w projekcie"),
+                _render_bom_table(
+                    report.aggregated_bom_rows,
+                    empty_label="Brak arkuszy w projekcie",
+                    sheet_length_precision=resolved_sheet_length_precision,
+                ),
                 "</section>",
             ]
         )
@@ -326,12 +360,12 @@ def build_project_report_html(
             "<div class=\"totals-card\">",
             "<h2>Podsumowanie projektu</h2>",
             "<table>",
-            f"<tr><th>Łączna powierzchnia efektywna [m2]</th><td>{report.totals.total_effective_area_m2:.3f}</td></tr>",
-            f"<tr><th>Łączne zużycie materiału [m2]</th><td>{report.totals.total_material_usage_area_m2:.3f}</td></tr>",
-            f"<tr><th>Łączny odpad [m2]</th><td>{report.totals.total_waste_area_m2:.3f}</td></tr>",
-            f"<tr><th>Łączny odpad [%]</th><td>{report.totals.total_waste_percent:.2f}</td></tr>",
+            f"<tr><th>Łączna powierzchnia efektywna [m2]</th><td>{_format_area_m2(report.totals.total_effective_area_m2)}</td></tr>",
+            f"<tr><th>Łączne zużycie materiału [m2]</th><td>{_format_area_m2(report.totals.total_material_usage_area_m2)}</td></tr>",
+            f"<tr><th>Łączny odpad [m2]</th><td>{_format_area_m2(report.totals.total_waste_area_m2)}</td></tr>",
+            f"<tr><th>Łączny odpad [%]</th><td>{_format_percent(report.totals.total_waste_percent)}</td></tr>",
             f"<tr><th>Łączna liczba arkuszy</th><td>{report.totals.total_sheet_count}</td></tr>",
-            f"<tr><th>Łączny koszt [zł]</th><td>{report.totals.total_cost:.2f}</td></tr>",
+            f"<tr><th>Łączny koszt [zł]</th><td>{_format_cost(report.totals.total_cost)}</td></tr>",
             "</table>",
             "</div>",
             "</header>",
@@ -483,6 +517,7 @@ def _render_plane_section_html(
     *,
     include_sheet_table: bool,
     page_break: bool,
+    sheet_length_precision: int,
 ) -> str:
     preview_html = "<p>Brak podglądu geometrii.</p>"
     if section.preview is not None:
@@ -494,7 +529,11 @@ def _render_plane_section_html(
             [
                 '<section class="plane-subsection">',
                 "<h3>Lista arkuszy</h3>",
-                _render_bom_table(section.sheet_rows, empty_label="Brak arkuszy dla połaci"),
+                _render_bom_table(
+                    section.sheet_rows,
+                    empty_label="Brak arkuszy dla połaci",
+                    sheet_length_precision=sheet_length_precision,
+                ),
                 "</section>",
             ]
         )
@@ -510,11 +549,11 @@ def _render_plane_section_html(
             '<section class="plane-subsection">',
             "<h3>Podsumowanie połaci</h3>",
             "<table>",
-            f"<tr><th>Powierzchnia efektywna [m2]</th><td>{section.effective_area_m2:.3f}</td></tr>",
-            f"<tr><th>Zużycie materiału [m2]</th><td>{section.material_usage_area_m2:.3f}</td></tr>",
-            f"<tr><th>Odpad [m2]</th><td>{section.waste_area_m2:.3f}</td></tr>",
-            f"<tr><th>Odpad [%]</th><td>{section.waste_percent:.2f}</td></tr>",
-            f"<tr><th>Koszt [zł]</th><td>{section.total_cost:.2f}</td></tr>",
+            f"<tr><th>Powierzchnia efektywna [m2]</th><td>{_format_area_m2(section.effective_area_m2)}</td></tr>",
+            f"<tr><th>Zużycie materiału [m2]</th><td>{_format_area_m2(section.material_usage_area_m2)}</td></tr>",
+            f"<tr><th>Odpad [m2]</th><td>{_format_area_m2(section.waste_area_m2)}</td></tr>",
+            f"<tr><th>Odpad [%]</th><td>{_format_percent(section.waste_percent)}</td></tr>",
+            f"<tr><th>Koszt [zł]</th><td>{_format_cost(section.total_cost)}</td></tr>",
             "</table>",
             "</section>",
             '<section class="plane-subsection">',
@@ -532,15 +571,15 @@ def _render_plane_section_html(
     )
 
 
-def _render_bom_table(rows: list[BomRow], *, empty_label: str) -> str:
+def _render_bom_table(rows: list[BomRow], *, empty_label: str, sheet_length_precision: int) -> str:
     body_html = "".join(
         (
             "<tr>"
             f"<td>{escape(row.material_name or row.material_id)}</td>"
             f"<td>{escape(row.material_id)}</td>"
-            f"<td>{row.sheet_length_cm:.2f}</td>"
+            f"<td>{_format_sheet_length_cm(row.sheet_length_cm, precision=sheet_length_precision)}</td>"
             f"<td>{row.quantity}</td>"
-            f"<td>{row.total_area_m2:.3f}</td>"
+            f"<td>{_format_area_m2(row.total_area_m2)}</td>"
             "</tr>"
         )
         for row in rows

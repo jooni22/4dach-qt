@@ -164,6 +164,12 @@ class SettingsDialog(QDialog):
         self._check_show_guide_lines = QCheckBox("Pokaż subtelne linie pomocnicze aktywnego segmentu")
         live_form.addRow("Linie pomocnicze:", self._check_show_guide_lines)
 
+        self._spin_ui_element_scale = QDoubleSpinBox()
+        self._spin_ui_element_scale.setRange(1.0, 3.0)
+        self._spin_ui_element_scale.setSingleStep(0.1)
+        self._spin_ui_element_scale.setDecimals(1)
+        live_form.addRow("Skala overlayów:", self._spin_ui_element_scale)
+
         self._check_show_xy_references = QCheckBox("Pokaż referencje X/Y podczas rysowania")
         self._check_show_xy_references.setToolTip(
             "Pokazuje lekkie prowadnice CAD z odległościami od aktywnego punktu odniesienia, niezależnie od widoczności siatki."
@@ -225,6 +231,7 @@ class SettingsDialog(QDialog):
         self._check_show_decimal_cm.setChecked(settings.show_decimal_cm)
         self._check_show_angle_arc.setChecked(settings.show_angle_arc)
         self._check_show_guide_lines.setChecked(settings.show_guide_lines)
+        self._spin_ui_element_scale.setValue(settings.ui_element_scale)
         self._check_close_on_rmb.setChecked(settings.close_on_rmb)
         self._check_snap_to_grid.setChecked(settings.snap_to_grid)
         self._check_snap_to_axis.setChecked(settings.snap_to_axis)
@@ -255,6 +262,7 @@ class SettingsDialog(QDialog):
             "show_decimal_cm": self._check_show_decimal_cm.isChecked(),
             "show_angle_arc": self._check_show_angle_arc.isChecked(),
             "show_guide_lines": self._check_show_guide_lines.isChecked(),
+            "ui_element_scale": self._spin_ui_element_scale.value(),
             "close_on_rmb": self._check_close_on_rmb.isChecked(),
             "snap_to_grid": self._check_snap_to_grid.isChecked(),
             "snap_to_axis": self._check_snap_to_axis.isChecked(),

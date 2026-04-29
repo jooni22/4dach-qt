@@ -141,10 +141,78 @@ def test_build_report_html_uses_supplied_report_when_project_state_has_no_saved_
     report = build_report(state, layout_result, material.id, plane.id)
     html = build_report_html(state, report, material.id, plane.id)
 
-    assert "Powierzchnia efektywna [m2]</th><td>1.500" in html
-    assert "Zużycie materiału [m2]</th><td>1.500" in html
+    assert "Powierzchnia efektywna [m2]</th><td>1.50" in html
+    assert "Zużycie materiału [m2]</th><td>1.50" in html
     assert "Długość arkusza [cm]" in html
-    assert "<td>Material 1</td><td>MAT1</td><td>150.00</td><td>2</td><td>1.500</td>" in html
+    assert "<td>Material 1</td><td>MAT1</td><td>150.0</td><td>2</td><td>1.50</td>" in html
+
+
+def test_build_report_html_formats_summary_and_bom_values():
+    material = Material(
+        id="MAT1",
+        nazwa="Material 1",
+        type="trapezowa",
+        effective_width_cm=50,
+        module_length_cm=0,
+        bottom_margin_cm=0,
+        top_margin_cm=0,
+        min_sheet_length_cm=1,
+        max_sheet_length_cm=500,
+        price_unit="m2",
+        price_value=12.5,
+    )
+    state = ProjectState(materials=[material])
+    plane = state.add_roof_plane(Polygon2D.rectangle(100, 150), selected_material_id=material.id)
+    report = build_report(
+        state,
+        generate_layout(plane, material),
+        material.id,
+        plane.id,
+    )
+    report.net_roof_area_m2 = 104.834
+    report.gross_sheet_area_m2 = 109.611
+    report.waste_area_m2 = 4.777
+    report.waste_percent = 4.36
+    report.total_cost = 1096.11
+    report.bom_rows[0].sheet_length_cm = 8.68
+    report.bom_rows[0].total_area_m2 = 34.155
+
+    html = build_report_html(state, report, material.id, plane.id)
+
+    assert "Łączna powierzchnia efektywna [m2]</th><td>104.83" in html
+    assert "Łączne zużycie materiału [m2]</th><td>109.61" in html
+    assert "Łączny odpad [m2]</th><td>4.78" in html
+    assert "Łączny odpad [%]</th><td>4.4" in html
+    assert "Łączny koszt [zł]</th><td>1096.11" in html
+    assert "<td>Material 1</td><td>MAT1</td><td>8.7</td><td>2</td><td>34.16</td>" in html
+
+
+def test_build_report_html_rounds_sheet_lengths_to_int_when_setting_enabled():
+    material = Material(
+        id="MAT1",
+        nazwa="Material 1",
+        type="trapezowa",
+        effective_width_cm=50,
+        module_length_cm=0,
+        bottom_margin_cm=0,
+        top_margin_cm=0,
+        min_sheet_length_cm=1,
+        max_sheet_length_cm=500,
+    )
+    state = ProjectState(materials=[material])
+    setattr(state.app_settings, "round_sheet_length_to_int", True)
+    plane = state.add_roof_plane(Polygon2D.rectangle(100, 150), selected_material_id=material.id)
+    report = build_report(
+        state,
+        generate_layout(plane, material),
+        material.id,
+        plane.id,
+    )
+    report.bom_rows[0].sheet_length_cm = 8.68
+
+    html = build_report_html(state, report, material.id, plane.id)
+
+    assert "<td>Material 1</td><td>MAT1</td><td>9</td><td>2</td><td>1.50</td>" in html
 
 
 def test_build_project_report_aggregates_multiple_roof_planes_and_groups_lengths():
