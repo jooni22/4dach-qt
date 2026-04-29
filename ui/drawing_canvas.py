@@ -1114,6 +1114,9 @@ class DrawingCanvas(QWidget):
                     hole for index, hole in enumerate(self.display_holes()) if index != self._dragging_hole_index
                 ]
                 issues = validate_hole_polygon(outline, self._preview_hole, sibling_holes)
+                issues = [
+                    issue for issue in issues if issue != "Wycinek musi leżeć w całości wewnątrz obrysu"
+                ]
             if issues:
                 self.outline_edit_rejected.emit("; ".join(issues))
                 self._cancel_geometry_drag()

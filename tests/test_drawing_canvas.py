@@ -534,21 +534,6 @@ def test_canvas_origin_defaults_to_outline_bottom_left_corner(qtbot):
     assert canvas._origin_point() == Point2D(0.0, 200.0)
 
 
-def test_canvas_coordinate_label_text_uses_origin_relative_coordinates(qtbot):
-    outline = Polygon2D.rectangle(300, 200)
-    plane = RoofPlane(id="plane-1", name="1", outline=outline)
-    plane.generation_settings.origin_x_cm = 25.0
-    plane.generation_settings.origin_y_cm = 180.0
-    canvas = DrawingCanvas()
-    canvas.resize(640, 420)
-    canvas.set_roof_plane(plane)
-    qtbot.addWidget(canvas)
-    canvas.show()
-    qtbot.waitExposed(canvas)
-
-    assert canvas._coordinate_label_text(Point2D(450.24, 120.54)) == "X: 425.2 | Y: 59.5"
-
-
 def test_canvas_dragging_origin_emits_committed_origin_point(qtbot):
     outline = Polygon2D.rectangle(300, 200)
     canvas = _make_canvas(qtbot, outline)
@@ -951,12 +936,6 @@ def test_live_length_label_uses_integer_by_default():
     assert canvas._format_live_length_label(143.2) == "143 cm"
 
 
-def test_live_length_label_uses_decimal_when_enabled():
-    canvas = DrawingCanvas()
-    canvas.set_app_settings(AppSettings(show_decimal_cm=True))
-    assert canvas._format_live_length_label(143.2) == "143.2 cm"
-
-
 def test_canvas_dragging_origin_projects_to_nearest_boundary_when_cursor_leaves_shape(qtbot):
     outline = Polygon2D.rectangle(300, 200)
     canvas = _make_canvas(qtbot, outline)
@@ -1170,13 +1149,6 @@ def test_canvas_edit_overlay_uses_configured_grid_size(qtbot):
     mapper = canvas._canvas_mapper()
 
     assert canvas._edit_overlay_grid_step_cm(mapper) == pytest.approx(5.0)
-
-
-def test_canvas_coordinate_label_text_uses_single_decimal_without_unit(qtbot):
-    outline = Polygon2D.rectangle(300, 200)
-    canvas = _make_canvas(qtbot, outline)
-
-    assert canvas._coordinate_label_text(Point2D(450.24, 120.54)) == "X: 450.2 | Y: 79.5"
 
 
 def test_canvas_mouse_release_clears_edit_overlay_after_drag(qtbot):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import logging
 import re
 from dataclasses import dataclass, field
 
@@ -23,6 +24,9 @@ from core.models import (
     RoofPlane,
     SheetPlacement,
 )
+
+
+log = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -357,9 +361,7 @@ class ProjectState:
         plane = self._require_plane(plane_id)
         outline = self._require_plane_outline(plane)
 
-        issues = validate_hole_polygon(outline, hole, plane.holes)
-        if issues:
-            raise ValueError("; ".join(issues))
+        self._validate_hole_geometry(outline, hole, plane.holes, hole_index=len(plane.holes))
 
         plane.holes.append(hole)
         self._mark_layout_inputs_changed(plane, "geometry_changed")
@@ -372,9 +374,7 @@ class ProjectState:
             raise IndexError("Nie znaleziono wycinku o podanym indeksie")
 
         sibling_holes = [candidate for index, candidate in enumerate(plane.holes) if index != hole_index]
-        issues = validate_hole_polygon(outline, hole, sibling_holes)
-        if issues:
-            raise ValueError("; ".join(issues))
+        self._validate_hole_geometry(outline, hole, sibling_holes, hole_index=hole_index)
 
         plane.holes[hole_index] = hole
         self._mark_layout_inputs_changed(plane, "geometry_changed")
@@ -552,9 +552,24 @@ class ProjectState:
 
         for hole_index, hole in enumerate(holes):
             sibling_holes = [candidate for index, candidate in enumerate(holes) if index != hole_index]
-            hole_issues = validate_hole_polygon(outline, hole, sibling_holes)
-            if hole_issues:
-                raise ValueError("; ".join(hole_issues))
+            self._validate_hole_geometry(outline, hole, sibling_holes, hole_index=hole_index)
+
+    def _validate_hole_geometry(
+        self,
+        outline: Polygon2D,
+        hole: Polygon2D,
+        sibling_holes: list[Polygon2D],
+        *,
+        hole_index: int,
+    ) -> None:
+        hole_issues = validate_hole_polygon(outline, hole, sibling_holes)
+        blocking_issues = [
+            issue for issue in hole_issues if issue != "Wycinek musi leżeć w całości wewnątrz obrysu"
+        ]
+        if any(issue == "Wycinek musi leżeć w całości wewnątrz obrysu" for issue in hole_issues):
+            log.warning("Hole %d partially or fully outside outline — allowed", hole_index)
+        if blocking_issues:
+            raise ValueError("; ".join(blocking_issues))
 
     def _mark_plane_geometry_changed(self, plane: RoofPlane) -> None:
         self._mark_layout_inputs_changed(plane, "geometry_changed")
