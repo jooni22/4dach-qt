@@ -276,6 +276,14 @@ class _InferenceLine:
     end: Point2D
 
 
+@dataclass(slots=True)
+class _UndoRecord:
+    operation: str
+    outline_before: Polygon2D
+    holes_before: list[Polygon2D]
+    origin_before: Point2D | None
+
+
 @dataclass(slots=True, frozen=True)
 class _SelectionSnapshot:
     kind: str | None
@@ -388,6 +396,9 @@ class DrawingCanvas(QWidget):
         self._delta_overlay_text: str | None = None
         self._delta_overlay_point: Point2D | None = None
         self._label_hit_regions: list[_PolygonLabelRect] = []
+        self._undo_stack: list[_UndoRecord] = []
+        self._redo_stack: list[_UndoRecord] = []
+        self._pending_undo_record: _UndoRecord | None = None
 
         self._render_items_cache: list | None = None
         self._render_items_cache_revision: int = -1
@@ -495,6 +506,9 @@ class DrawingCanvas(QWidget):
         self._reset_selection(select_plane=False)
         self._origin_drag_reference_point = None
         self._preview_origin_point = None
+        self._undo_stack.clear()
+        self._redo_stack.clear()
+        self._pending_undo_record = None
         self._check_selection_changed()
         self._sync_view_cursor()
         self._render_items_cache = None
@@ -521,6 +535,134 @@ class DrawingCanvas(QWidget):
         if self._preview_hole is not None and self._dragging_hole_index is not None:
             holes[self._dragging_hole_index] = self._preview_hole
         return holes
+
+    @staticmethod
+    def _copy_polygon(polygon: Polygon2D) -> Polygon2D:
+        return Polygon2D([Point2D(point.x, point.y) for point in polygon.points])
+
+    def _copy_polygons(self, polygons: list[Polygon2D]) -> list[Polygon2D]:
+        return [self._copy_polygon(polygon) for polygon in polygons]
+
+    def _current_origin_setting(self) -> Point2D | None:
+        if self.roof_plane is None:
+            return None
+        settings = self.roof_plane.generation_settings
+        if settings.origin_x_cm is None or settings.origin_y_cm is None:
+            return None
+        return Point2D(settings.origin_x_cm, settings.origin_y_cm)
+
+    def _snapshot_undo_record(self, operation: str) -> _UndoRecord | None:
+        outline = self.display_outline()
+        if self.roof_plane is None or outline is None:
+            return None
+        return _UndoRecord(
+            operation=operation,
+            outline_before=self._copy_polygon(outline),
+            holes_before=self._copy_polygons(self.display_holes()),
+            origin_before=self._current_origin_setting(),
+        )
+
+    def _push_undo(self, operation: str) -> None:
+        record = self._snapshot_undo_record(operation)
+        if record is None:
+            return
+        self._undo_stack.append(record)
+        max_depth = max(1, int(getattr(self._app_settings, "undo_stack_depth", 50)))
+        if len(self._undo_stack) > max_depth:
+            self._undo_stack.pop(0)
+        self._redo_stack.clear()
+        self._pending_undo_record = record
+
+    def _finalize_pending_undo(self) -> None:
+        self._pending_undo_record = None
+
+    def _discard_pending_undo(self) -> None:
+        if self._pending_undo_record is not None and self._undo_stack and self._undo_stack[-1] is self._pending_undo_record:
+            self._undo_stack.pop()
+        self._pending_undo_record = None
+
+    def _restore_origin_setting(self, origin: Point2D | None) -> None:
+        if self.roof_plane is None:
+            return
+        settings = self.roof_plane.generation_settings
+        if origin is None:
+            settings.origin_x_cm = None
+            settings.origin_y_cm = None
+            return
+        settings.origin_x_cm = origin.x
+        settings.origin_y_cm = origin.y
+
+    def _restore_undo_record(self, record: _UndoRecord) -> None:
+        self._cancel_inline_segment_editor()
+        self._cancel_geometry_drag(preserve_undo=True)
+        self._cancel_origin_drag(preserve_undo=True)
+        current_holes = self._copy_polygons(self.display_holes())
+        self.user_points.clear()
+        self.preview_point = None
+        self._sketch_redo_points.clear()
+        self._draw_snap_state = None
+        self._draw_inference_lines = []
+        self._snap_active = False
+        self._clear_crosshair()
+        self._preview_outline = self._copy_polygon(record.outline_before)
+        self._preview_plane_holes = self._copy_polygons(record.holes_before)
+
+        if record.operation in {"drag_hole_body", "drag_hole_vertex"}:
+            changed_index = next(
+                (
+                    index
+                    for index, restored_hole in enumerate(record.holes_before)
+                    if index >= len(current_holes) or current_holes[index] != restored_hole
+                ),
+                None,
+            )
+            if changed_index is not None:
+                self.hole_edit_committed.emit(changed_index, self._copy_polygon(record.holes_before[changed_index]))
+        elif record.operation == "drag_origin":
+            if record.origin_before is None:
+                self._restore_origin_setting(None)
+            else:
+                self.origin_edit_committed.emit(record.origin_before)
+        elif record.operation == "drag_body":
+            self.outline_edit_committed.emit(
+                CommittedOutlineEdit(
+                    outline=self._copy_polygon(record.outline_before),
+                    holes=self._copy_polygons(record.holes_before),
+                    operation="history_restore",
+                )
+            )
+        else:
+            self.outline_edit_committed.emit(self._copy_polygon(record.outline_before))
+
+        self._preview_outline = None
+        self._preview_plane_holes = None
+        self.update()
+
+    def _undo(self) -> None:
+        if self.roof_plane is None or not self._undo_stack:
+            return
+        record = self._undo_stack.pop()
+        redo_record = self._snapshot_undo_record(record.operation)
+        if redo_record is not None:
+            self._redo_stack.append(redo_record)
+            max_depth = max(1, int(getattr(self._app_settings, "undo_stack_depth", 50)))
+            if len(self._redo_stack) > max_depth:
+                self._redo_stack.pop(0)
+        self._pending_undo_record = None
+        self._restore_undo_record(record)
+
+    def _redo(self) -> None:
+        if self.roof_plane is None or not self._redo_stack:
+            return
+        record = self._redo_stack.pop()
+        undo_record = self._snapshot_undo_record(record.operation)
+        if undo_record is not None:
+            self._undo_stack.append(undo_record)
+            max_depth = max(1, int(getattr(self._app_settings, "undo_stack_depth", 50)))
+            if len(self._undo_stack) > max_depth:
+                self._undo_stack.pop(0)
+        self._pending_undo_record = None
+        self._restore_undo_record(record)
 
     def selected_cutout_index(self) -> int | None:
         return self._selected_hole_index
@@ -925,6 +1067,7 @@ class DrawingCanvas(QWidget):
         return None
 
     def _start_outline_drag(self, vertex_index: int, mapper: CanvasMapper, outline: Polygon2D) -> None:
+        self._push_undo("drag_vertex")
         self._mode = self.MODE_EDIT
         self._reset_selection(select_plane=True)
         self._active_vertex_index = vertex_index
@@ -949,6 +1092,7 @@ class DrawingCanvas(QWidget):
             self._active_edge_index = edge_index
             self._start_outline_drag(edge_index + 1, mapper, split_outline)
             return
+        self._push_undo("drag_edge")
         self._mode = self.MODE_EDIT
         self._reset_selection(select_plane=True)
         self._active_edge_index = edge_index
@@ -965,6 +1109,7 @@ class DrawingCanvas(QWidget):
         self.setCursor(Qt.CursorShape.ClosedHandCursor)
 
     def _start_plane_body_drag(self, pos: QPointF, mapper: CanvasMapper, outline: Polygon2D) -> None:
+        self._push_undo("drag_body")
         self.set_mode(self.MODE_MOVE)
         self._reset_selection(select_plane=True)
         self._dragging_plane_body = True
@@ -980,6 +1125,7 @@ class DrawingCanvas(QWidget):
         self.setCursor(Qt.CursorShape.ClosedHandCursor)
 
     def _start_hole_drag(self, hole_index: int, vertex_index: int, mapper: CanvasMapper, hole: Polygon2D) -> None:
+        self._push_undo("drag_hole_vertex")
         self._mode = self.MODE_EDIT
         self._reset_selection()
         self._selected_hole_index = hole_index
@@ -1001,6 +1147,7 @@ class DrawingCanvas(QWidget):
         self.setCursor(Qt.CursorShape.ClosedHandCursor)
 
     def _start_hole_center_drag(self, hole_index: int, pos: QPointF, mapper: CanvasMapper, hole: Polygon2D) -> None:
+        self._push_undo("drag_hole_body")
         self.set_mode(self.MODE_MOVE)
         self._reset_selection()
         self._selected_hole_index = hole_index
@@ -1117,7 +1264,8 @@ class DrawingCanvas(QWidget):
         if self._dragging_plane_body and self._preview_outline is not None:
             committed_outline = self._preview_outline
             committed_holes = list(self._preview_plane_holes or self.display_holes())
-            self._cancel_geometry_drag()
+            self._cancel_geometry_drag(preserve_undo=True)
+            self._finalize_pending_undo()
             self.update()
             self.outline_edit_committed.emit(
                 CommittedOutlineEdit(
@@ -1146,7 +1294,8 @@ class DrawingCanvas(QWidget):
                 return
             hole_index = self._dragging_hole_index
             committed_hole = self._preview_hole
-            self._cancel_geometry_drag()
+            self._cancel_geometry_drag(preserve_undo=True)
+            self._finalize_pending_undo()
             self.update()
             self.hole_edit_committed.emit(hole_index, committed_hole)
             return
@@ -1162,11 +1311,12 @@ class DrawingCanvas(QWidget):
             self.update()
             return
         committed_outline = self._preview_outline
-        self._cancel_geometry_drag()
+        self._cancel_geometry_drag(preserve_undo=True)
+        self._finalize_pending_undo()
         self.update()
         self.outline_edit_committed.emit(committed_outline)
 
-    def _cancel_geometry_drag(self) -> None:
+    def _cancel_geometry_drag(self, preserve_undo: bool = False) -> None:
         was_move_mode = self._mode == self.MODE_MOVE
         had_active_drag = any(
             value is not None
@@ -1212,6 +1362,8 @@ class DrawingCanvas(QWidget):
                 self.mode_changed.emit(self._mode)
         if self._mode in {self.MODE_VIEW, self.MODE_EDIT}:
             self._sync_view_cursor()
+        if had_active_drag and not preserve_undo:
+            self._discard_pending_undo()
 
     def _select_plane_at(self, pos: QPointF, outline: Polygon2D, mapper: CanvasMapper) -> None:
         domain_point = mapper.unmap_point(pos)
@@ -1640,6 +1792,48 @@ class DrawingCanvas(QWidget):
             return None
         return Point2D(ray_start.x + t * rx, ray_start.y + t * ry)
 
+    @staticmethod
+    def _distance_to_infinite_line(point: Point2D, anchor: Point2D, direction: Point2D) -> float:
+        return abs((point.x - anchor.x) * direction.y - (point.y - anchor.y) * direction.x)
+
+    @staticmethod
+    def _points_close(left: Point2D, right: Point2D, tolerance: float = 1e-6) -> bool:
+        return abs(left.x - right.x) <= tolerance and abs(left.y - right.y) <= tolerance
+
+    def _clip_infinite_line_to_bounds(
+        self,
+        anchor: Point2D,
+        direction: Point2D,
+        bounds: Bounds2D,
+    ) -> tuple[Point2D, Point2D] | None:
+        intersections: list[tuple[float, Point2D]] = []
+        tolerance = 1e-6
+        if abs(direction.x) > tolerance:
+            for x in (bounds.min_x, bounds.max_x):
+                t = (x - anchor.x) / direction.x
+                y = anchor.y + t * direction.y
+                if bounds.min_y - tolerance <= y <= bounds.max_y + tolerance:
+                    intersections.append((t, Point2D(x, y)))
+        if abs(direction.y) > tolerance:
+            for y in (bounds.min_y, bounds.max_y):
+                t = (y - anchor.y) / direction.y
+                x = anchor.x + t * direction.x
+                if bounds.min_x - tolerance <= x <= bounds.max_x + tolerance:
+                    intersections.append((t, Point2D(x, y)))
+        deduped: list[tuple[float, Point2D]] = []
+        for t, point in intersections:
+            if any(self._points_close(point, existing_point) for _, existing_point in deduped):
+                continue
+            deduped.append((t, point))
+        if len(deduped) < 2:
+            return None
+        deduped.sort(key=lambda item: item[0])
+        start_point = deduped[0][1]
+        end_point = deduped[-1][1]
+        if self._points_close(start_point, end_point):
+            return None
+        return start_point, end_point
+
     def _best_near_point(self, candidates: list[tuple[str, Point2D]], raw_point: Point2D, mapper: CanvasMapper) -> _DrawSnapState | None:
         radius = self._snap_radius_cm(mapper)
         best: tuple[float, _DrawSnapState] | None = None
@@ -1749,6 +1943,26 @@ class DrawingCanvas(QWidget):
                 uy = dy / length
                 span = max(bounds.width, bounds.height) * 2.0
                 lines.append(_InferenceLine("continuation", Point2D(start.x - ux * span, start.y - uy * span), Point2D(start.x + ux * span, start.y + uy * span)))
+        for edge_start, edge_end in self._draw_target_edges():
+            dx = edge_end.x - edge_start.x
+            dy = edge_end.y - edge_start.y
+            length = hypot(dx, dy)
+            if length <= 1e-6:
+                continue
+            direction = Point2D(dx / length, dy / length)
+            if self._distance_to_infinite_line(raw_point, edge_start, direction) > radius:
+                continue
+            clipped = self._clip_infinite_line_to_bounds(edge_start, direction, bounds)
+            if clipped is None:
+                continue
+            if any(
+                line.kind == "edge_extension"
+                and self._points_close(line.start, clipped[0])
+                and self._points_close(line.end, clipped[1])
+                for line in lines
+            ):
+                continue
+            lines.append(_InferenceLine("edge_extension", clipped[0], clipped[1]))
         return lines
 
     def _resolve_draw_preview_endpoint(
@@ -1900,7 +2114,7 @@ class DrawingCanvas(QWidget):
         return 0.0
 
     def _format_live_length_label(self, length_cm: float) -> str:
-        return f"{int(round(length_cm))} cm"
+        return f"{self._format_length(length_cm)} cm"
 
     def _format_live_angle_label(self, angle_deg: float) -> str:
         rounded = int(round(angle_deg))
@@ -2102,7 +2316,9 @@ class DrawingCanvas(QWidget):
             scale = new_length / current_length
             new_end = Point2D(start.x + dx * scale, start.y + dy * scale)
             updated = replace_polygon_point(outline, (editor.edge_index + 1) % len(outline.points), new_end)
+            self._push_undo("label_edit")
             self._cancel_inline_segment_editor()
+            self._finalize_pending_undo()
             self.outline_edit_committed.emit(updated)
             return
         if editor.kind == "angle" and editor.vertex_index is not None:
@@ -2125,7 +2341,9 @@ class DrawingCanvas(QWidget):
                 current.y + math.sin(target_angle) * current_next_distance,
             )
             updated = replace_polygon_point(outline, next_index, moved_next)
+            self._push_undo("label_edit")
             self._cancel_inline_segment_editor()
+            self._finalize_pending_undo()
             self.outline_edit_committed.emit(updated)
 
     def _typed_segment_input_target(self) -> str:
@@ -2224,6 +2442,7 @@ class DrawingCanvas(QWidget):
         return self._distance(pos, mapped_origin) <= MIDPOINT_HANDLE_RADIUS + 6
 
     def _start_origin_drag(self, mapper: CanvasMapper) -> None:
+        self._push_undo("drag_origin")
         self._drag_mapper = mapper
         self._dragging_origin = True
         self._origin_drag_reference_point = self._origin_point()
@@ -2263,15 +2482,18 @@ class DrawingCanvas(QWidget):
         self._drag_mapper = None
         self._origin_drag_reference_point = None
         self._preview_origin_point = None
+        self._finalize_pending_undo()
         self._sync_view_cursor()
         self.update()
         self.origin_edit_committed.emit(committed_origin)
 
-    def _cancel_origin_drag(self) -> None:
+    def _cancel_origin_drag(self, preserve_undo: bool = False) -> None:
         self._dragging_origin = False
         self._drag_mapper = None
         self._origin_drag_reference_point = None
         self._preview_origin_point = None
+        if not preserve_undo:
+            self._discard_pending_undo()
         self._sync_view_cursor()
         self.update()
 
@@ -2353,9 +2575,10 @@ class DrawingCanvas(QWidget):
     def _distance(left: QPointF, right: QPointF) -> float:
         return hypot(left.x() - right.x(), left.y() - right.y())
 
-    @staticmethod
-    def _format_length(length_cm: float) -> str:
-        return f"{round(length_cm):.0f}"
+    def _format_length(self, length_cm: float) -> str:
+        if self._app_settings.show_decimal_cm:
+            return f"{length_cm:.1f}"
+        return f"{int(round(length_cm))}"
 
     @staticmethod
     def _format_coordinate_value(value_cm: float) -> str:
@@ -2625,6 +2848,14 @@ class DrawingCanvas(QWidget):
                 self.update()
                 return
         elif self._mode in {self.MODE_VIEW, self.MODE_EDIT, self.MODE_MOVE}:
+            if event.matches(QKeySequence.StandardKey.Undo):
+                self._undo()
+                return
+            if event.matches(QKeySequence.StandardKey.Redo) or (
+                event.key() == Qt.Key.Key_Y and event.modifiers() & Qt.KeyboardModifier.ControlModifier
+            ):
+                self._redo()
+                return
             if event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
                 if self._plane_selected or self._selected_hole_index is not None:
                     self.delete_requested.emit()
@@ -2763,9 +2994,14 @@ class DrawingCanvas(QWidget):
         if mapper is None:
             return
         painter.save()
-        inference_color = QColor(150, 205, 255, 105)
-        painter.setPen(QPen(inference_color, 1.0, Qt.PenStyle.DotLine))
         for line in self._draw_inference_lines:
+            if line.kind == "edge_extension":
+                inference_color = QColor(255, 196, 120, 110)
+            elif line.kind == "continuation":
+                inference_color = QColor(184, 220, 255, 120)
+            else:
+                inference_color = QColor(150, 205, 255, 105)
+            painter.setPen(QPen(inference_color, 1.0, Qt.PenStyle.DotLine))
             painter.drawLine(mapper.map_point(line.start), mapper.map_point(line.end))
         painter.restore()
 
@@ -3505,7 +3741,9 @@ class DrawingCanvas(QWidget):
             radius = MIDPOINT_HANDLE_RADIUS + (2 if is_active else 0)
             painter.drawEllipse(mapped_center, radius, radius)
 
-        if self._show_sheet_placements and self._app_settings.show_edge_length_labels and (self._plane_selected or self._app_settings.label_always_visible):
+        if (self._app_settings.show_edge_length_labels or self._app_settings.label_always_visible) and (
+            self._plane_selected or self._app_settings.label_always_visible
+        ):
             self._draw_edge_measurements(painter, mapper, outline, text_color, outline_color)
         if self._app_settings.show_vertex_angle_labels and (self._plane_selected or self._app_settings.label_always_visible):
             self._draw_angle_measurements(painter, mapper, outline, text_color)
@@ -3590,8 +3828,7 @@ class DrawingCanvas(QWidget):
             painter.drawRoundedRect(label_rect, 4.0, 4.0)
 
             length_cm = segment_length(start, end)
-            length_int = int(round(length_cm))
-            painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, str(length_int))
+            painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, self._format_length(length_cm))
 
     def _draw_angle_measurements(self, painter: QPainter, mapper: CanvasMapper, polygon: Polygon2D, text_color: QColor) -> None:
         regions = self._angle_label_regions(mapper, polygon, None)

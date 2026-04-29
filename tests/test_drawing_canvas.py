@@ -88,6 +88,27 @@ def _color_delta(left, right) -> int:
     )
 
 
+def _wire_canvas_commits_to_plane(canvas: DrawingCanvas, plane: RoofPlane) -> None:
+    def apply_outline(edit: Polygon2D | CommittedOutlineEdit) -> None:
+        if isinstance(edit, CommittedOutlineEdit):
+            plane.outline = edit.outline
+            if edit.holes is not None:
+                plane.holes = list(edit.holes)
+            return
+        plane.outline = edit
+
+    def apply_hole(index: int, hole: Polygon2D) -> None:
+        plane.holes[index] = hole
+
+    def apply_origin(origin: Point2D) -> None:
+        plane.generation_settings.origin_x_cm = origin.x
+        plane.generation_settings.origin_y_cm = origin.y
+
+    canvas.outline_edit_committed.connect(apply_outline)
+    canvas.hole_edit_committed.connect(apply_hole)
+    canvas.origin_edit_committed.connect(apply_origin)
+
+
 def test_canvas_selects_vertex_handle_on_mouse_press(qtbot):
     outline = Polygon2D.rectangle(300, 200)
     canvas = _make_canvas(qtbot, outline)
@@ -947,6 +968,44 @@ def test_live_length_label_uses_integer_by_default():
     assert canvas._format_live_length_label(143.2) == "143 cm"
 
 
+def test_live_length_label_uses_decimal_when_enabled(qtbot):
+    canvas = DrawingCanvas()
+    qtbot.addWidget(canvas)
+    canvas.set_app_settings(AppSettings(show_decimal_cm=True))
+
+    assert canvas._format_live_length_label(143.2) == "143.2 cm"
+
+
+def test_canvas_label_always_visible_overrides_edge_label_visibility(qtbot, monkeypatch):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+    canvas.set_app_settings(AppSettings(show_edge_length_labels=False, label_always_visible=True))
+    calls: list[str] = []
+
+    monkeypatch.setattr(canvas, "_draw_edge_measurements", lambda *args, **kwargs: calls.append("edges"))
+
+    canvas.grab()
+    QApplication.processEvents()
+
+    assert calls == ["edges"]
+
+
+def test_canvas_builds_edge_extension_inference_for_existing_polygon_edge(qtbot):
+    outline = Polygon2D([
+        Point2D(0.0, 0.0),
+        Point2D(120.0, 120.0),
+        Point2D(0.0, 180.0),
+    ])
+    canvas = _make_canvas(qtbot, outline)
+    canvas.set_mode(DrawingCanvas.MODE_DRAW_OUTLINE)
+    mapper = canvas._active_mapper()
+    raw_point = Point2D(180.0, 180.0)
+
+    lines = canvas._build_draw_inferences(raw_point, None, mapper)
+
+    assert any(line.kind == "edge_extension" for line in lines)
+
+
 def test_canvas_dragging_origin_projects_to_nearest_boundary_when_cursor_leaves_shape(qtbot):
     outline = Polygon2D.rectangle(300, 200)
     canvas = _make_canvas(qtbot, outline)
@@ -984,6 +1043,90 @@ def test_canvas_dragging_origin_label_uses_previous_origin_as_reference(qtbot):
 
     label = canvas._origin_drag_label_text()
     assert "55" in label and "30" in label, f"Unexpected label: {label!r}"
+
+
+def test_canvas_geometry_undo_and_redo_restore_vertex_drag(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    plane = RoofPlane(id="plane-1", name="1", outline=outline)
+    canvas = DrawingCanvas()
+    canvas.resize(640, 420)
+    canvas.set_roof_plane(plane)
+    _wire_canvas_commits_to_plane(canvas, plane)
+    qtbot.addWidget(canvas)
+    canvas.show()
+    qtbot.waitExposed(canvas)
+
+    start = _point_on_canvas(canvas, outline.points[2])
+    target_domain = Point2D(240.0, 180.0)
+    target = _point_on_canvas(canvas, target_domain)
+
+    QTest.mousePress(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, start)
+    QTest.mouseMove(canvas, target)
+    QTest.mouseRelease(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, target)
+
+    assert plane.outline.points[2].x == pytest.approx(target_domain.x, abs=1.5)
+    assert plane.outline.points[2].y == pytest.approx(target_domain.y, abs=1.5)
+
+    QTest.keyClick(canvas, Qt.Key.Key_Z, Qt.KeyboardModifier.ControlModifier)
+
+    assert plane.outline.points[2] == outline.points[2]
+
+    QTest.keyClick(canvas, Qt.Key.Key_Z, Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier)
+
+    assert plane.outline.points[2].x == pytest.approx(target_domain.x, abs=1.5)
+    assert plane.outline.points[2].y == pytest.approx(target_domain.y, abs=1.5)
+
+
+def test_canvas_inline_length_edit_is_undoable(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    plane = RoofPlane(id="plane-1", name="1", outline=outline)
+    canvas = DrawingCanvas()
+    canvas.resize(640, 420)
+    canvas.set_roof_plane(plane)
+    _wire_canvas_commits_to_plane(canvas, plane)
+    qtbot.addWidget(canvas)
+    canvas.show()
+    qtbot.waitExposed(canvas)
+
+    mapper = canvas._canvas_mapper()
+    canvas._start_post_draw_length_editor(0, plane.outline, mapper)
+    canvas._inline_segment_editor.length_edit.setText("350")
+    canvas._confirm_post_draw_editor()
+
+    assert plane.outline.points[1].x == pytest.approx(350.0, abs=0.1)
+
+    QTest.keyClick(canvas, Qt.Key.Key_Z, Qt.KeyboardModifier.ControlModifier)
+
+    assert plane.outline.points[1] == outline.points[1]
+
+
+def test_canvas_set_roof_plane_clears_geometry_undo_and_redo_stacks(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    plane = RoofPlane(id="plane-1", name="1", outline=outline)
+    canvas = DrawingCanvas()
+    canvas.resize(640, 420)
+    canvas.set_roof_plane(plane)
+    _wire_canvas_commits_to_plane(canvas, plane)
+    qtbot.addWidget(canvas)
+    canvas.show()
+    qtbot.waitExposed(canvas)
+
+    start = _point_on_canvas(canvas, outline.points[1])
+    target_domain = Point2D(260.0, 30.0)
+    target = _point_on_canvas(canvas, target_domain)
+
+    QTest.mousePress(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, start)
+    QTest.mouseMove(canvas, target)
+    QTest.mouseRelease(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, target)
+    QTest.keyClick(canvas, Qt.Key.Key_Z, Qt.KeyboardModifier.ControlModifier)
+
+    assert plane.outline.points[1] == outline.points[1]
+
+    replacement = RoofPlane(id="plane-2", name="2", outline=Polygon2D.rectangle(120, 80))
+    canvas.set_roof_plane(replacement)
+
+    assert getattr(canvas, "_undo_stack", None) in (None, [])
+    assert getattr(canvas, "_redo_stack", None) in (None, [])
 
 
 def test_canvas_draws_origin_marker_after_edit_handles(qtbot, monkeypatch):
