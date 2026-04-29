@@ -224,20 +224,28 @@ Material = MaterialDefinition
 class GenerationSettings:
     layout_origin: LayoutOrigin = "left"
     base_line_y_cm: float | None = None
+    origin_x_cm: float | None = None
+    origin_y_cm: float | None = None
 
     @classmethod
     def from_dict(cls, data: dict | None) -> "GenerationSettings":
         payload = data or {}
         base_line_y_cm = payload.get("base_line_y_cm")
+        origin_x_cm = payload.get("origin_x_cm")
+        origin_y_cm = payload.get("origin_y_cm")
         return cls(
             layout_origin=payload.get("layout_origin", "left"),
             base_line_y_cm=None if base_line_y_cm in (None, "") else float(base_line_y_cm),
+            origin_x_cm=None if origin_x_cm in (None, "") else float(origin_x_cm),
+            origin_y_cm=None if origin_y_cm in (None, "") else float(origin_y_cm),
         )
 
     def to_dict(self) -> dict:
         return {
             "layout_origin": self.layout_origin,
             "base_line_y_cm": self.base_line_y_cm,
+            "origin_x_cm": self.origin_x_cm,
+            "origin_y_cm": self.origin_y_cm,
         }
 
 

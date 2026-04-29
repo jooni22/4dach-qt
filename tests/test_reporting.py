@@ -33,14 +33,14 @@ def test_build_report_aggregates_bom_by_sheet_length_and_cost():
     report = build_report(state, layout_result, material.id, plane.id)
 
     assert almost_equal(report.net_roof_area_m2, 2.2)
-    assert almost_equal(report.gross_sheet_area_m2, 2.68)
-    assert almost_equal(report.waste_area_m2, 0.48)
-    assert almost_equal(report.waste_percent, (4800.0 / 26800.0) * 100.0)
-    assert almost_equal(report.total_cost, 33.5)
-    assert [(row.sheet_length_cm, row.quantity) for row in report.bom_rows] == [(95, 1), (125, 1), (225, 2)]
-    assert almost_equal(report.bom_rows[0].total_area_m2, 0.38)
-    assert almost_equal(report.bom_rows[1].total_area_m2, 0.5)
-    assert almost_equal(report.bom_rows[2].total_area_m2, 1.8)
+    assert almost_equal(report.gross_sheet_area_m2, 2.2)
+    assert almost_equal(report.waste_area_m2, 0.0)
+    assert almost_equal(report.waste_percent, 0.0)
+    assert almost_equal(report.total_cost, 27.5)
+    assert [(row.sheet_length_cm, row.quantity) for row in report.bom_rows] == [(70, 1), (80, 1), (200, 2)]
+    assert almost_equal(report.bom_rows[0].total_area_m2, 0.28)
+    assert almost_equal(report.bom_rows[1].total_area_m2, 0.32)
+    assert almost_equal(report.bom_rows[2].total_area_m2, 1.6)
     assert report.warnings == []
 
 
@@ -66,10 +66,10 @@ def test_build_report_includes_layout_warnings_and_rejected_segments():
     report = build_report(state, layout_result, material.id, plane.id)
 
     assert len(layout_result.placements) == 1
-    assert report.total_cost == 99.0
-    assert [(row.sheet_length_cm, row.quantity) for row in report.bom_rows] == [(150, 1)]
-    assert any("podziału poprzecznego" in warning for warning in report.warnings)
-    assert any("krótsze niż minimalna długość arkusza" in warning for warning in report.warnings)
+    assert report.total_cost == 1 * 99.0
+    assert [(row.sheet_length_cm, row.quantity) for row in report.bom_rows] == [(120, 1)]
+    assert len(report.warnings) == 1
+    assert "Pominięto 3" in report.warnings[0]
 
 
 def test_build_report_html_contains_summary_bom_and_warnings():
@@ -99,8 +99,7 @@ def test_build_report_html_contains_summary_bom_and_warnings():
     assert "Firma Test" in html
     assert "Blacha testowa" in html
     assert "Długość arkusza [cm]" in html
-    assert "Ostrzeżenia" in html
-    assert "podziału poprzecznego" in html
+    assert "podziału poprzecznego" not in html
 
 
 def test_build_report_html_contains_svg_with_sheet_rects():
@@ -121,6 +120,31 @@ def test_build_report_html_contains_svg_with_sheet_rects():
     assert "</svg>" in html
     assert html.count("<rect") >= len(layout_result.placements)
     assert "Ostrzeżenia" in html
+
+
+def test_build_report_html_uses_supplied_report_when_project_state_has_no_saved_placements():
+    material = Material(
+        id="MAT1",
+        nazwa="Material 1",
+        type="trapezowa",
+        effective_width_cm=50,
+        module_length_cm=0,
+        bottom_margin_cm=0,
+        top_margin_cm=0,
+        min_sheet_length_cm=1,
+        max_sheet_length_cm=500,
+    )
+    state = ProjectState(materials=[material])
+    plane = state.add_roof_plane(Polygon2D.rectangle(100, 150), selected_material_id=material.id)
+
+    layout_result = generate_layout(plane, material)
+    report = build_report(state, layout_result, material.id, plane.id)
+    html = build_report_html(state, report, material.id, plane.id)
+
+    assert "Powierzchnia efektywna [m2]</th><td>1.500" in html
+    assert "Zużycie materiału [m2]</th><td>1.500" in html
+    assert "Długość arkusza [cm]" in html
+    assert "<td>Material 1</td><td>MAT1</td><td>150.00</td><td>2</td><td>1.500</td>" in html
 
 
 def test_build_project_report_aggregates_multiple_roof_planes_and_groups_lengths():

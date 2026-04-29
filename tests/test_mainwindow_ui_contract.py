@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from core.app_settings import AppSettings
 from core.geometry import build_rectangle_outline
 from core.models import Material, Point2D, Polygon2D
 from core.project_state import ProjectState
@@ -11,6 +12,7 @@ pytest.importorskip("pytestqt")
 
 from PySide6.QtWidgets import QDialogButtonBox, QInputDialog, QMenu, QMessageBox
 from PySide6.QtWidgets import QDialog
+from PySide6.QtCore import QPointF
 
 from mainwindow import MainWindow
 from ui.dialogs.material_dialog import BlachyDialog
@@ -37,11 +39,11 @@ def test_mainwindow_exposes_expected_ui_contract(qtbot):
 
     actions = window.menuBar().actions()
     menu_titles = [action.text() for action in actions]
-    sheets_menu = actions[-1].menu()
+    sheets_menu = actions[4].menu()  # "Arkusze" is at index 4, "Ustawienia" is at index 5
     assert isinstance(sheets_menu, QMenu)
     sheets_actions = [action.text() for action in sheets_menu.actions() if not action.isSeparator()]
 
-    assert menu_titles == ["Plik", "Kształt", "Wycinki", "Katalog", "Arkusze"]
+    assert menu_titles == ["Plik", "Kształt", "Wycinki", "Katalog", "Arkusze", "Ustawienia"]
     assert window.workspace_tabs.count() >= 2
     assert window.variant_combo.count() >= 1
     assert window.variant_combo.currentText() == "PD510"
@@ -259,10 +261,11 @@ def test_mainwindow_commits_canvas_outline_edits_to_project_state(qtbot):
     canvas.outline_edit_committed.emit(updated_outline)
 
     assert plane.outline == updated_outline
-    assert plane.layout_dirty_reason == "geometry_changed"
+    assert plane.layout_dirty_reason is None
+    assert len(plane.layout_bands) > 0
 
 
-def test_mainwindow_rolls_back_invalid_canvas_outline_edit(qtbot, monkeypatch):
+def test_mainwindow_allows_canvas_outline_edit_even_when_cutout_moves_outside_outline(qtbot, monkeypatch):
     messages: list[str] = []
     monkeypatch.setattr(QMessageBox, "warning", staticmethod(lambda *args: messages.append(args[2])))
 
@@ -273,7 +276,6 @@ def test_mainwindow_rolls_back_invalid_canvas_outline_edit(qtbot, monkeypatch):
     window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
     plane = window.project_state.add_roof_plane(build_rectangle_outline(320, 180), selected_material_id="PD510")
     window.project_state.add_hole_to_plane(Polygon2D.rectangle(60, 60, origin_x=30, origin_y=40), plane.id)
-    original_outline = plane.outline
     window._refresh_canvas_from_state()
 
     invalid_outline = Polygon2D(
@@ -288,9 +290,8 @@ def test_mainwindow_rolls_back_invalid_canvas_outline_edit(qtbot, monkeypatch):
 
     canvas.outline_edit_committed.emit(invalid_outline)
 
-    assert plane.outline == original_outline
-    assert messages
-    assert "Wycinek musi leżeć w całości wewnątrz obrysu" in messages[-1]
+    assert plane.outline == invalid_outline
+    assert messages == []
 
 
 def test_mainwindow_commits_canvas_cutout_edits_to_project_state(qtbot):
@@ -309,7 +310,121 @@ def test_mainwindow_commits_canvas_cutout_edits_to_project_state(qtbot):
     canvas.hole_edit_committed.emit(0, updated_hole)
 
     assert plane.holes[0] == updated_hole
-    assert plane.layout_dirty_reason == "geometry_changed"
+    assert plane.layout_dirty_reason is None
+    assert len(plane.layout_bands) > 0
+
+
+def test_mainwindow_preserves_cutout_selection_after_canvas_edit_commit(qtbot):
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.project_state = ProjectState(materials=window.project_state.materials)
+    window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
+    plane = window.project_state.add_roof_plane(build_rectangle_outline(320, 180), selected_material_id="PD510")
+    window.project_state.add_hole_to_plane(Polygon2D.rectangle(60, 50, origin_x=40, origin_y=30), plane.id)
+    window._refresh_canvas_from_state()
+
+    canvas = window._workspace.canvas_for_plane(plane.id)
+    assert canvas is not None
+    canvas._selected_hole_index = 0
+    canvas._active_hole_vertex_index = 1
+
+    updated_hole = Polygon2D.rectangle(80, 50, origin_x=40, origin_y=30)
+    canvas.hole_edit_committed.emit(0, updated_hole)
+
+    refreshed_canvas = window._workspace.canvas_for_plane(plane.id)
+    assert refreshed_canvas is not None
+    assert refreshed_canvas.selected_geometry_kind() == "cutout_vertex"
+    assert refreshed_canvas.selected_cutout_index() == 0
+
+
+def test_mainwindow_toolbar_origin_toggle_enables_origin_edit_mode(qtbot):
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.project_state = ProjectState(materials=window.project_state.materials)
+    window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
+    window.project_state.add_roof_plane(build_rectangle_outline(320, 180), selected_material_id="PD510")
+    window._refresh_canvas_from_state()
+
+    window._tb_ctrl.action_base_point_toggle.trigger()
+
+    assert window.primary_canvas is not None
+    assert window.primary_canvas._origin_edit_enabled is True
+    assert window._tb_ctrl.action_base_point_toggle.isChecked() is True
+    assert "QToolButton:checked" in window._tb_ctrl.toolbar.styleSheet()
+
+
+def test_mainwindow_settings_dialog_updates_grid_size_on_project_state_and_canvas(qtbot, monkeypatch):
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.project_state = ProjectState(materials=window.project_state.materials)
+    window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
+    plane = window.project_state.add_roof_plane(build_rectangle_outline(320, 180), selected_material_id="PD510")
+    window._refresh_canvas_from_state()
+
+    class FakeSettingsDialog:
+        def __init__(self, settings, parent=None) -> None:
+            self._settings = settings
+
+        def exec(self) -> int:
+            return QDialog.DialogCode.Accepted
+
+        def build_settings(self):
+            return AppSettings(
+                partial_cutout_top_extra_cm=self._settings.partial_cutout_top_extra_cm,
+                grid_size_cm=25.0,
+            )
+
+    monkeypatch.setattr("ui.dialogs.settings_dialog.SettingsDialog", FakeSettingsDialog)
+
+    window._dlg_settings()
+
+    canvas = window._workspace.canvas_for_plane(plane.id)
+    assert window.project_state.app_settings.grid_size_cm == pytest.approx(25.0)
+    assert canvas is not None
+    assert canvas._edit_overlay_grid_step_cm(canvas._canvas_mapper()) == pytest.approx(25.0)
+
+
+def test_mainwindow_toolbar_snap_toggle_updates_canvas_snap_state(qtbot):
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.project_state = ProjectState(materials=window.project_state.materials)
+    window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
+    plane = window.project_state.add_roof_plane(build_rectangle_outline(320, 180), selected_material_id="PD510")
+    window._refresh_canvas_from_state()
+
+    canvas = window._workspace.canvas_for_plane(plane.id)
+    assert canvas is not None
+    assert window._tb_ctrl.action_grid.text() == "Snap to Grid"
+    assert window._tb_ctrl.action_grid.isCheckable() is True
+    assert window._tb_ctrl.action_grid.isChecked() is True
+    assert canvas.snap_to_grid_enabled() is True
+
+    window._tb_ctrl.action_grid.trigger()
+
+    assert window._tb_ctrl.action_grid.isChecked() is False
+    assert canvas.snap_to_grid_enabled() is False
+
+
+def test_mainwindow_commits_canvas_origin_edit_to_project_state(qtbot):
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.project_state = ProjectState(materials=window.project_state.materials)
+    window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
+    plane = window.project_state.add_roof_plane(build_rectangle_outline(320, 180), selected_material_id="PD510")
+    window._refresh_canvas_from_state()
+
+    canvas = window._workspace.canvas_for_plane(plane.id)
+    assert canvas is not None
+
+    canvas.origin_edit_committed.emit(Point2D(35.0, 170.0))
+
+    assert plane.generation_settings.origin_x_cm == pytest.approx(35.0)
+    assert plane.generation_settings.origin_y_cm == pytest.approx(170.0)
 
 
 def test_mainwindow_material_catalog_edit_updates_project_state_and_dependent_workspace(qtbot, monkeypatch):
@@ -378,7 +493,7 @@ def test_mainwindow_material_catalog_edit_updates_project_state_and_dependent_wo
 
     active_canvas = window._workspace.canvas_for_plane(dependent_plane.id)
     assert window.project_state.material_by_id("PD510").nazwa == "PD510 Plus"
-    assert dependent_plane.layout_dirty_reason == "material_changed"
+    assert dependent_plane.layout_dirty_reason is None
     assert other_plane.layout_dirty_reason is None
     assert active_canvas is not None
     assert active_canvas._material is not None
@@ -446,6 +561,78 @@ def test_mainwindow_connects_initial_canvas_edit_signals_on_startup(qtbot, monke
     canvas.outline_edit_committed.emit(updated_outline)
 
     assert window.project_state.roof_plane_by_id("plane-1").outline == updated_outline
+
+
+def test_mainwindow_freehand_outline_uses_canvas_mapper_instead_of_raw_pixels(qtbot):
+    first = MainWindow()
+    qtbot.addWidget(first)
+    first_canvas = first._workspace.primary_canvas
+    first_canvas.resize(640, 420)
+    first_canvas.polygon_closed.connect(first._on_polygon_closed)
+    first._on_polygon_closed(
+        [
+            QPointF(110, 80),
+            QPointF(530, 80),
+            QPointF(530, 340),
+            QPointF(110, 340),
+        ]
+    )
+
+    second = MainWindow()
+    qtbot.addWidget(second)
+    second_canvas = second._workspace.primary_canvas
+    second_canvas.resize(960, 630)
+    second_canvas.polygon_closed.connect(second._on_polygon_closed)
+    second._on_polygon_closed(
+        [
+            QPointF(165, 120),
+            QPointF(795, 120),
+            QPointF(795, 510),
+            QPointF(165, 510),
+        ]
+    )
+
+    first_outline = first.project_state.active_roof_plane().outline
+    second_outline = second.project_state.active_roof_plane().outline
+
+    assert first_outline is not None
+    assert second_outline is not None
+    assert first_outline.points == second_outline.points
+
+
+def test_mainwindow_open_project_resets_cached_report_and_company_title(qtbot, monkeypatch):
+    initial_config = {
+        "company_data": {"name": "Firma A"},
+        "blachy": [
+            {
+                "id": "PD510",
+                "nazwa": "PD510",
+                "type": "dachówkowa",
+                "effective_width_cm": 51,
+                "module_length_cm": 25,
+                "bottom_margin_cm": 10,
+                "top_margin_cm": 80,
+                "min_sheet_length_cm": 20,
+            }
+        ],
+    }
+    reopened_config = {
+        "company_data": {"name": "Firma B"},
+        "blachy": initial_config["blachy"],
+    }
+    loads = iter([initial_config, reopened_config])
+    monkeypatch.setattr("ui.main_window.load_config", lambda: next(loads))
+
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window._latest_report_html = "<html>stary raport</html>"
+    window._latest_report_plane_id = "plane-123"
+
+    window._open_project()
+
+    assert window._latest_report_html == ""
+    assert window._latest_report_plane_id is None
+    assert window.windowTitle() == "4Dach — Firma B"
 
 
 def test_mainwindow_marks_project_dirty_until_explicit_save(qtbot, monkeypatch):

@@ -12,14 +12,14 @@ from PySide6.QtCore import QSettings, QRectF, QSize, Qt, QUrl
 from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QDialog, QInputDialog, QMainWindow,
-    QMenu, QMessageBox, QSizePolicy, QToolButton, QVBoxLayout, QWidget,
+    QMenu, QMessageBox, QSizePolicy, QToolButton, QVBoxLayout, QWidget, QLabel,
 )
 from PySide6.QtGui import QDesktopServices
 
 from app_icons import build_icon
 from persistence import load_config, save_config
 from core.canvas_mapper import CanvasMapper
-from core.models import Point2D, Polygon2D, SheetPlacement
+from core.models import Bounds2D, Point2D, Polygon2D, SheetPlacement
 from core.project_state import ProjectState
 from core.reporting import build_project_report, build_project_report_html
 from core.geometry import make_rectangle, make_trapezoid, make_triangle
@@ -58,6 +58,10 @@ class MainWindow(QMainWindow):
         self._unsaved_plane_ids: set[str] = set()
         self._has_unsaved_changes = False
         self._base_window_title = ""
+        self._snap_to_grid_enabled = True
+
+        self._status_label = QLabel("")
+        self.statusBar().addPermanentWidget(self._status_label)
 
         self._build_chrome()
         self._workspace = WorkspaceController(
@@ -151,13 +155,16 @@ class MainWindow(QMainWindow):
         kat.addAction(act("Dane firmy...", None, self._dlg_firma))
 
         ark = mb.addMenu("Arkusze")
-        ark.addAction(act("Dodaj arkusz", "Insert", self._dlg_add_sheet))
-        ark.addAction(act("Usuń arkusz", "Delete", self._dlg_del_sheet))
-        ark.addAction(act("Podgląd arkuszy", "Ctrl+A", self._dlg_sheet_preview))
-        ark.addAction(act("Aktywne arkusze", None, self._dlg_active_sheets))
+        # ark.addAction(act("Dodaj arkusz", "Insert", self._dlg_add_sheet))
+        # ark.addAction(act("Usuń arkusz", "Delete", self._dlg_del_sheet))
+        # ark.addAction(act("Podgląd arkuszy", "Ctrl+A", self._dlg_sheet_preview))
+        # ark.addAction(act("Aktywne arkusze", None, self._dlg_active_sheets))
         ark.addAction(act("Przelicz aktywną połać", "F5", self._recalculate))
         ark.addSeparator()
         ark.addAction(act("Zmień rodzaj blachy", None, self._dlg_change_material))
+
+        ust = mb.addMenu("Ustawienia")
+        ust.addAction(act("Ustawienia aplikacji\u2026", None, self._dlg_settings))
 
     def _build_toolbar(self) -> None:
         from ui.toolbar import ToolbarController
@@ -165,8 +172,12 @@ class MainWindow(QMainWindow):
         self._tb_ctrl.variant_combo.currentTextChanged.connect(self._on_material_changed)
         self._tb_ctrl.action_save_project.triggered.connect(self._save_project)
         self._tb_ctrl.action_undo.triggered.connect(self._undo)
+        self._tb_ctrl.action_trash.triggered.connect(self._delete_selected_geometry)
+        self._tb_ctrl.action_trash.setEnabled(False)
         self._tb_ctrl.action_grid.triggered.connect(self._on_grid_toggled)
+        self._tb_ctrl.action_grid.setChecked(self._snap_to_grid_enabled)
         self._tb_ctrl.action_module_count.triggered.connect(self._on_module_count_toggled)
+        self._tb_ctrl.action_base_point_toggle.triggered.connect(self._on_origin_mode_toggled)
         self._tb_ctrl.action_from_right.triggered.connect(self._on_from_right_toggled)
         self._tb_ctrl.action_from_base.triggered.connect(self._on_from_base_toggled)
         self._tb_ctrl.action_overlay_sheet.triggered.connect(self._recalculate)
@@ -218,6 +229,14 @@ class MainWindow(QMainWindow):
 
     def _plane_snapshot_signatures(self, payload: dict) -> dict[str, str]:
         planes = payload.get("project_state", {}).get("roof_planes", [])
+        if isinstance(planes, dict):
+            items = planes.get("items", {})
+            order = planes.get("order", list(items.keys()))
+            return {
+                plane_id: json.dumps(items[plane_id], ensure_ascii=False, sort_keys=True)
+                for plane_id in order
+                if plane_id in items
+            }
         return {
             plane_payload["id"]: json.dumps(plane_payload, ensure_ascii=False, sort_keys=True)
             for plane_payload in planes
@@ -303,6 +322,10 @@ class MainWindow(QMainWindow):
         self._config = load_config()
         self.project_state = ProjectState.from_config(self._config)
         self._workspace.bind_project_state(self.project_state, self.project_state.material_by_id)
+        self._latest_report_html = ""
+        self._latest_report_plane_id = None
+        company = self._config.get("company_data", {}).get("name", "") or "4Dach"
+        self._set_company_title(company)
         self._refresh_material_combo()
         self._refresh_canvas()
         self._mark_saved_state()
@@ -333,6 +356,7 @@ class MainWindow(QMainWindow):
         success_message: str,
         *,
         failure_title: str = "Błąd edycji",
+        after_refresh=None,
     ) -> bool:
         before_snapshot = self._serialize_current_config()
         try:
@@ -340,12 +364,22 @@ class MainWindow(QMainWindow):
         except (ValueError, IndexError) as e:
             QMessageBox.warning(self, failure_title, str(e))
             return False
+
+        for plane in self.project_state.roof_planes:
+            if plane.layout_dirty_reason:
+                try:
+                    self.project_state.generate_layout_for_plane(plane.id)
+                except Exception:
+                    pass
+
         after_snapshot = self._serialize_current_config()
         self._push_history(label, before_snapshot, after_snapshot)
         self._latest_report_html = ""
         self._latest_report_plane_id = None
         self._refresh_material_combo()
         self._refresh_canvas()
+        if after_refresh is not None:
+            after_refresh()
         self._refresh_dirty_state()
         self.statusBar().showMessage(success_message, 4000)
         return True
@@ -356,6 +390,8 @@ class MainWindow(QMainWindow):
         self.primary_canvas = self._workspace.primary_canvas
         self.workspace_tabs = self._workspace.tabs
         for candidate in self._workspace.plane_canvases():
+            candidate.set_app_settings(self.project_state.app_settings)
+            candidate.set_snap_to_grid_enabled(self._snap_to_grid_enabled)
             try:
                 candidate.outline_edit_committed.connect(
                     self._on_outline_edit_committed,
@@ -377,12 +413,61 @@ class MainWindow(QMainWindow):
                 )
             except TypeError:
                 pass
+            try:
+                candidate.origin_edit_committed.connect(
+                    self._on_origin_edit_committed,
+                    Qt.ConnectionType.UniqueConnection,
+                )
+            except TypeError:
+                pass
+            try:
+                candidate.selection_changed.connect(
+                    self._on_selection_changed,
+                    Qt.ConnectionType.UniqueConnection,
+                )
+            except TypeError:
+                pass
+            try:
+                candidate.delete_requested.connect(
+                    self._delete_selected_geometry,
+                    Qt.ConnectionType.UniqueConnection,
+                )
+            except TypeError:
+                pass
         if plane:
             canvas = self._workspace.canvas_for_plane(plane.id) or self._workspace.primary_canvas
             canvas.set_roof_plane(plane)
             canvas.set_material(self.project_state.material_by_id(plane.selected_material_id))
+            canvas.set_app_settings(self.project_state.app_settings)
+            canvas.set_snap_to_grid_enabled(self._snap_to_grid_enabled)
+        elif self.primary_canvas is not None:
+            self.primary_canvas.set_app_settings(self.project_state.app_settings)
+            self.primary_canvas.set_snap_to_grid_enabled(self._snap_to_grid_enabled)
+        self._apply_origin_edit_mode_to_canvases()
+            
+        if self.primary_canvas:
+            is_selected = self.primary_canvas._plane_selected or self.primary_canvas._selected_hole_index is not None
+            self._on_selection_changed(is_selected)
+
         self._refresh_tab_titles()
         self._refresh_report()
+        self._refresh_status_bar_info()
+
+    def _refresh_status_bar_info(self) -> None:
+        plane = self.project_state.active_roof_plane()
+        if not plane:
+            self._status_label.setText("")
+            return
+            
+        label = f"Połać {plane.name}"
+        if plane.selected_material_id:
+            label += f" | Blacha: {plane.selected_material_id}"
+            
+        if plane.generation_settings.layout_origin == "right":
+            label += " | Układ: <--- od prawej"
+        else:
+            label += " | Układ: od lewej --->"
+        self._status_label.setText(label)
 
     def _refresh_canvas_from_state(self) -> None:
         self._refresh_canvas()
@@ -412,8 +497,8 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Brak połaci", "Brak aktywnej połaci")
         return plane
 
-    def _edit(self, fn, msg: str, *, label: str | None = None, failure_title: str = "Błąd edycji") -> bool:
-        return self._perform_command(label or msg, fn, msg, failure_title=failure_title)
+    def _edit(self, fn, msg: str, *, label: str | None = None, failure_title: str = "Błąd edycji", after_refresh=None) -> bool:
+        return self._perform_command(label or msg, fn, msg, failure_title=failure_title, after_refresh=after_refresh)
 
     # ------------------------------------------------------------------
     def _dirty_label(self, reason) -> str:
@@ -451,6 +536,36 @@ class MainWindow(QMainWindow):
             raise ValueError("Aktywna połać nie ma jeszcze obrysu")
         plane.generation_settings.base_line_y_cm = plane.outline.bounds().max_y if enabled else None
         plane.layout_dirty_reason = "geometry_changed"
+
+    def _set_plane_coordinate_origin(self, plane_id: str, origin: Point2D) -> None:
+        plane = self.project_state.roof_plane_by_id(plane_id)
+        if plane is None:
+            raise ValueError("Nie znaleziono aktywnej połaci")
+        if plane.outline is None:
+            raise ValueError("Aktywna połać nie ma jeszcze obrysu")
+        plane.generation_settings.origin_x_cm = origin.x
+        plane.generation_settings.origin_y_cm = origin.y
+
+    def _apply_origin_edit_mode_to_canvases(self) -> None:
+        enabled = bool(
+            hasattr(self, "_tb_ctrl")
+            and hasattr(self._tb_ctrl, "action_base_point_toggle")
+            and self._tb_ctrl.action_base_point_toggle.isChecked()
+        )
+        active_plane = self.project_state.active_roof_plane()
+        active_plane_id = active_plane.id if active_plane is not None else None
+        for plane in self.project_state.roof_planes:
+            canvas = self._workspace.canvas_for_plane(plane.id)
+            if canvas is not None:
+                canvas.set_origin_edit_enabled(enabled and plane.id == active_plane_id)
+        if self._workspace.primary_canvas is not None and active_plane_id is None:
+            self._workspace.primary_canvas.set_origin_edit_enabled(False)
+
+    def _restore_canvas_selection(self, plane_id: str | None, selection_snapshot) -> None:
+        canvas = self._workspace.canvas_for_plane(plane_id) if plane_id is not None else self.primary_canvas
+        if canvas is None:
+            return
+        canvas.restore_selection(selection_snapshot)
 
     def _set_active_plane_geometry(self, outline: Polygon2D, message: str) -> bool:
         plane = self.project_state.active_roof_plane()
@@ -526,7 +641,37 @@ class MainWindow(QMainWindow):
             self.primary_canvas = self._workspace.primary_canvas
             self._refresh_material_combo()
             self._refresh_report()
+            self._apply_origin_edit_mode_to_canvases()
+            
+            if self.primary_canvas:
+                is_selected = self.primary_canvas._plane_selected or self.primary_canvas._selected_hole_index is not None
+                self._on_selection_changed(is_selected)
+                
             self.statusBar().showMessage(f"Aktywna połać: {plane.name}", 2500)
+
+    def _on_selection_changed(self, is_selected: bool) -> None:
+        if hasattr(self, '_tb_ctrl') and hasattr(self._tb_ctrl, 'action_trash'):
+            self._tb_ctrl.action_trash.setEnabled(is_selected)
+
+    def _delete_selected_geometry(self) -> None:
+        canvas = self.primary_canvas
+        if canvas is None:
+            return
+        kind = canvas.selected_geometry_kind()
+        if kind in {"cutout_polygon", "cutout_vertex"}:
+            idx = canvas.selected_cutout_index()
+            if idx is not None:
+                self._dlg_del_hole()
+        elif kind in {"main_polygon", "main_polygon_vertex"}:
+            answer = QMessageBox.question(
+                self,
+                "Usuń połać",
+                "Czy na pewno usunąć wybraną połać?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer == QMessageBox.StandardButton.Yes:
+                self._delete_active_roof_plane()
 
     def _on_tab_close_requested(self, index: int) -> None:
         if self._workspace.is_report_tab_index(index):
@@ -573,12 +718,35 @@ class MainWindow(QMainWindow):
         )
 
     def _on_outline_edit_committed(self, outline: Polygon2D) -> None:
-        self._commit_active_plane_geometry_edit(outline, "Zaktualizowano geometrię połaci")
+        canvas = self.sender() if isinstance(self.sender(), DrawingCanvas) else self.primary_canvas
+        selection_snapshot = canvas.selection_snapshot() if isinstance(canvas, DrawingCanvas) else None
+        plane = self.project_state.active_roof_plane()
+        plane_id = plane.id if plane is not None else None
+        self._edit(
+            lambda: self.project_state.set_roof_plane_outline(outline, plane_id),
+            "Zaktualizowano geometrię połaci",
+            after_refresh=lambda: self._restore_canvas_selection(plane_id, selection_snapshot),
+        )
 
     def _on_hole_edit_committed(self, hole_index: int, hole: Polygon2D) -> None:
+        canvas = self.sender() if isinstance(self.sender(), DrawingCanvas) else self.primary_canvas
+        selection_snapshot = canvas.selection_snapshot() if isinstance(canvas, DrawingCanvas) else None
+        plane = self.project_state.active_roof_plane()
+        plane_id = plane.id if plane is not None else None
         self._edit(
-            lambda: self.project_state.set_hole_polygon(hole_index, hole),
+            lambda: self.project_state.set_hole_polygon(hole_index, hole, plane_id),
             f"Zaktualizowano wycinek {hole_index}",
+            after_refresh=lambda: self._restore_canvas_selection(plane_id, selection_snapshot),
+        )
+
+    def _on_origin_edit_committed(self, origin: Point2D) -> None:
+        plane = self.project_state.active_roof_plane()
+        if plane is None:
+            return
+        self._edit(
+            lambda: self._set_plane_coordinate_origin(plane.id, origin),
+            f"Ustawiono punkt zerowy dla połaci {plane.name}",
+            label=f"Zmiana punktu zerowego {plane.name}",
         )
 
     def _on_outline_edit_rejected(self, message: str) -> None:
@@ -586,10 +754,25 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Odrzucono zmianę geometrii połaci", 4000)
 
     def _on_grid_toggled(self, checked: bool) -> None:
-        self._workspace.toggle_grid(checked)
+        self._snap_to_grid_enabled = checked
+        self._workspace.set_snap_to_grid_enabled(checked)
 
     def _on_module_count_toggled(self, checked: bool) -> None:
         self._workspace.toggle_module_count(checked)
+
+    def _on_origin_mode_toggled(self, checked: bool) -> None:
+        plane = self.project_state.active_roof_plane()
+        if checked and (plane is None or plane.outline is None):
+            QMessageBox.information(self, "Brak obrysu", "Aktywna połać nie ma jeszcze obrysu")
+            self._tb_ctrl.action_base_point_toggle.blockSignals(True)
+            self._tb_ctrl.action_base_point_toggle.setChecked(False)
+            self._tb_ctrl.action_base_point_toggle.blockSignals(False)
+            checked = False
+        self._apply_origin_edit_mode_to_canvases()
+        if checked:
+            self.statusBar().showMessage("Przeciągnij punkt zerowy po połaci, aby ustawić nowe (0,0).", 4000)
+        else:
+            self.statusBar().showMessage("Wyłączono ustawianie punktu zerowego.", 2500)
 
     def _on_from_right_toggled(self, checked: bool) -> None:
         plane = self._active_or_warn()
@@ -658,7 +841,7 @@ class MainWindow(QMainWindow):
         canvas = self._workspace.primary_canvas
         try:
             canvas.polygon_closed.disconnect(self._on_polygon_closed)
-        except RuntimeError:
+        except (RuntimeError, TypeError):
             pass
         canvas.set_mode(canvas.MODE_VIEW)
 
@@ -668,16 +851,15 @@ class MainWindow(QMainWindow):
 
         from PySide6.QtCore import QRectF
 
-        rect = QRectF(canvas.rect())
-        if rect.isEmpty():
-            self.statusBar().showMessage("Nie udało się odczytać obszaru rysowania.", 4000)
+        xs = [point.x() for point in pixel_points]
+        ys = [point.y() for point in pixel_points]
+        bounds_rect = QRectF(min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys))
+        if bounds_rect.isEmpty():
+            self.statusBar().showMessage("Nie udało się znormalizować szkicu.", 4000)
             return
 
-        min_x = min(point.x() for point in pixel_points)
-        min_y = min(point.y() for point in pixel_points)
-        domain_pts = [Point2D(point.x() - min_x, point.y() - min_y) for point in pixel_points]
-
-        outline = Polygon2D(domain_pts)
+        mapper = CanvasMapper(Bounds2D(0.0, 0.0, 1000.0, 1000.0), bounds_rect, margin=0.0)
+        outline = Polygon2D([mapper.unmap_point(point) for point in pixel_points])
         self._set_active_plane_geometry(outline, "Ustawiono obrys z odręcznego rysowania")
 
     def _on_cutout_closed(self, pixel_points: list) -> None:
@@ -687,7 +869,7 @@ class MainWindow(QMainWindow):
             return
         try:
             canvas.cutout_closed.disconnect(self._on_cutout_closed)
-        except RuntimeError:
+        except (RuntimeError, TypeError):
             pass
         canvas.set_mode(canvas.MODE_VIEW)
 
@@ -698,7 +880,7 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Aktywna połać nie ma jeszcze obrysu.", 4000)
             return
 
-        mapper = CanvasMapper(plane.outline.bounds(), QRectF(canvas.rect()))
+        mapper = DrawingCanvas.build_view_mapper(plane.outline.bounds(), QRectF(canvas.rect()))
         hole = Polygon2D([mapper.unmap_point(point) for point in pixel_points])
         self._edit(lambda: self.project_state.add_hole_to_plane(hole, plane.id), f"Dodano wycinek do {plane.name}")
 
@@ -804,20 +986,28 @@ class MainWindow(QMainWindow):
         plane = self._active_or_warn()
         if plane is None:
             return
-        w, ok = QInputDialog.getDouble(self, "Dodaj wycinek", "Szerokość [cm]:", 50.0, 1.0)
-        if not ok:
-            return
-        h, ok = QInputDialog.getDouble(self, "Dodaj wycinek", "Wysokość [cm]:", 50.0, 1.0)
-        if not ok:
-            return
-        ox, ok = QInputDialog.getDouble(self, "Dodaj wycinek", "Lewy górny X [cm]:", 0.0)
-        if not ok:
-            return
-        oy, ok = QInputDialog.getDouble(self, "Dodaj wycinek", "Lewy górny Y [cm]:", 0.0)
-        if not ok:
-            return
-        hole = Polygon2D.rectangle(w, h, ox, oy)
-        self._edit(lambda: self.project_state.add_hole_to_plane(hole, plane.id), f"Dodano wycinek do {plane.name}")
+        from ui.dialogs.shape_dialogs import ProstokatDialog
+        dlg = ProstokatDialog(self._config, self)
+        dlg.setWindowTitle("Prostokątny wycinek")
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            v = dlg.get_values()
+            w = v["szerokosc"]
+            h = v["wysokosc"]
+            if plane.outline:
+                pts = plane.outline.points
+                center_x = sum(p.x for p in pts) / len(pts)
+                center_y = sum(p.y for p in pts) / len(pts)
+                ox = center_x - w / 2.0
+                oy = center_y - h / 2.0
+                if plane.holes:
+                    max_x = max(hole.bounds().max_x for hole in plane.holes)
+                    ox = max_x + 10.0
+            else:
+                ox = 0.0
+                oy = 0.0
+
+            hole = Polygon2D.rectangle(w, h, ox, oy)
+            self._edit(lambda: self.project_state.add_hole_to_plane(hole, plane.id), f"Dodano wycinek do {plane.name}")
 
     def _dlg_del_hole(self) -> None:
         plane = self._active_or_warn()
@@ -830,7 +1020,15 @@ class MainWindow(QMainWindow):
             idx, ok = QInputDialog.getInt(self, "Usuń wycinek", f"Indeks 0-{len(plane.holes)-1}:", 0, 0, len(plane.holes)-1)
             if not ok:
                 return
-        self._edit(lambda: self.project_state.delete_hole_from_plane(idx, plane.id), f"Usunięto wycinek {idx}")
+        answer = QMessageBox.question(
+            self,
+            "Usuń wycinek",
+            "Czy na pewno usunąć wybrany wycinek?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer == QMessageBox.StandardButton.Yes:
+            self._edit(lambda: self.project_state.delete_hole_from_plane(idx, plane.id), f"Usunięto wycinek {idx}")
 
     def _dlg_move_hole(self) -> None:
         plane = self._active_or_warn()
@@ -943,6 +1141,19 @@ class MainWindow(QMainWindow):
                 self._set_company_title(company)
 
             self._edit(_apply_company_data, "Zaktualizowano dane firmy", label="Edycja danych firmy")
+
+    def _dlg_settings(self) -> None:
+        from ui.dialogs.settings_dialog import SettingsDialog
+        dlg = SettingsDialog(self.project_state.app_settings, parent=self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            new_settings = dlg.build_settings()
+            def _apply_settings() -> None:
+                self.project_state.app_settings = new_settings
+                for plane in self.project_state.roof_planes:
+                    if plane.outline is not None:
+                        plane.layout_dirty_reason = "settings_changed"
+            self._edit(_apply_settings, "Zaktualizowano ustawienia aplikacji",
+                       label="Zmiana ustawień aplikacji")
 
     # ------------------------------------------------------------------
     def closeEvent(self, event: QCloseEvent) -> None:
