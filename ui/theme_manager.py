@@ -1,4 +1,3 @@
-# This Python file uses the following encoding: utf-8
 """theme_manager.py — centralised Qt palette and stylesheet management.
 
 ThemeManager owns the light/dark palette definitions, the global stylesheet

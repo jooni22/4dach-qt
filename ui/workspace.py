@@ -1,4 +1,3 @@
-# This Python file uses the following encoding: utf-8
 """workspace.py — WorkspaceController manages the central QTabWidget.
 
 Responsibilities:
@@ -41,6 +40,7 @@ class WorkspaceController:
 
         # primary_canvas is assigned in sync() — never create a floating one here
         self.primary_canvas: DrawingCanvas | None = None
+        self._sheets_visible: bool = True
 
     # ------------------------------------------------------------------
     # Public API
@@ -120,6 +120,13 @@ class WorkspaceController:
         for canvas in self._plane_tab_canvases.values():
             canvas.set_snap_to_grid_enabled(enabled)
 
+    def set_sheet_visibility(self, visible: bool) -> None:
+        self._sheets_visible = visible
+        if self.primary_canvas is not None:
+            self.primary_canvas.set_sheet_visibility(visible)
+        for canvas in self._plane_tab_canvases.values():
+            canvas.set_sheet_visibility(visible)
+
     def toggle_module_count(self, enabled: bool) -> None:
         if self.primary_canvas is not None:
             self.primary_canvas.toggle_module_count(enabled)
@@ -150,6 +157,7 @@ class WorkspaceController:
         canvas.set_roof_plane(plane)
         material = self._get_material(plane.selected_material_id)
         canvas.set_material(material)
+        canvas.set_sheet_visibility(self._sheets_visible)
         layout.addWidget(canvas)
         tab.setProperty("plane_id", plane.id)
         self._plane_tab_canvases[plane.id] = canvas

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import copy
+import logging
+import re
 from dataclasses import dataclass, field
 
 from core.app_settings import AppSettings
@@ -12,7 +15,18 @@ from core.geometry import (
     validate_polygon,
 )
 from core.layout_engine import LayoutResult, generate_layout
-from core.models import CompanyData, GenerationSettings, Material, Point2D, Polygon2D, RoofPlane, SheetPlacement
+from core.models import (
+    CompanyData,
+    GenerationSettings,
+    Material,
+    Point2D,
+    Polygon2D,
+    RoofPlane,
+    SheetPlacement,
+)
+
+
+log = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -25,7 +39,7 @@ class ProjectState:
     app_settings: AppSettings = field(default_factory=AppSettings)
 
     @classmethod
-    def from_config(cls, config_data: dict | None) -> "ProjectState":
+    def from_config(cls, config_data: dict | None) -> ProjectState:
         payload = config_data or {}
         project_payload = payload.get("project_state", {})
         material_payloads = payload.get("materials")
@@ -245,6 +259,27 @@ class ProjectState:
         plane.name = normalized_name
         return plane
 
+    def duplicate_roof_plane(self, plane_id: str | None = None, *, name: str | None = None) -> RoofPlane:
+        source_plane = self._require_plane(plane_id)
+        duplicate = RoofPlane(
+            id=self.next_plane_id(),
+            name=name or self.next_plane_name(),
+            outline=_clone_polygon(source_plane.outline),
+            holes=[_clone_polygon(hole) for hole in source_plane.holes],
+            selected_material_id=source_plane.selected_material_id,
+            generation_settings=GenerationSettings.from_dict(source_plane.generation_settings.to_dict()),
+            auto_sheet_placements=[SheetPlacement.from_dict(placement.to_dict()) for placement in source_plane.auto_sheet_placements],
+            layout_bands=copy.deepcopy(source_plane.layout_bands),
+            manual_sheet_placements=[SheetPlacement.from_dict(placement.to_dict()) for placement in source_plane.manual_sheet_placements],
+            manually_removed_auto_sheet_ids=list(source_plane.manually_removed_auto_sheet_ids),
+            layout_revision=source_plane.layout_revision,
+            layout_dirty_reason=source_plane.layout_dirty_reason,
+        )
+        duplicate.generation_settings.base_line_y_cm = self.resolve_base_line_y_cm(duplicate)
+        self.roof_planes.append(duplicate)
+        self.active_plane_id = duplicate.id
+        return duplicate
+
     def delete_roof_plane(self, plane_id: str) -> RoofPlane:
         plane_index = next((index for index, plane in enumerate(self.roof_planes) if plane.id == plane_id), None)
         if plane_index is None:
@@ -262,6 +297,20 @@ class ProjectState:
         plane = self._require_plane(plane_id)
         self._validate_plane_geometry(outline, plane.holes)
         plane.outline = outline
+        self._mark_layout_inputs_changed(plane, "geometry_changed")
+        return plane
+
+    def set_roof_plane_geometry(
+        self,
+        outline: Polygon2D,
+        holes: list[Polygon2D] | None = None,
+        plane_id: str | None = None,
+    ) -> RoofPlane:
+        plane = self._require_plane(plane_id)
+        next_holes = list(plane.holes if holes is None else holes)
+        self._validate_plane_geometry(outline, next_holes)
+        plane.outline = outline
+        plane.holes = next_holes
         self._mark_layout_inputs_changed(plane, "geometry_changed")
         return plane
 
@@ -312,9 +361,7 @@ class ProjectState:
         plane = self._require_plane(plane_id)
         outline = self._require_plane_outline(plane)
 
-        issues = validate_hole_polygon(outline, hole, plane.holes)
-        if issues:
-            raise ValueError("; ".join(issues))
+        self._validate_hole_geometry(outline, hole, plane.holes, hole_index=len(plane.holes))
 
         plane.holes.append(hole)
         self._mark_layout_inputs_changed(plane, "geometry_changed")
@@ -327,9 +374,7 @@ class ProjectState:
             raise IndexError("Nie znaleziono wycinku o podanym indeksie")
 
         sibling_holes = [candidate for index, candidate in enumerate(plane.holes) if index != hole_index]
-        issues = validate_hole_polygon(outline, hole, sibling_holes)
-        if issues:
-            raise ValueError("; ".join(issues))
+        self._validate_hole_geometry(outline, hole, sibling_holes, hole_index=hole_index)
 
         plane.holes[hole_index] = hole
         self._mark_layout_inputs_changed(plane, "geometry_changed")
@@ -370,13 +415,29 @@ class ProjectState:
         )
         return self.set_hole_polygon(hole_index, updated_hole, plane.id)
 
+    def _is_placement_removed(self, placement_id: str, removed_ids: set[str]) -> bool:
+        """Check if placement ID matches any removed ID (exact or legacy prefix match).
+
+        Uses O(1) set lookup. For legacy backward-compatibility, checks if the
+        placement_id has a -r{row} suffix and whether its base is in removed_ids.
+        """
+        if placement_id in removed_ids:
+            return True
+        # Legacy backward-compat: removed ID may lack -r\d+ suffix (old format)
+        m = re.search(r"-r\d+$", placement_id)
+        if m:
+            base = placement_id[: m.start()]
+            if base in removed_ids:
+                return True
+        return False
+    
     def active_sheet_placements_for_plane(self, plane_id: str | None = None) -> list[SheetPlacement]:
         plane = self.roof_plane_by_id(plane_id or self.active_plane_id)
         if plane is None:
             return []
 
         removed_ids = set(plane.manually_removed_auto_sheet_ids)
-        placements = [placement for placement in plane.auto_sheet_placements if placement.id not in removed_ids]
+        placements = [placement for placement in plane.auto_sheet_placements if not self._is_placement_removed(placement.id, removed_ids)]
         placements.extend(plane.manual_sheet_placements)
         return sorted(placements, key=lambda placement: (placement.band_index, placement.x_left_cm, placement.y_top_cm, placement.id))
 
@@ -491,9 +552,24 @@ class ProjectState:
 
         for hole_index, hole in enumerate(holes):
             sibling_holes = [candidate for index, candidate in enumerate(holes) if index != hole_index]
-            hole_issues = validate_hole_polygon(outline, hole, sibling_holes)
-            if hole_issues:
-                raise ValueError("; ".join(hole_issues))
+            self._validate_hole_geometry(outline, hole, sibling_holes, hole_index=hole_index)
+
+    def _validate_hole_geometry(
+        self,
+        outline: Polygon2D,
+        hole: Polygon2D,
+        sibling_holes: list[Polygon2D],
+        *,
+        hole_index: int,
+    ) -> None:
+        hole_issues = validate_hole_polygon(outline, hole, sibling_holes)
+        blocking_issues = [
+            issue for issue in hole_issues if issue != "Wycinek musi leżeć w całości wewnątrz obrysu"
+        ]
+        if any(issue == "Wycinek musi leżeć w całości wewnątrz obrysu" for issue in hole_issues):
+            log.warning("Hole %d partially or fully outside outline — allowed", hole_index)
+        if blocking_issues:
+            raise ValueError("; ".join(blocking_issues))
 
     def _mark_plane_geometry_changed(self, plane: RoofPlane) -> None:
         self._mark_layout_inputs_changed(plane, "geometry_changed")
@@ -805,3 +881,9 @@ def _deserialize_layout_bands(payload: object) -> list[dict]:
     if isinstance(payload, list):
         return list(payload)
     return []
+
+
+def _clone_polygon(polygon: Polygon2D | None) -> Polygon2D | None:
+    if polygon is None:
+        return None
+    return Polygon2D([Point2D(point.x, point.y) for point in polygon.points])

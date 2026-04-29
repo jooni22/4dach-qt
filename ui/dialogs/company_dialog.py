@@ -1,4 +1,3 @@
-# This Python file uses the following encoding: utf-8
 """company_dialog.py — DaneFirmyDialog for editing company data."""
 from __future__ import annotations
 

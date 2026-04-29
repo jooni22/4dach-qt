@@ -1,4 +1,3 @@
-# This Python file uses the following encoding: utf-8
 """report_view.py — ReportController manages the HTML report tab."""
 from __future__ import annotations
 

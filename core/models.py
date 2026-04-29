@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 from math import isclose
 from typing import Literal
 
-
 MaterialType = Literal["dachówkowa", "trapezowa"]
 SheetSource = Literal["auto", "manual"]
 LayoutOrigin = Literal["left", "right"]
@@ -56,11 +55,11 @@ class Polygon2D:
     def area(self) -> float:
         return abs(self.signed_area())
 
-    def translated(self, dx: float, dy: float) -> "Polygon2D":
+    def translated(self, dx: float, dy: float) -> Polygon2D:
         return Polygon2D([Point2D(point.x + dx, point.y + dy) for point in self.points])
 
     @classmethod
-    def rectangle(cls, width_cm: float, height_cm: float, origin_x: float = 0.0, origin_y: float = 0.0) -> "Polygon2D":
+    def rectangle(cls, width_cm: float, height_cm: float, origin_x: float = 0.0, origin_y: float = 0.0) -> Polygon2D:
         return cls(
             [
                 Point2D(origin_x, origin_y),
@@ -80,7 +79,7 @@ class CompanyData:
     logo: str = ""
 
     @classmethod
-    def from_dict(cls, data: dict | None) -> "CompanyData":
+    def from_dict(cls, data: dict | None) -> CompanyData:
         payload = data or {}
         return cls(
             name=payload.get("name", ""),
@@ -105,15 +104,15 @@ class MaterialDefinition:
     id: str
     display_name: str
     type: MaterialType
-    effective_width_cm: float
-    min_sheet_length_cm: float
-    max_sheet_length_cm: float = 900.0
-    top_margin_cm: float = 0.0
-    bottom_margin_cm: float = 0.0
-    module_length_cm: float | None = None
+    effective_width_cm: int
+    min_sheet_length_cm: int
+    max_sheet_length_cm: int = 900
+    top_margin_cm: int = 0
+    bottom_margin_cm: int = 0
+    module_length_cm: int | None = None
     price_per_m2: float | None = None
-    batten_spacing_cm: float = 0.0
-    counter_batten_spacing_cm: float = 0.0
+    batten_spacing_cm: int = 0
+    counter_batten_spacing_cm: int = 0
     modules: list[int] = field(default_factory=list)
     price_unit: str = "m2"
 
@@ -122,15 +121,15 @@ class MaterialDefinition:
         id: str,
         display_name: str | None = None,
         type: MaterialType = "trapezowa",
-        effective_width_cm: float = 0.0,
-        min_sheet_length_cm: float = 0.0,
-        max_sheet_length_cm: float = 900.0,
-        top_margin_cm: float = 0.0,
-        bottom_margin_cm: float = 0.0,
-        module_length_cm: float | None = None,
+        effective_width_cm: int = 0,
+        min_sheet_length_cm: int = 0,
+        max_sheet_length_cm: int = 900,
+        top_margin_cm: int = 0,
+        bottom_margin_cm: int = 0,
+        module_length_cm: int | None = None,
         price_per_m2: float | None = None,
-        batten_spacing_cm: float = 0.0,
-        counter_batten_spacing_cm: float = 0.0,
+        batten_spacing_cm: int = 0,
+        counter_batten_spacing_cm: int = 0,
         modules: list[int] | None = None,
         price_unit: str = "m2",
         nazwa: str | None = None,
@@ -139,16 +138,16 @@ class MaterialDefinition:
         self.id = id
         self.display_name = (display_name or nazwa or id).strip() or id
         self.type = type
-        self.effective_width_cm = float(effective_width_cm)
-        self.min_sheet_length_cm = float(min_sheet_length_cm)
-        self.max_sheet_length_cm = float(max_sheet_length_cm)
-        self.top_margin_cm = float(top_margin_cm)
-        self.bottom_margin_cm = float(bottom_margin_cm)
-        self.module_length_cm = None if module_length_cm in (None, 0, 0.0) else float(module_length_cm)
+        self.effective_width_cm = int(round(float(effective_width_cm)))
+        self.min_sheet_length_cm = int(round(float(min_sheet_length_cm)))
+        self.max_sheet_length_cm = int(round(float(max_sheet_length_cm)))
+        self.top_margin_cm = int(round(float(top_margin_cm)))
+        self.bottom_margin_cm = int(round(float(bottom_margin_cm)))
+        self.module_length_cm = None if module_length_cm in (None, 0, 0.0) else int(round(float(module_length_cm)))
         resolved_price = price_per_m2 if price_per_m2 is not None else price_value
         self.price_per_m2 = None if resolved_price is None else float(resolved_price)
-        self.batten_spacing_cm = float(batten_spacing_cm)
-        self.counter_batten_spacing_cm = float(counter_batten_spacing_cm)
+        self.batten_spacing_cm = int(round(float(batten_spacing_cm)))
+        self.counter_batten_spacing_cm = int(round(float(counter_batten_spacing_cm)))
         self.modules = list(modules or [])
         self.price_unit = price_unit
 
@@ -161,24 +160,28 @@ class MaterialDefinition:
         return 0.0 if self.price_per_m2 is None else self.price_per_m2
 
     @classmethod
-    def from_dict(cls, data: dict) -> "MaterialDefinition":
+    def from_dict(cls, data: dict) -> MaterialDefinition:
         return cls(
             id=data.get("id") or data.get("nazwa") or data.get("display_name") or "material",
             display_name=data.get("display_name") or data.get("nazwa") or data.get("id") or "material",
             type=data.get("type", "dachówkowa"),
-            effective_width_cm=float(data.get("effective_width_cm", data.get("szerokosc_efektywna", 0))),
-            min_sheet_length_cm=float(data.get("min_sheet_length_cm", data.get("min_dlugosc_arkusza", 0))),
-            max_sheet_length_cm=float(data.get("max_sheet_length_cm", data.get("max_dlugosc_arkusza", 900))),
-            top_margin_cm=float(data.get("top_allowance_cm", data.get("zapas_gorny", 0))),
-            bottom_margin_cm=float(data.get("bottom_allowance_cm", data.get("zapas_dolny", 0))),
-            module_length_cm=data.get("module_length_cm", data.get("dlugosc_modulu")),
+            effective_width_cm=int(round(float(data.get("effective_width_cm", data.get("szerokosc_efektywna", 0))))),
+            min_sheet_length_cm=int(round(float(data.get("min_sheet_length_cm", data.get("min_dlugosc_arkusza", 0))))),
+            max_sheet_length_cm=int(round(float(data.get("max_sheet_length_cm", data.get("max_dlugosc_arkusza", 900))))),
+            top_margin_cm=int(round(float(data.get("top_allowance_cm", data.get("zapas_gorny", 0))))),
+            bottom_margin_cm=int(round(float(data.get("bottom_allowance_cm", data.get("zapas_dolny", 0))))),
+            module_length_cm=(
+                int(round(float(data.get("module_length_cm", data.get("dlugosc_modulu")))))
+                if data.get("module_length_cm", data.get("dlugosc_modulu")) not in (None, 0, 0.0)
+                else None
+            ),
             price_per_m2=(
                 data.get("price_per_m2")
                 if "price_per_m2" in data
                 else float(data.get("cena_zl", 0)) + float(data.get("cena_gr", 0)) / 100.0
             ),
-            batten_spacing_cm=float(data.get("odleglosc_miedzy_latami", 0)),
-            counter_batten_spacing_cm=float(data.get("odleglosc_miedzy_kontrlatami", 0)),
+            batten_spacing_cm=int(round(float(data.get("odleglosc_miedzy_latami", 0)))),
+            counter_batten_spacing_cm=int(round(float(data.get("odleglosc_miedzy_kontrlatami", 0)))),
             modules=[int(value) for value in data.get("moduly", [])],
             price_unit=data.get("cena_za", "m2"),
         )
@@ -228,7 +231,7 @@ class GenerationSettings:
     origin_y_cm: float | None = None
 
     @classmethod
-    def from_dict(cls, data: dict | None) -> "GenerationSettings":
+    def from_dict(cls, data: dict | None) -> GenerationSettings:
         payload = data or {}
         base_line_y_cm = payload.get("base_line_y_cm")
         origin_x_cm = payload.get("origin_x_cm")
@@ -257,13 +260,13 @@ class SheetPlacement:
     x_right_cm: float
     y_top_cm: float
     y_bottom_cm: float
-    raw_length_cm: float
-    final_length_cm: float
+    raw_length_cm: int
+    final_length_cm: int
     source: SheetSource = "auto"
     split_reason: str | None = None
 
     @classmethod
-    def from_dict(cls, data: dict) -> "SheetPlacement":
+    def from_dict(cls, data: dict) -> SheetPlacement:
         return cls(
             id=data["id"],
             band_index=int(data.get("band_index", 0)),
@@ -322,7 +325,7 @@ class RoofPlane:
         holes_area = sum(hole.area() for hole in self.holes)
         return self.outline.area() - holes_area
 
-    def with_outline(self, outline: Polygon2D) -> "RoofPlane":
+    def with_outline(self, outline: Polygon2D) -> RoofPlane:
         return RoofPlane(
             id=self.id,
             name=self.name,

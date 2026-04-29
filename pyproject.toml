@@ -26,6 +26,60 @@ testpaths = ["tests"]
 
 [dependency-groups]
 dev = [
+    "deptry>=0.25.1",
+    "pillow>=12.2.0",
     "pytest>=9.0.3",
+    "pytest-image-snapshot>=0.4.5",
     "pytest-qt>=4.5.0",
+    "ruff>=0.15.12",
+    "vulture>=2.16",
 ]
+
+# === Ruff: all-in-one linter & formatter ===================================
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+exclude = [
+    "ui_form.py",
+    "app_icons.py",
+    ".venv",
+    ".git",
+    "__pycache__",
+    "build",
+    "dist",
+]
+
+[tool.ruff.lint]
+select = [
+    "F",   # Pyflakes: unused imports, undefined names
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "I",   # isort: import sorting
+    "UP",  # pyupgrade: Python upgrade checks
+    "B",   # flake8-bugbear: bug patterns
+    "C4",  # flake8-comprehensions
+    "SIM", # flake8-simplify
+]
+ignore = ["E501"]  # line too long (handled by formatter if needed)
+fixable = ["F", "I", "UP", "B", "C4", "SIM"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["core"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+# === Vulture: dead-code detection ==========================================
+[tool.vulture]
+exclude = ["ui/", "ui_form.py", "tests/", ".venv/", "build/", "dist/"]
+min_confidence = 80
+paths = ["."]
+
+# === deptry: dependency health ===============================================
+[tool.deptry]
+exclude = [".venv", "build", "dist", ".codex"]
+
+[tool.deptry.per_rule_ignores]
+# DEP002 = unused dependencies — these are dev/test-only but declared in dependency-groups
+DEP002 = ["pillow", "pytest-image-snapshot", "pytest-qt", "ruff", "vulture", "deptry"]

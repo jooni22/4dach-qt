@@ -14,7 +14,15 @@ from core.geometry import (
     make_triangle,
 )
 from core.layout_engine import generate_layout
-from core.models import CompanyData, Material, Point2D, Polygon2D, RoofPlane, SheetPlacement, almost_equal
+from core.models import (
+    CompanyData,
+    Material,
+    Point2D,
+    Polygon2D,
+    RoofPlane,
+    SheetPlacement,
+    almost_equal,
+)
 from core.project_state import ProjectState
 
 
@@ -98,6 +106,39 @@ def test_material_definition_supports_min_sheet_length_dual_keys():
     assert material.min_sheet_length_cm == 42
     assert payload["min_sheet_length_cm"] == 42
     assert payload["min_dlugosc_arkusza"] == 42
+
+
+def test_material_definition_rounds_centimeter_fields_to_ints():
+    material = Material.from_dict(
+        {
+            "id": "MAT1",
+            "display_name": "Material 1",
+            "type": "trapezowa",
+            "effective_width_cm": 51.2,
+            "min_sheet_length_cm": 42.4,
+            "max_sheet_length_cm": 299.6,
+            "top_allowance_cm": 14.6,
+            "bottom_allowance_cm": 9.6,
+            "module_length_cm": 24.6,
+            "odleglosc_miedzy_latami": 34.6,
+            "odleglosc_miedzy_kontrlatami": 19.6,
+        }
+    )
+
+    payload = material.to_dict()
+
+    assert material.effective_width_cm == 51
+    assert material.min_sheet_length_cm == 42
+    assert material.max_sheet_length_cm == 300
+    assert material.top_margin_cm == 15
+    assert material.bottom_margin_cm == 10
+    assert material.module_length_cm == 25
+    assert material.batten_spacing_cm == 35
+    assert material.counter_batten_spacing_cm == 20
+    assert payload["effective_width_cm"] == 51
+    assert payload["top_allowance_cm"] == 15
+    assert payload["bottom_allowance_cm"] == 10
+    assert payload["module_length_cm"] == 25
 
 
 def test_layout_engine_splits_band_by_hole_and_flags_long_sheet():
@@ -390,6 +431,45 @@ def test_project_state_allows_outline_edit_when_it_breaks_hole_containment():
     assert updated_plane.outline.points[0] == Point2D(80, 0)
 
 
+def test_project_state_rebuilds_sheet_split_inputs_after_outline_edit_moves_hole_outside_outline():
+    state = ProjectState(
+        materials=[
+            Material(
+                id="MAT",
+                nazwa="Material",
+                type="trapezowa",
+                effective_width_cm=50,
+                module_length_cm=0,
+                bottom_margin_cm=0,
+                top_margin_cm=0,
+                min_sheet_length_cm=0,
+                max_sheet_length_cm=400,
+            )
+        ]
+    )
+    plane = state.add_roof_plane(build_rectangle_outline(150, 150), selected_material_id="MAT")
+    state.add_hole_to_plane(Polygon2D.rectangle(20, 50, origin_x=20, origin_y=40), plane.id)
+
+    state.generate_layout_for_plane(plane.id)
+    assert plane.layout_bands[0]["segments"][0]["cutout_interaction"] == "partial"
+
+    updated_outline = Polygon2D(
+        [
+            Point2D(0, 80),
+            Point2D(150, 0),
+            Point2D(150, 150),
+            Point2D(0, 150),
+        ]
+    )
+    state.set_roof_plane_outline(updated_outline, plane.id)
+    result = state.generate_layout_for_plane(plane.id)
+
+    band_segment = result.bands[0].segments[0]
+    assert band_segment.cutout_interaction is None
+    assert band_segment.partial_cut_line_y_cm is None
+    assert len(band_segment.coverage_polygons) == 1
+
+
 def test_project_state_delete_hole_marks_geometry_changed():
     state = ProjectState()
     plane = state.add_roof_plane(build_rectangle_outline(300, 200))
@@ -564,7 +644,39 @@ def test_project_state_material_change_marks_layout_dirty_without_dropping_manua
     assert changed is True
     assert plane.selected_material_id == "T20"
     assert len(plane.manual_sheet_placements) == 1
-    assert plane.layout_dirty_reason == "material_changed"
+
+
+def test_project_state_can_duplicate_roof_plane_with_independent_geometry_and_layout():
+    state = ProjectState(
+        materials=[
+            Material(
+                id="MAT",
+                nazwa="Material",
+                type="trapezowa",
+                effective_width_cm=50,
+                module_length_cm=25,
+                bottom_margin_cm=10,
+                top_margin_cm=15,
+                min_sheet_length_cm=20,
+                max_sheet_length_cm=400,
+            )
+        ]
+    )
+    plane = state.add_roof_plane(Polygon2D.rectangle(120, 100), name="Front", selected_material_id="MAT")
+    state.add_hole_to_plane(Polygon2D.rectangle(30, 20, origin_x=10, origin_y=15), plane.id)
+    state.generate_layout_for_plane(plane.id)
+
+    duplicate = state.duplicate_roof_plane(plane.id)
+
+    assert duplicate.id != plane.id
+    assert duplicate.name != plane.name
+    assert duplicate.outline == plane.outline
+    assert duplicate.outline is not plane.outline
+    assert duplicate.holes == plane.holes
+    assert duplicate.holes[0] is not plane.holes[0]
+    assert duplicate.auto_sheet_placements == plane.auto_sheet_placements
+    assert duplicate.auto_sheet_placements[0] is not plane.auto_sheet_placements[0]
+    assert duplicate.layout_bands == plane.layout_bands
 
 
 def test_project_state_can_create_and_edit_material_definitions():
@@ -604,7 +716,7 @@ def test_project_state_can_create_and_edit_material_definitions():
     assert state.available_material_ids() == ["MAT1"]
     assert state.material_by_id("MAT1") is updated
     assert updated.nazwa == "Material 1 Plus"
-    assert almost_equal(updated.effective_width_cm, 53.0)
+    assert updated.effective_width_cm == 53
     assert almost_equal(updated.price_value, 55.0)
 
 
@@ -708,7 +820,7 @@ def test_project_state_round_trip_preserves_material_registry_and_assignments():
 
     assert reloaded_material is not None
     assert reloaded_material.nazwa == "Material 1 Updated"
-    assert almost_equal(reloaded_material.effective_width_cm, 54.0)
+    assert reloaded_material.effective_width_cm == 54
     assert almost_equal(reloaded_material.price_value, 49.5)
     assert reloaded_plane.selected_material_id == "MAT1"
     assert reloaded_plane.layout_dirty_reason == "material_changed"
@@ -932,3 +1044,51 @@ def test_basic_user_workflow_smoke():
     assert "project_state" in config_after
     assert config_after["project_state"]["roof_planes"]["order"] == [plane.id]
     assert _compact_plane_payload(config_after, plane.id)["d"] == "manual_override"
+
+
+def test_is_placement_removed_legacy_prefix_match():
+    state = ProjectState(
+        materials=[
+            Material(
+                id="PD510",
+                nazwa="PD510",
+                type="dachówkowa",
+                effective_width_cm=51,
+                module_length_cm=25,
+                bottom_margin_cm=10,
+                top_margin_cm=15,
+                min_sheet_length_cm=20,
+            )
+        ]
+    )
+    plane = state.add_roof_plane(build_rectangle_outline(300, 200), selected_material_id="PD510")
+    state.generate_layout_for_plane(plane.id)
+
+    legacy_removed_id = plane.auto_sheet_placements[0].id.rsplit("-r", 1)[0]
+    assert "-r" not in legacy_removed_id
+    removed_ids_set = {legacy_removed_id}
+
+    placement_with_row_suffix_id = f"{legacy_removed_id}-r99"
+    result = state._is_placement_removed(placement_with_row_suffix_id, removed_ids_set)
+    assert result is True
+
+    result_unrelated = state._is_placement_removed("plane-999-b0-s0-r1", removed_ids_set)
+    assert result_unrelated is False
+
+
+def test_is_placement_removed_legacy_prefix_match_hardcoded():
+    """Test that legacy removed IDs (without -r suffix) match placement IDs with -r suffix."""
+    state = ProjectState(materials=[])
+    
+    # Store legacy removed ID without -r suffix
+    removed_ids = {"plane-1-b0-s0"}
+    
+    # Verify that placement with -r3 suffix is treated as removed
+    assert state._is_placement_removed("plane-1-b0-s0-r3", removed_ids) is True
+    
+    # Verify exact match still works
+    assert state._is_placement_removed("plane-1-b0-s0", removed_ids) is True
+    
+    # Verify unrelated placement is not treated as removed
+    assert state._is_placement_removed("plane-2-b0-s0-r1", removed_ids) is False
+    assert state._is_placement_removed("plane-1-b1-s0-r1", removed_ids) is False

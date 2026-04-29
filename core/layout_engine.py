@@ -1,14 +1,21 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
-from math import ceil
 
 from core.app_settings import AppSettings
-from core.geometry import polygon_edges, validate_polygon, vertical_segments_for_band
+from core.geometry import (
+    canonicalize_polygon,
+    polygon_edges,
+    polygon_is_inside_polygon,
+    validate_hole_polygon,
+    validate_polygon,
+    vertical_segments_for_band,
+)
 from core.models import Material, Point2D, Polygon2D, RoofPlane, SheetPlacement
 
-
 EPSILON = 1e-6
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -161,15 +168,9 @@ def generate_layout(
         )
         return result
 
-    result.warnings.extend(
-        LayoutWarning(code="invalid_outline", message=issue, data={"plane_id": plane.id})
-        for issue in validate_polygon(plane.outline)
-    )
-    for hole_index, hole in enumerate(plane.holes):
-        result.warnings.extend(
-            LayoutWarning(code="invalid_hole", message=issue, data={"plane_id": plane.id, "hole_index": hole_index})
-            for issue in validate_polygon(hole)
-        )
+    layout_plane = _prepare_plane_for_layout(plane, result)
+    if layout_plane is None:
+        return result
 
     width = material.effective_width_cm
     if width <= 0:
@@ -182,17 +183,29 @@ def generate_layout(
         )
         return result
 
-    for band_index, (x_left, x_right) in enumerate(_iter_band_ranges(plane, width)):
-        band_segments = _build_band_segments(plane, band_index, x_left, x_right)
+    for band_index, (x_left, x_right) in enumerate(_iter_band_ranges(layout_plane, width)):
+        band_segments = _build_band_segments(layout_plane, band_index, x_left, x_right)
         layout_band = LayoutBand(band_index=band_index, x_left_cm=x_left, x_right_cm=x_right)
 
         for band_segment in band_segments:
-            _detect_cutout_interaction(plane, band_segment, _settings)
+            _detect_cutout_interaction(layout_plane, band_segment, _settings)
 
         for segment_index, band_segment in enumerate(band_segments):
             y_bottom = band_segment.y_bottom_cm
             y_top = band_segment.y_top_cm
             max_len = material.max_sheet_length_cm
+            
+            # Fix #1: Prevent infinite loop when max_len <= 0
+            if max_len <= 0:
+                result.warnings.append(
+                    LayoutWarning(
+                        code="invalid_max_sheet_length",
+                        message="Maksymalna długość arkusza musi być dodatnia",
+                        data={"material_id": material.id, "max_sheet_length_cm": max_len},
+                    )
+                )
+                continue
+            
             row_index = 0
 
             if (
@@ -208,6 +221,18 @@ def generate_layout(
                     sheet_height = min(max_len, y_cursor - cut_y)
                     sheet_top = y_cursor - sheet_height
                     sheet_bottom = y_cursor
+                    
+                    # Fix #1: Defensive guard to prevent infinite loop
+                    if sheet_height <= EPSILON:
+                        result.warnings.append(
+                            LayoutWarning(
+                                code="zero_sheet_height",
+                                message="Wysokość arkusza wynosi zero - przerwano generowanie",
+                                data={"band_index": band_index, "segment_index": segment_index},
+                            )
+                        )
+                        break
+                    
                     if sheet_height >= material.min_sheet_length_cm - EPSILON:
                         placement_id = f"{plane.id}-b{band_index}-s{segment_index}-r{row_index}"
                         result.placements.append(
@@ -245,9 +270,17 @@ def generate_layout(
                     sheet_top = y_cursor - sheet_height
                     sheet_bottom = y_cursor
                     is_top_sheet = sheet_top <= y_top + EPSILON
-                    actual_length = sheet_height + (extra if is_top_sheet else 0.0)
+                    
+                    # Fix #2: Clamp actual_length to respect max_sheet_length_cm
+                    effective_extra = 0.0
+                    if is_top_sheet:
+                        effective_extra = min(extra, max(0.0, max_len - sheet_height))
+                    actual_length = sheet_height + effective_extra
                     placement_split = "partial_cutout_top" if is_top_sheet else None
-                    if sheet_height >= material.min_sheet_length_cm - EPSILON:
+                    
+                    # Fix #3: Validate actual_length instead of sheet_height for top sheets
+                    final_length_to_check = actual_length if is_top_sheet else sheet_height
+                    if final_length_to_check >= material.min_sheet_length_cm - EPSILON:
                         placement_id = f"{plane.id}-b{band_index}-s{segment_index}-r{row_index}"
                         result.placements.append(
                             SheetPlacement(
@@ -262,6 +295,22 @@ def generate_layout(
                                 split_reason=placement_split,
                             )
                         )
+                        
+                        # Fix #7: Update segment coverage_polygons for partial_cutout_top to include visual extension
+                        if is_top_sheet and effective_extra > 0:
+                            extended_coverage_polygons = []
+                            for poly in band_segment.coverage_polygons:
+                                extended_points = []
+                                for pt in poly.points:
+                                    # Only shift top edge points upward, keep bottom edge in place
+                                    if abs(pt.y - band_segment.y_top_cm) < EPSILON:
+                                        extended_points.append(Point2D(pt.x, pt.y - effective_extra))
+                                    else:
+                                        extended_points.append(pt)
+                                extended_coverage_polygons.append(Polygon2D(extended_points))
+                            band_segment.coverage_polygons = extended_coverage_polygons
+                            # Update segment placement_id to point to the top sheet
+                            band_segment.placement_id = placement_id
                     else:
                         result.rejected_segments.append(
                             RejectedSegment(
@@ -271,7 +320,7 @@ def generate_layout(
                                 y_top_cm=sheet_top,
                                 y_bottom_cm=sheet_bottom,
                                 raw_length_cm=sheet_height,
-                                reason=f"Arkusz za krótki: {sheet_height:.1f} cm (min. {material.min_sheet_length_cm:.1f} cm)",
+                                reason=f"Arkusz za krótki: {actual_length:.1f} cm (min. {material.min_sheet_length_cm:.1f} cm)",
                             )
                         )
                     y_cursor -= sheet_height
@@ -284,6 +333,18 @@ def generate_layout(
                     sheet_height = min(max_len, y_cursor - y_top)
                     sheet_top = y_cursor - sheet_height
                     sheet_bottom = y_cursor
+                    
+                    # Fix #1: Defensive guard to prevent infinite loop
+                    if sheet_height <= EPSILON:
+                        result.warnings.append(
+                            LayoutWarning(
+                                code="zero_sheet_height",
+                                message="Wysokość arkusza wynosi zero - przerwano generowanie",
+                                data={"band_index": band_index, "segment_index": segment_index},
+                            )
+                        )
+                        break
+                    
                     if sheet_height >= material.min_sheet_length_cm - EPSILON:
                         placement_id = f"{plane.id}-b{band_index}-s{segment_index}-r{row_index}"
                         result.placements.append(
@@ -315,12 +376,82 @@ def generate_layout(
                     row_index += 1
 
             band_segment.segment_index = segment_index
-            band_segment.placement_id = f"{plane.id}-b{band_index}-s{segment_index}-r0"
+            # Only set placement_id to r0 if not already set by partial_cutout_top logic
+            if band_segment.placement_id is None:
+                band_segment.placement_id = f"{plane.id}-b{band_index}-s{segment_index}-r0"
             layout_band.segments.append(band_segment)
 
         result.bands.append(layout_band)
 
     return result
+
+
+def _prepare_plane_for_layout(plane: RoofPlane, result: LayoutResult) -> RoofPlane | None:
+    raw_outline = plane.outline
+    if raw_outline is None:
+        return None
+
+    _log_split_geometry("raw", plane.id, raw_outline, plane.holes)
+    try:
+        outline = canonicalize_polygon(raw_outline, clockwise=False)
+    except ValueError as exc:
+        result.warnings.append(
+            LayoutWarning(code="invalid_outline", message=str(exc), data={"plane_id": plane.id})
+        )
+        return None
+
+    outline_issues = validate_polygon(outline)
+    if outline_issues:
+        result.warnings.extend(
+            LayoutWarning(code="invalid_outline", message=issue, data={"plane_id": plane.id})
+            for issue in outline_issues
+        )
+        return None
+
+    normalized_holes: list[Polygon2D] = []
+    for hole_index, raw_hole in enumerate(plane.holes):
+        try:
+            hole = canonicalize_polygon(raw_hole, clockwise=True)
+        except ValueError as exc:
+            result.warnings.append(
+                LayoutWarning(code="invalid_hole", message=str(exc), data={"plane_id": plane.id, "hole_index": hole_index})
+            )
+            continue
+
+        hole_issues = validate_polygon(hole)
+        if hole_issues:
+            result.warnings.extend(
+                LayoutWarning(code="invalid_hole", message=issue, data={"plane_id": plane.id, "hole_index": hole_index})
+                for issue in hole_issues
+            )
+            continue
+        if not polygon_is_inside_polygon(hole, outline):
+            result.warnings.append(
+                LayoutWarning(
+                    code="hole_outside_outline",
+                    message="Wycinek pominięto przy podziale arkuszy, bo po edycji wychodzi poza obrys połaci",
+                    data={"plane_id": plane.id, "hole_index": hole_index},
+                )
+            )
+            continue
+        overlap_issues = validate_hole_polygon(outline, hole, normalized_holes)
+        if overlap_issues:
+            result.warnings.extend(
+                LayoutWarning(code="invalid_hole", message=issue, data={"plane_id": plane.id, "hole_index": hole_index})
+                for issue in overlap_issues
+            )
+            continue
+        normalized_holes.append(hole)
+
+    _log_split_geometry("normalized", plane.id, outline, normalized_holes)
+    return RoofPlane(
+        id=plane.id,
+        name=plane.name,
+        outline=outline,
+        holes=normalized_holes,
+        selected_material_id=plane.selected_material_id,
+        generation_settings=plane.generation_settings,
+    )
 
 
 
@@ -576,5 +707,21 @@ def _point_on_edge_at_x(start: Point2D, end: Point2D, x_value: float) -> Point2D
     return Point2D(x_value, y_value)
 
 
-def _polygon_to_dict(polygon: Polygon2D) -> list[dict[str, float]]:
-    return [{"x": point.x, "y": point.y} for point in polygon.points]
+def _polygon_to_dict(polygon: Polygon2D) -> list[list[float]]:
+    return [[point.x, point.y] for point in polygon.points]
+
+
+def _log_split_geometry(label: str, plane_id: str, outline: Polygon2D, holes: list[Polygon2D]) -> None:
+    if not logger.isEnabledFor(logging.DEBUG):
+        return
+    logger.debug(
+        "sheet_split_geometry[%s] plane=%s outline=%s holes=%s",
+        label,
+        plane_id,
+        _polygon_points(outline),
+        [_polygon_points(hole) for hole in holes],
+    )
+
+
+def _polygon_points(polygon: Polygon2D) -> list[tuple[float, float]]:
+    return [(point.x, point.y) for point in polygon.points]

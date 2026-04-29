@@ -1,12 +1,8 @@
-# -*- coding: utf-8 -*-
 import json
 from pathlib import Path
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import (
     QCheckBox,
-    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -15,14 +11,12 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QListWidget,
-    QListWidgetItem,
     QMessageBox,
     QPushButton,
     QRadioButton,
     QSpinBox,
     QTextEdit,
     QVBoxLayout,
-    QWidget,
 )
 
 
@@ -643,7 +637,7 @@ def load_config() -> dict:
     """Load configuration from config.json. Returns empty dict on any read error."""
     config_path = Path(__file__).parent / "config.json"
     try:
-        with open(config_path, "r", encoding="utf-8") as f:
+        with open(config_path, encoding="utf-8") as f:
             return json.load(f)
     except FileNotFoundError:
         return {}

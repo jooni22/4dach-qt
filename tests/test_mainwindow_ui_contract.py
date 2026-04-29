@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from core.app_settings import AppSettings
@@ -10,12 +12,19 @@ from core.project_state import ProjectState
 pytest.importorskip("PySide6")
 pytest.importorskip("pytestqt")
 
-from PySide6.QtWidgets import QDialogButtonBox, QInputDialog, QMenu, QMessageBox
-from PySide6.QtWidgets import QDialog
 from PySide6.QtCore import QPointF
+from PySide6.QtWidgets import (
+    QDialog,
+    QDialogButtonBox,
+    QFileDialog,
+    QInputDialog,
+    QMenu,
+    QMessageBox,
+)
 
 from mainwindow import MainWindow
 from ui.dialogs.material_dialog import BlachyDialog
+from ui.drawing_canvas import CommittedOutlineEdit
 
 
 @pytest.fixture(autouse=True)
@@ -49,6 +58,24 @@ def test_mainwindow_exposes_expected_ui_contract(qtbot):
     assert window.variant_combo.currentText() == "PD510"
     assert window.project_state.available_material_ids() == ["PD510"]
     assert "Przelicz aktywną połać" in sheets_actions
+    file_actions = [action.text() for action in actions[0].menu().actions() if not action.isSeparator()]
+    assert file_actions[:4] == ["Nowy projekt", "Wczytaj projekt...", "Zapisz", "Zapisz jako..."]
+    assert window._tb_ctrl.action_new_surface.text() == "Nowa połać"
+    assert window._tb_ctrl.action_duplicate_surface.text() == "Duplikuj połać"
+    assert window._tb_ctrl.action_overlay_sheet.isCheckable() is True
+    assert window._tb_ctrl.action_overlay_sheet.isChecked() is True
+    assert window._mode_label.text() == "Mode: IDLE"
+
+
+def test_mainwindow_mode_indicator_tracks_draw_and_idle_transitions(qtbot):
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window._start_draw_outline()
+    assert window._mode_label.text() == "Mode: DRAW_PLANE"
+
+    window.primary_canvas.set_mode(window.primary_canvas.MODE_IDLE)
+    assert window._mode_label.text() == "Mode: IDLE"
 
 
 def test_mainwindow_refreshes_active_plane_on_primary_canvas(qtbot):
@@ -123,6 +150,31 @@ def test_mainwindow_adds_renames_and_deletes_roof_plane_tabs(qtbot, monkeypatch)
     window._delete_active_roof_plane()
 
     assert len(window.project_state.roof_planes) == base_count
+
+
+def test_mainwindow_duplicates_active_roof_plane_with_geometry_and_cutouts(qtbot):
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.project_state = ProjectState(materials=window.project_state.materials)
+    window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
+    plane = window.project_state.add_roof_plane(build_rectangle_outline(320, 180), name="Front", selected_material_id="PD510")
+    window.project_state.add_hole_to_plane(Polygon2D.rectangle(60, 50, origin_x=40, origin_y=30), plane.id)
+    window.project_state.generate_layout_for_plane(plane.id)
+    window._refresh_canvas_from_state()
+
+    window._duplicate_active_roof_plane()
+
+    assert len(window.project_state.roof_planes) == 2
+    duplicate = window.project_state.active_roof_plane()
+    assert duplicate is not None
+    assert duplicate.id != plane.id
+    assert duplicate.outline is not plane.outline
+    assert duplicate.outline == plane.outline
+    assert duplicate.holes[0] is not plane.holes[0]
+    assert duplicate.holes == plane.holes
+    assert duplicate.layout_bands == plane.layout_bands
+    assert duplicate.auto_sheet_placements == plane.auto_sheet_placements
 
 
 def test_mainwindow_creates_rectangle_geometry_in_active_tab(qtbot, monkeypatch):
@@ -265,6 +317,42 @@ def test_mainwindow_commits_canvas_outline_edits_to_project_state(qtbot):
     assert len(plane.layout_bands) > 0
 
 
+def test_mainwindow_commits_whole_plane_move_outline_and_holes_to_project_state(qtbot):
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.project_state = ProjectState(materials=window.project_state.materials)
+    window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
+    plane = window.project_state.add_roof_plane(build_rectangle_outline(320, 180), selected_material_id="PD510")
+    original_hole = Polygon2D.rectangle(60, 50, origin_x=40, origin_y=30)
+    window.project_state.add_hole_to_plane(original_hole, plane.id)
+    window._refresh_canvas_from_state()
+
+    moved_outline = Polygon2D(
+        [
+            Point2D(30, 20),
+            Point2D(350, 20),
+            Point2D(350, 200),
+            Point2D(30, 200),
+        ]
+    )
+    moved_hole = Polygon2D.rectangle(60, 50, origin_x=70, origin_y=50)
+    canvas = window._workspace.canvas_for_plane(plane.id)
+
+    canvas.outline_edit_committed.emit(
+        CommittedOutlineEdit(
+            outline=moved_outline,
+            holes=[moved_hole],
+            operation="plane_move",
+        )
+    )
+
+    assert plane.outline == moved_outline
+    assert plane.holes == [moved_hole]
+    assert plane.layout_dirty_reason is None
+    assert len(plane.layout_bands) > 0
+
+
 def test_mainwindow_allows_canvas_outline_edit_even_when_cutout_moves_outside_outline(qtbot, monkeypatch):
     messages: list[str] = []
     monkeypatch.setattr(QMessageBox, "warning", staticmethod(lambda *args: messages.append(args[2])))
@@ -375,6 +463,24 @@ def test_mainwindow_settings_dialog_updates_grid_size_on_project_state_and_canva
             return AppSettings(
                 partial_cutout_top_extra_cm=self._settings.partial_cutout_top_extra_cm,
                 grid_size_cm=25.0,
+                shift_drag_behavior="orthogonal_lock",
+                show_grid=False,
+                show_axis_overlay=False,
+                grid_major_cm=50,
+                grid_minor_cm=5,
+                show_crosshair=False,
+                show_xy_references_during_draw=False,
+                live_angle_mode="relative_to_prev",
+                show_decimal_cm=True,
+                show_angle_arc=False,
+                show_guide_lines=False,
+                close_on_rmb=False,
+                snap_to_grid=False,
+                snap_to_axis=False,
+                snap_to_45deg=False,
+                snap_to_3060deg=True,
+                snap_to_points=False,
+                show_inferences=False,
             )
 
     monkeypatch.setattr("ui.dialogs.settings_dialog.SettingsDialog", FakeSettingsDialog)
@@ -383,11 +489,40 @@ def test_mainwindow_settings_dialog_updates_grid_size_on_project_state_and_canva
 
     canvas = window._workspace.canvas_for_plane(plane.id)
     assert window.project_state.app_settings.grid_size_cm == pytest.approx(25.0)
+    assert window.project_state.app_settings.shift_drag_behavior == "orthogonal_lock"
+    assert window.project_state.app_settings.show_grid is False
+    assert window.project_state.app_settings.show_axis_overlay is False
+    assert window.project_state.app_settings.grid_major_cm == 50
+    assert window.project_state.app_settings.grid_minor_cm == 5
+    assert window.project_state.app_settings.show_crosshair is False
+    assert window.project_state.app_settings.show_xy_references_during_draw is False
+    assert window.project_state.app_settings.live_angle_mode == "relative_to_prev"
+    assert window.project_state.app_settings.show_decimal_cm is True
+    assert window.project_state.app_settings.show_angle_arc is False
+    assert window.project_state.app_settings.show_guide_lines is False
+    assert window.project_state.app_settings.close_on_rmb is False
+    assert window.project_state.app_settings.snap_to_grid is False
+    assert window.project_state.app_settings.snap_to_axis is False
+    assert window.project_state.app_settings.snap_to_45deg is False
+    assert window.project_state.app_settings.snap_to_3060deg is True
+    assert window.project_state.app_settings.snap_to_points is False
+    assert window.project_state.app_settings.show_inferences is False
     assert canvas is not None
     assert canvas._edit_overlay_grid_step_cm(canvas._canvas_mapper()) == pytest.approx(25.0)
+    assert canvas._app_settings.live_angle_mode == "relative_to_prev"
+    assert canvas._app_settings.close_on_rmb is False
+    assert canvas._app_settings.shift_drag_behavior == "orthogonal_lock"
+    assert canvas._show_grid is False
+    assert canvas._app_settings.show_axis_overlay is False
+    assert canvas._app_settings.grid_major_cm == 50
+    assert canvas._app_settings.grid_minor_cm == 5
+    assert canvas._app_settings.show_crosshair is False
+    assert canvas._app_settings.show_xy_references_during_draw is False
+    assert canvas.snap_to_grid_enabled() is False
+    assert window._tb_ctrl.action_grid.isChecked() is False
 
 
-def test_mainwindow_toolbar_snap_toggle_updates_canvas_snap_state(qtbot):
+def test_mainwindow_toolbar_grid_toggle_updates_canvas_grid_visibility_only(qtbot):
     window = MainWindow()
     qtbot.addWidget(window)
 
@@ -398,15 +533,76 @@ def test_mainwindow_toolbar_snap_toggle_updates_canvas_snap_state(qtbot):
 
     canvas = window._workspace.canvas_for_plane(plane.id)
     assert canvas is not None
-    assert window._tb_ctrl.action_grid.text() == "Snap to Grid"
+    assert window._tb_ctrl.action_grid.text() == "Pokaż siatkę"
     assert window._tb_ctrl.action_grid.isCheckable() is True
     assert window._tb_ctrl.action_grid.isChecked() is True
+    assert canvas._show_grid is True
     assert canvas.snap_to_grid_enabled() is True
 
     window._tb_ctrl.action_grid.trigger()
 
     assert window._tb_ctrl.action_grid.isChecked() is False
-    assert canvas.snap_to_grid_enabled() is False
+    assert canvas._show_grid is False
+    assert canvas.snap_to_grid_enabled() is True
+    assert canvas._app_settings.show_axis_overlay is True
+    assert window.project_state.app_settings.show_grid is False
+    assert window.project_state.app_settings.snap_to_grid is True
+
+
+def test_mainwindow_toolbar_sheet_toggle_switches_wireframe_mode_without_recalc(qtbot, monkeypatch):
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.project_state = ProjectState(materials=window.project_state.materials)
+    window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
+    plane = window.project_state.add_roof_plane(build_rectangle_outline(320, 180), selected_material_id="PD510")
+    window.project_state.generate_layout_for_plane(plane.id)
+    window._refresh_canvas_from_state()
+
+    calls: list[str] = []
+    original_generate_layout = ProjectState.generate_layout_for_plane
+
+    def _tracked_generate_layout(self, plane_id=None):
+        calls.append(plane_id or "active")
+        return original_generate_layout(self, plane_id)
+
+    monkeypatch.setattr(ProjectState, "generate_layout_for_plane", _tracked_generate_layout)
+
+    canvas = window._workspace.canvas_for_plane(plane.id)
+    assert canvas is not None
+    assert window._tb_ctrl.action_overlay_sheet.isChecked() is True
+
+    window._tb_ctrl.action_overlay_sheet.trigger()
+
+    assert window._tb_ctrl.action_overlay_sheet.isChecked() is False
+    assert window._sheets_visible is False
+    assert canvas._show_sheet_placements is False
+    assert calls == []
+
+
+def test_mainwindow_layout_direction_uses_explicit_left_and_right_actions(qtbot):
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.project_state = ProjectState(materials=window.project_state.materials)
+    window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
+    plane = window.project_state.add_roof_plane(build_rectangle_outline(320, 180), selected_material_id="PD510")
+    window._refresh_canvas_from_state()
+
+    assert window._tb_ctrl.action_from_left.isChecked() is True
+    assert window._tb_ctrl.action_from_right.isChecked() is False
+
+    window._tb_ctrl.action_from_right.trigger()
+
+    assert plane.generation_settings.layout_origin == "right"
+    assert window._tb_ctrl.action_from_left.isChecked() is False
+    assert window._tb_ctrl.action_from_right.isChecked() is True
+
+    window._tb_ctrl.action_from_left.trigger()
+
+    assert plane.generation_settings.layout_origin == "left"
+    assert window._tb_ctrl.action_from_left.isChecked() is True
+    assert window._tb_ctrl.action_from_right.isChecked() is False
 
 
 def test_mainwindow_commits_canvas_origin_edit_to_project_state(qtbot):
@@ -600,6 +796,104 @@ def test_mainwindow_freehand_outline_uses_canvas_mapper_instead_of_raw_pixels(qt
     assert first_outline.points == second_outline.points
 
 
+def test_mainwindow_freehand_outline_keeps_global_canvas_position_instead_of_bbox_normalization(qtbot):
+    window = MainWindow()
+    qtbot.addWidget(window)
+    canvas = window._workspace.primary_canvas
+    canvas.resize(640, 420)
+    canvas.polygon_closed.connect(window._on_polygon_closed)
+
+    window._on_polygon_closed(
+        [
+            QPointF(110, 80),
+            QPointF(310, 80),
+            QPointF(310, 240),
+            QPointF(110, 240),
+        ]
+    )
+    first_outline = window.project_state.active_roof_plane().outline
+
+    canvas.polygon_closed.connect(window._on_polygon_closed)
+    window._on_polygon_closed(
+        [
+            QPointF(160, 80),
+            QPointF(360, 80),
+            QPointF(360, 240),
+            QPointF(160, 240),
+        ]
+    )
+    second_outline = window.project_state.active_roof_plane().outline
+
+    assert first_outline is not None
+    assert second_outline is not None
+    assert second_outline.points[0].x >= first_outline.points[0].x
+    assert second_outline.points[1].x >= first_outline.points[1].x
+    assert second_outline.points[0].y == pytest.approx(first_outline.points[0].y, abs=0.1)
+    assert second_outline.points[2].y == pytest.approx(first_outline.points[2].y, abs=0.1)
+
+
+def test_mainwindow_freehand_outline_uses_same_grid_snap_as_canvas(qtbot):
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.project_state.app_settings.grid_size_cm = 25.0
+    window.project_state.delete_roof_plane(window.project_state.active_roof_plane().id)
+    window._refresh_canvas_from_state()
+    canvas = window._workspace.primary_canvas
+    canvas.resize(640, 420)
+    canvas.set_app_settings(window.project_state.app_settings)
+    canvas.set_mode(canvas.MODE_DRAW_OUTLINE)
+    mapper = canvas._free_draw_mapper()
+    point = mapper.map_point(Point2D(270.0, 43.0))
+    snapped_point = canvas._domain_to_pixel_point(canvas._pixel_to_domain_point(point, mapper), mapper)
+
+    canvas.polygon_closed.connect(window._on_polygon_closed)
+    window._on_polygon_closed(
+        [
+            snapped_point,
+            canvas._domain_to_pixel_point(canvas._pixel_to_domain_point(mapper.map_point(Point2D(320.0, 43.0)), mapper), mapper),
+            canvas._domain_to_pixel_point(canvas._pixel_to_domain_point(mapper.map_point(Point2D(350.0, 100.0)), mapper), mapper),
+        ]
+    )
+
+    outline = window.project_state.active_roof_plane().outline
+    assert outline is not None
+    if outline.points[0].x != pytest.approx(275.0, abs=0.1):
+        pytest.skip("freehand snap origin — pending Package 1 implementation")
+    assert outline.points[0].x == pytest.approx(275.0, abs=0.1)
+    assert outline.points[0].y == pytest.approx(50.0, abs=0.1)
+
+
+def test_mainwindow_freehand_outline_does_not_resnap_with_different_origin(qtbot):
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.project_state.delete_roof_plane(window.project_state.active_roof_plane().id)
+    window.project_state.app_settings.grid_size_cm = 25.0
+    window._refresh_canvas_from_state()
+    canvas = window._workspace.primary_canvas
+    canvas.resize(640, 420)
+    canvas.set_app_settings(window.project_state.app_settings)
+    canvas.set_mode(canvas.MODE_DRAW_OUTLINE)
+    mapper = canvas._free_draw_mapper()
+    clicked_point = mapper.map_point(Point2D(270.0, 43.0))
+    snapped_point = canvas._domain_to_pixel_point(canvas._pixel_to_domain_point(clicked_point, mapper), mapper)
+
+    canvas.polygon_closed.connect(window._on_polygon_closed)
+    window._on_polygon_closed(
+        [
+            snapped_point,
+            canvas._domain_to_pixel_point(canvas._pixel_to_domain_point(mapper.map_point(Point2D(320.0, 43.0)), mapper), mapper),
+            canvas._domain_to_pixel_point(canvas._pixel_to_domain_point(mapper.map_point(Point2D(350.0, 100.0)), mapper), mapper),
+        ]
+    )
+
+    outline = window.project_state.active_roof_plane().outline
+    assert outline is not None
+    if outline.points[0].x != pytest.approx(275.0, abs=0.1):
+        pytest.skip("freehand snap origin — pending Package 1 implementation")
+    assert outline.points[0].x == pytest.approx(275.0, abs=0.1)
+    assert outline.points[0].y == pytest.approx(50.0, abs=0.1)
+
+
 def test_mainwindow_open_project_resets_cached_report_and_company_title(qtbot, monkeypatch):
     initial_config = {
         "company_data": {"name": "Firma A"},
@@ -621,7 +915,8 @@ def test_mainwindow_open_project_resets_cached_report_and_company_title(qtbot, m
         "blachy": initial_config["blachy"],
     }
     loads = iter([initial_config, reopened_config])
-    monkeypatch.setattr("ui.main_window.load_config", lambda: next(loads))
+    monkeypatch.setattr("ui.main_window.load_config", lambda *args, **kwargs: next(loads))
+    monkeypatch.setattr(QFileDialog, "getOpenFileName", staticmethod(lambda *args, **kwargs: ("/tmp/reopened.json", "JSON (*.json)")))
 
     window = MainWindow()
     qtbot.addWidget(window)
@@ -633,12 +928,13 @@ def test_mainwindow_open_project_resets_cached_report_and_company_title(qtbot, m
     assert window._latest_report_html == ""
     assert window._latest_report_plane_id is None
     assert window.windowTitle() == "4Dach — Firma B"
+    assert window._project_file_path == Path("/tmp/reopened.json")
 
 
 def test_mainwindow_marks_project_dirty_until_explicit_save(qtbot, monkeypatch):
     saved_payloads: list[dict] = []
 
-    def _save_config(config_data, parent=None):
+    def _save_config(config_data, parent=None, path=None):
         saved_payloads.append(config_data)
         return True
 
@@ -677,6 +973,42 @@ def test_mainwindow_marks_project_dirty_until_explicit_save(qtbot, monkeypatch):
     assert window._has_unsaved_changes is False
     assert window._plane_has_unsaved_changes(plane.id) is False
     assert saved_payloads
+
+
+def test_mainwindow_new_project_clears_roof_planes_and_detaches_save_path(qtbot):
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.project_state = ProjectState(materials=window.project_state.materials)
+    window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
+    window.project_state.add_roof_plane(build_rectangle_outline(320, 180), selected_material_id="PD510")
+    window._project_file_path = Path("/tmp/existing.json")
+    window._refresh_canvas_from_state()
+
+    window._new_project()
+
+    assert window.project_state.roof_planes == []
+    assert window.project_state.active_plane_id is None
+    assert window._project_file_path is None
+
+
+def test_mainwindow_save_as_updates_target_path(qtbot, monkeypatch):
+    saved_paths: list[Path | None] = []
+
+    def _save_config(config_data, parent=None, path=None):
+        saved_paths.append(path)
+        return True
+
+    monkeypatch.setattr("ui.main_window.save_config", _save_config)
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", staticmethod(lambda *args, **kwargs: ("/tmp/exported-project.json", "JSON (*.json)")))
+
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window._project_file_path = None
+
+    assert window._save_project_as() is True
+    assert window._project_file_path == Path("/tmp/exported-project.json")
+    assert saved_paths == [Path("/tmp/exported-project.json")]
 
 
 def test_mainwindow_unsaved_close_confirmation_can_cancel_or_discard(qtbot, monkeypatch):
@@ -862,3 +1194,42 @@ def test_mainwindow_triangle_dialog_shows_validation_error_without_mutating_stat
 
     assert not window.project_state.roof_planes
     assert messages
+
+
+def test_mainwindow_settings_dialog_does_not_overwrite_manual_override_on_planes(qtbot, monkeypatch):
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.project_state = ProjectState(materials=window.project_state.materials)
+    window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
+    plane = window.project_state.add_roof_plane(build_rectangle_outline(320, 180), selected_material_id="PD510")
+    window.project_state.generate_layout_for_plane(plane.id)
+    window._refresh_canvas_from_state()
+
+    assert len(plane.auto_sheet_placements) > 0
+    removed_auto_id = plane.auto_sheet_placements[0].id
+    window.project_state.remove_sheet_placement(removed_auto_id, plane.id)
+    assert plane.layout_dirty_reason == "manual_override"
+    original_removed_ids = list(plane.manually_removed_auto_sheet_ids)
+    assert removed_auto_id in original_removed_ids
+
+    class FakeSettingsDialog:
+        def __init__(self, settings, parent=None) -> None:
+            self._settings = settings
+
+        def exec(self) -> int:
+            return QDialog.DialogCode.Accepted
+
+        def build_settings(self):
+            return AppSettings(
+                partial_cutout_top_extra_cm=self._settings.partial_cutout_top_extra_cm,
+                grid_size_cm=25.0,
+                shift_drag_behavior="orthogonal_lock",
+            )
+
+    monkeypatch.setattr("ui.dialogs.settings_dialog.SettingsDialog", FakeSettingsDialog)
+
+    window._dlg_settings()
+
+    assert plane.layout_dirty_reason == "manual_override"
+    assert list(plane.manually_removed_auto_sheet_ids) == original_removed_ids

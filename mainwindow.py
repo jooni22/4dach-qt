@@ -1,4 +1,3 @@
-# This Python file uses the following encoding: utf-8
 """Compatibility shim for the refactored UI main window."""
 from __future__ import annotations
 

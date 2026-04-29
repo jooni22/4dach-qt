@@ -1,0 +1,30 @@
+# Python Project Cleanup — Pre-commit Hooks
+# Install:  uvx pre-commit install
+# Update:   uvx pre-commit autoupdate
+# Run all:  uvx pre-commit run --all-files
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.12
+    hooks:
+      # Lint + auto-fix (imports, unused vars, pyupgrade, …)
+      - id: ruff
+        args: [--fix]
+        stages: [pre-commit]
+      # Format
+      - id: ruff-format
+        stages: [pre-commit]
+
+  - repo: https://github.com/fpgmaas/deptry
+    rev: 0.25.1
+    hooks:
+      # Detect unused / missing / transitive dependencies
+      - id: deptry
+        stages: [pre-commit]
+
+  - repo: https://github.com/jendrikseipp/vulture
+    rev: v2.16
+    hooks:
+      # Dead-code detection (report only — no autofix)
+      - id: vulture
+        stages: [pre-commit]

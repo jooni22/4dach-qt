@@ -1,4 +1,3 @@
-# This Python file uses the following encoding: utf-8
 """material_dialog.py — dialogs for editing the project material registry."""
 from __future__ import annotations
 
@@ -124,7 +123,7 @@ class BlachyDialog(QDialog):
         else:
             self._clear_details()
 
-    def _save_material_from_dialog(self, dialog: "DaneBlachyDialog", existing_index: int | None = None) -> None:
+    def _save_material_from_dialog(self, dialog: DaneBlachyDialog, existing_index: int | None = None) -> None:
         material = dialog.get_values()
         duplicate_index = next(
             (index for index, candidate in enumerate(self._materials) if candidate.id == material.id and index != existing_index),

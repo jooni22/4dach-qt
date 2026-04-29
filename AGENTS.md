@@ -176,10 +176,7 @@ Do not claim that review comments were synchronized unless that step was actuall
 
 ---
 
-## 11. Safe defaults
+## 11. No lint / typecheck / codegen
 
-If anything about the workflow is unclear:
-- prefer preserving the current branch structure
-- prefer small incremental changes
-- prefer documenting uncertainty instead of guessing
-- prefer reading existing repo files before introducing new automation
+This project has no `ruff`, `mypy`, or code-generation tooling configured. The only automated check is `pytest`.
+
