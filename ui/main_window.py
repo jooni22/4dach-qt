@@ -641,6 +641,90 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Brak połaci", "Brak aktywnej połaci")
         return plane
 
+    def _active_with_outline_or_warn(self):
+        plane = self._active_or_warn()
+        if plane is None:
+            return None
+        if plane.outline is None:
+            QMessageBox.information(self, "Brak obrysu", "Aktywna połać nie ma jeszcze obrysu")
+            return None
+        return plane
+
+    def _active_with_holes_or_warn(self):
+        plane = self._active_or_warn()
+        if plane is None:
+            return None
+        if not plane.holes:
+            QMessageBox.information(self, "Brak wycinków", "Aktywna połać nie ma wycinków")
+            return None
+        return plane
+
+    def _confirm_yes_no(self, title: str, message: str, *, default=QMessageBox.StandardButton.No) -> bool:
+        answer = QMessageBox.question(
+            self,
+            title,
+            message,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            default,
+        )
+        return answer == QMessageBox.StandardButton.Yes
+
+    def _select_index(self, title: str, upper_bound: int) -> int | None:
+        index, ok = QInputDialog.getInt(self, title, f"Indeks 0-{upper_bound}:", 0, 0, upper_bound)
+        return index if ok else None
+
+    def _recalculate_plane(self, plane_id: str) -> None:
+        self.project_state.generate_layout_for_plane(plane_id)
+
+    def _recalculate_planes_or_warn(self, plane_ids: list[str]) -> bool:
+        for plane_id in plane_ids:
+            try:
+                self._recalculate_plane(plane_id)
+            except ValueError as e:
+                QMessageBox.warning(self, "Błąd przeliczania", str(e))
+                return False
+        return True
+
+    def _manual_sheet_values(self) -> tuple[int, float, float, float, float] | None:
+        band, ok = QInputDialog.getInt(self, "Dodaj arkusz", "Numer pasa:", 0, 0, 999)
+        if not ok:
+            return None
+        left_x, ok = QInputDialog.getDouble(self, "Dodaj arkusz", "Lewy X [cm]:", 0.0)
+        if not ok:
+            return None
+        width_cm, ok = QInputDialog.getDouble(self, "Dodaj arkusz", "Szerokość [cm]:", 50.0, 0.01)
+        if not ok:
+            return None
+        top_y, ok = QInputDialog.getDouble(self, "Dodaj arkusz", "Górny Y [cm]:", 0.0)
+        if not ok:
+            return None
+        length_cm, ok = QInputDialog.getDouble(self, "Dodaj arkusz", "Długość końcowa [cm]:", 100.0, 0.01)
+        if not ok:
+            return None
+        return band, left_x, width_cm, top_y, length_cm
+
+    def _build_manual_sheet_placement(
+        self,
+        plane,
+        *,
+        band_index: int,
+        left_x_cm: float,
+        width_cm: float,
+        top_y_cm: float,
+        length_cm: float,
+    ) -> SheetPlacement:
+        return SheetPlacement(
+            id=f"{plane.id}-manual-{plane.layout_revision + len(plane.manual_sheet_placements) + 1}",
+            band_index=band_index,
+            x_left_cm=left_x_cm,
+            x_right_cm=left_x_cm + width_cm,
+            y_top_cm=top_y_cm,
+            y_bottom_cm=top_y_cm + length_cm,
+            raw_length_cm=length_cm,
+            final_length_cm=length_cm,
+            source="manual",
+        )
+
     def _edit(self, fn, msg: str, *, label: str | None = None, failure_title: str = "Błąd edycji", after_refresh=None) -> bool:
         return self._perform_command(label or msg, fn, msg, failure_title=failure_title, after_refresh=after_refresh)
 
@@ -781,14 +865,7 @@ class MainWindow(QMainWindow):
         plane = self.project_state.roof_plane_by_id(plane_id)
         if plane is None:
             return
-        answer = QMessageBox.question(
-            self,
-            "Usuń połać",
-            f"Czy na pewno usunąć połacię „{plane.name}”?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        if answer == QMessageBox.StandardButton.Yes:
+        if self._confirm_yes_no("Usuń połać", f"Czy na pewno usunąć połacię „{plane.name}”?"):
             self._edit(lambda: self.project_state.delete_roof_plane(plane.id), f"Usunięto połacię {plane.name}")
 
     def _delete_active_roof_plane(self) -> None:
@@ -840,14 +917,7 @@ class MainWindow(QMainWindow):
             if idx is not None:
                 self._dlg_del_hole()
         elif kind in {"main_polygon", "main_polygon_vertex"}:
-            answer = QMessageBox.question(
-                self,
-                "Usuń połać",
-                "Czy na pewno usunąć wybraną połać?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-            if answer == QMessageBox.StandardButton.Yes:
+            if self._confirm_yes_no("Usuń połać", "Czy na pewno usunąć wybraną połać?"):
                 self._delete_active_roof_plane()
 
     def _on_tab_close_requested(self, index: int) -> None:
@@ -959,9 +1029,7 @@ class MainWindow(QMainWindow):
         self._workspace.toggle_module_count(checked)
 
     def _on_origin_mode_toggled(self, checked: bool) -> None:
-        plane = self.project_state.active_roof_plane()
-        if checked and (plane is None or plane.outline is None):
-            QMessageBox.information(self, "Brak obrysu", "Aktywna połać nie ma jeszcze obrysu")
+        if checked and self._active_with_outline_or_warn() is None:
             self._tb_ctrl.action_base_point_toggle.blockSignals(True)
             self._tb_ctrl.action_base_point_toggle.setChecked(False)
             self._tb_ctrl.action_base_point_toggle.blockSignals(False)
@@ -985,12 +1053,8 @@ class MainWindow(QMainWindow):
         self._set_active_layout_origin("right")
 
     def _set_active_layout_origin(self, origin: str) -> None:
-        plane = self._active_or_warn()
+        plane = self._active_with_outline_or_warn()
         if plane is None:
-            self._sync_layout_direction_actions()
-            return
-        if plane.outline is None:
-            QMessageBox.information(self, "Brak obrysu", "Aktywna połać nie ma jeszcze obrysu")
             self._sync_layout_direction_actions()
             return
         if plane.generation_settings.layout_origin == origin:
@@ -1003,11 +1067,8 @@ class MainWindow(QMainWindow):
         )
 
     def _on_from_base_toggled(self, checked: bool) -> None:
-        plane = self._active_or_warn()
+        plane = self._active_with_outline_or_warn()
         if plane is None:
-            return
-        if plane.outline is None:
-            QMessageBox.information(self, "Brak obrysu", "Aktywna połać nie ma jeszcze obrysu")
             return
         self._edit(
             lambda: self._set_plane_base_line_mode(plane.id, checked),
@@ -1021,11 +1082,7 @@ class MainWindow(QMainWindow):
         self._begin_polygon_capture(mode=DrawingCanvas.MODE_DRAW_PLANE, handler=self._on_polygon_closed)
 
     def _start_draw_cutout(self) -> None:
-        plane = self._active_or_warn()
-        if plane is None:
-            return
-        if plane.outline is None:
-            QMessageBox.information(self, "Brak obrysu", "Aktywna połać nie ma jeszcze obrysu")
+        if self._active_with_outline_or_warn() is None:
             return
         self._begin_polygon_capture(mode=DrawingCanvas.MODE_DRAW_CUT, handler=self._on_cutout_closed)
 
@@ -1113,13 +1170,8 @@ class MainWindow(QMainWindow):
             )
             if answer == QMessageBox.StandardButton.Cancel:
                 return False
-            if answer == QMessageBox.StandardButton.Yes:
-                for plane_id in dirty_plane_ids:
-                    try:
-                        self.project_state.generate_layout_for_plane(plane_id)
-                    except ValueError as e:
-                        QMessageBox.warning(self, "Błąd przeliczania", str(e))
-                        return False
+            if answer == QMessageBox.StandardButton.Yes and not self._recalculate_planes_or_warn(dirty_plane_ids):
+                return False
         try:
             report = build_project_report(self.project_state)
             html = build_project_report_html(
@@ -1150,10 +1202,7 @@ class MainWindow(QMainWindow):
         plane = self._active_or_warn()
         if plane is None:
             return
-        try:
-            self.project_state.generate_layout_for_plane(plane.id)
-        except ValueError as e:
-            QMessageBox.warning(self, "Błąd przeliczania", str(e))
+        if not self._recalculate_planes_or_warn([plane.id]):
             return
         self._latest_report_html = ""
         self._latest_report_plane_id = None
@@ -1218,33 +1267,24 @@ class MainWindow(QMainWindow):
         self._edit(lambda: self.project_state.add_hole_to_plane(hole, plane.id), f"Dodano wycinek do {plane.name}")
 
     def _dlg_del_hole(self) -> None:
-        plane = self._active_or_warn()
-        if plane is None or not plane.holes:
-            QMessageBox.information(self, "Brak wycinków", "Aktywna połać nie ma wycinków")
+        plane = self._active_with_holes_or_warn()
+        if plane is None:
             return
         canvas = self._workspace.canvas_for_plane(plane.id) or self._workspace.primary_canvas
         idx = canvas.selected_cutout_index() if canvas is not None else None
         if idx is None:
-            idx, ok = QInputDialog.getInt(self, "Usuń wycinek", f"Indeks 0-{len(plane.holes)-1}:", 0, 0, len(plane.holes)-1)
-            if not ok:
+            idx = self._select_index("Usuń wycinek", len(plane.holes) - 1)
+            if idx is None:
                 return
-        answer = QMessageBox.question(
-            self,
-            "Usuń wycinek",
-            "Czy na pewno usunąć wybrany wycinek?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        if answer == QMessageBox.StandardButton.Yes:
+        if self._confirm_yes_no("Usuń wycinek", "Czy na pewno usunąć wybrany wycinek?"):
             self._edit(lambda: self.project_state.delete_hole_from_plane(idx, plane.id), f"Usunięto wycinek {idx}")
 
     def _dlg_move_hole(self) -> None:
-        plane = self._active_or_warn()
-        if plane is None or not plane.holes:
-            QMessageBox.information(self, "Brak wycinków", "Aktywna połać nie ma wycinków")
+        plane = self._active_with_holes_or_warn()
+        if plane is None:
             return
-        idx, ok = QInputDialog.getInt(self, "Przesuń wycinek", f"Indeks 0-{len(plane.holes)-1}:", 0, 0, len(plane.holes)-1)
-        if not ok:
+        idx = self._select_index("Przesuń wycinek", len(plane.holes) - 1)
+        if idx is None:
             return
         dx, ok = QInputDialog.getDouble(self, "Przesuń wycinek", "Przesunięcie X [cm]:")
         if not ok:
@@ -1259,27 +1299,22 @@ class MainWindow(QMainWindow):
         plane = self._active_or_warn()
         if plane is None:
             return
-        band, ok = QInputDialog.getInt(self, "Dodaj arkusz", "Numer pasa:", 0, 0, 999)
-        if not ok:
+        values = self._manual_sheet_values()
+        if values is None:
             return
-        xl, ok = QInputDialog.getDouble(self, "Dodaj arkusz", "Lewy X [cm]:", 0.0)
-        if not ok:
-            return
-        width, ok = QInputDialog.getDouble(self, "Dodaj arkusz", "Szerokość [cm]:", 50.0, 0.01)
-        if not ok:
-            return
-        yt, ok = QInputDialog.getDouble(self, "Dodaj arkusz", "Górny Y [cm]:", 0.0)
-        if not ok:
-            return
-        length, ok = QInputDialog.getDouble(self, "Dodaj arkusz", "Długość końcowa [cm]:", 100.0, 0.01)
-        if not ok:
-            return
-        s = SheetPlacement(
-            id=f"{plane.id}-manual-{plane.layout_revision + len(plane.manual_sheet_placements) + 1}",
-            band_index=band, x_left_cm=xl, x_right_cm=xl+width, y_top_cm=yt, y_bottom_cm=yt+length,
-            raw_length_cm=length, final_length_cm=length, source="manual",
+        band, left_x, width_cm, top_y, length_cm = values
+        placement = self._build_manual_sheet_placement(
+            plane,
+            band_index=band,
+            left_x_cm=left_x,
+            width_cm=width_cm,
+            top_y_cm=top_y,
+            length_cm=length_cm,
         )
-        self._edit(lambda: self.project_state.add_manual_sheet_placement(s, plane.id), f"Dodano arkusz do {plane.name}")
+        self._edit(
+            lambda: self.project_state.add_manual_sheet_placement(placement, plane.id),
+            f"Dodano arkusz do {plane.name}",
+        )
 
     def _dlg_del_sheet(self) -> None:
         plane = self._active_or_warn()
