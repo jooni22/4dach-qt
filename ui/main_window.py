@@ -1,4 +1,4 @@
-"""ui/main_window.py — slim MainWindow (~150 lines) that mounts controllers."""
+"""Main application window coordinating project, workspace, and report flows."""
 from __future__ import annotations
 
 import copy
@@ -31,7 +31,13 @@ from core.models import Point2D, Polygon2D, SheetPlacement
 from core.project_state import ProjectState
 from core.reporting import build_project_report, build_project_report_html
 from persistence import load_config, save_config
-from ui.dialogs import BlachyDialog, DaneFirmyDialog, ProstokatDialog, TrapezDialog, TrojkatDialog
+from ui.dialogs import (
+    BlachyDialog,
+    DaneFirmyDialog,
+    ProstokatDialog,
+    TrapezDialog,
+    TrojkatDialog,
+)
 from ui.drawing_canvas import CommittedOutlineEdit, DrawingCanvas
 from ui.report_view import ReportController
 from ui.theme_manager import ThemeManager
@@ -230,6 +236,25 @@ class MainWindow(QMainWindow):
     def _set_company_title(self, company: str) -> None:
         self._base_window_title = f"4Dach — {company}"
         self._refresh_window_title()
+
+    def _dialog_accepted(self, dialog: QDialog) -> bool:
+        return dialog.exec() == QDialog.DialogCode.Accepted
+
+    def _remember_shape_config(self, shape_key: str, values: dict) -> None:
+        self._config.setdefault("ksztalty", {})[shape_key] = values
+
+    def _build_centered_hole(self, plane, width_cm: int, height_cm: int) -> Polygon2D:
+        if plane.outline is None:
+            return Polygon2D.rectangle(width_cm, height_cm, 0.0, 0.0)
+
+        points = plane.outline.points
+        center_x = sum(point.x for point in points) / len(points)
+        center_y = sum(point.y for point in points) / len(points)
+        offset_x = center_x - width_cm / 2.0
+        offset_y = center_y - height_cm / 2.0
+        if plane.holes:
+            offset_x = max(hole.bounds().max_x for hole in plane.holes) + 10.0
+        return Polygon2D.rectangle(width_cm, height_cm, offset_x, offset_y)
 
     def _refresh_window_title(self) -> None:
         suffix = " *" if self._has_unsaved_changes else ""
@@ -1140,32 +1165,43 @@ class MainWindow(QMainWindow):
     # Shape dialogs
     def _dlg_prostokat(self) -> None:
         dlg = ProstokatDialog(self._config, self)
-        if dlg.exec() == QDialog.DialogCode.Accepted:
-            v = dlg.get_values()
-            self._config.setdefault("ksztalty", {})["prostokat"] = v
-            outline = make_rectangle(v["szerokosc"], v["wysokosc"])
-            self._set_active_plane_geometry(outline, f"Ustawiono obrys prostokąta {v['szerokosc']}×{v['wysokosc']} cm")
+        if not self._dialog_accepted(dlg):
+            return
+        values = dlg.get_values()
+        self._remember_shape_config("prostokat", values)
+        outline = make_rectangle(values["szerokosc"], values["wysokosc"])
+        self._set_active_plane_geometry(
+            outline,
+            f"Ustawiono obrys prostokąta {values['szerokosc']}×{values['wysokosc']} cm",
+        )
 
     def _dlg_trojkat(self) -> None:
         dlg = TrojkatDialog(self._config, self)
-        if dlg.exec() == QDialog.DialogCode.Accepted:
-            v = dlg.get_values()
-            side = v["ramie"] if v.get("ramie_enabled") else None
-            try:
-                outline = make_triangle(v["typ"], v["podstawa"], v["wysokosc"], side)
-            except ValueError as e:
-                QMessageBox.warning(self, "Błąd edycji", str(e))
-                return
-            self._config.setdefault("ksztalty", {})["trojkat"] = v
-            self._set_active_plane_geometry(outline, f"Ustawiono obrys trójkąta {v['typ']}")
+        if not self._dialog_accepted(dlg):
+            return
+        values = dlg.get_values()
+        side = values["ramie"] if values.get("ramie_enabled") else None
+        try:
+            outline = make_triangle(values["typ"], values["podstawa"], values["wysokosc"], side)
+        except ValueError as e:
+            QMessageBox.warning(self, "Błąd edycji", str(e))
+            return
+        self._remember_shape_config("trojkat", values)
+        self._set_active_plane_geometry(outline, f"Ustawiono obrys trójkąta {values['typ']}")
 
     def _dlg_trapez(self) -> None:
         dlg = TrapezDialog(self._config, self)
-        if dlg.exec() == QDialog.DialogCode.Accepted:
-            v = dlg.get_values()
-            self._config.setdefault("ksztalty", {})["trapez"] = v
-            outline = make_trapezoid(v["typ"], v["podstawa_dolna"], v["podstawa_gorna"], v["wysokosc"])
-            self._set_active_plane_geometry(outline, f"Ustawiono obrys trapezu {v['typ']}")
+        if not self._dialog_accepted(dlg):
+            return
+        values = dlg.get_values()
+        self._remember_shape_config("trapez", values)
+        outline = make_trapezoid(
+            values["typ"],
+            values["podstawa_dolna"],
+            values["podstawa_gorna"],
+            values["wysokosc"],
+        )
+        self._set_active_plane_geometry(outline, f"Ustawiono obrys trapezu {values['typ']}")
 
     # ------------------------------------------------------------------
     # Hole dialogs
@@ -1173,28 +1209,13 @@ class MainWindow(QMainWindow):
         plane = self._active_or_warn()
         if plane is None:
             return
-        from ui.dialogs.shape_dialogs import ProstokatDialog
         dlg = ProstokatDialog(self._config, self)
         dlg.setWindowTitle("Prostokątny wycinek")
-        if dlg.exec() == QDialog.DialogCode.Accepted:
-            v = dlg.get_values()
-            w = v["szerokosc"]
-            h = v["wysokosc"]
-            if plane.outline:
-                pts = plane.outline.points
-                center_x = sum(p.x for p in pts) / len(pts)
-                center_y = sum(p.y for p in pts) / len(pts)
-                ox = center_x - w / 2.0
-                oy = center_y - h / 2.0
-                if plane.holes:
-                    max_x = max(hole.bounds().max_x for hole in plane.holes)
-                    ox = max_x + 10.0
-            else:
-                ox = 0.0
-                oy = 0.0
-
-            hole = Polygon2D.rectangle(w, h, ox, oy)
-            self._edit(lambda: self.project_state.add_hole_to_plane(hole, plane.id), f"Dodano wycinek do {plane.name}")
+        if not self._dialog_accepted(dlg):
+            return
+        values = dlg.get_values()
+        hole = self._build_centered_hole(plane, values["szerokosc"], values["wysokosc"])
+        self._edit(lambda: self.project_state.add_hole_to_plane(hole, plane.id), f"Dodano wycinek do {plane.name}")
 
     def _dlg_del_hole(self) -> None:
         plane = self._active_or_warn()
@@ -1310,39 +1331,49 @@ class MainWindow(QMainWindow):
     # Catalogue dialogs
     def _dlg_blachy(self) -> None:
         dlg = BlachyDialog(self.project_state.materials, self)
-        if dlg.exec() == QDialog.DialogCode.Accepted:
-            self._edit(
-                lambda: self.project_state.replace_materials(dlg.get_values()),
-                "Zaktualizowano katalog materiałów",
-                label="Edycja katalogu materiałów",
-            )
+        if not self._dialog_accepted(dlg):
+            return
+        self._edit(
+            lambda: self.project_state.replace_materials(dlg.get_values()),
+            "Zaktualizowano katalog materiałów",
+            label="Edycja katalogu materiałów",
+        )
 
     def _dlg_firma(self) -> None:
         dlg = DaneFirmyDialog(self._config, self)
-        if dlg.exec() == QDialog.DialogCode.Accepted:
-            v = dlg.get_values()
-            def _apply_company_data() -> None:
-                self._config["company_data"] = v
-                self.project_state.company_data = self.project_state.company_data.from_dict(v)
-                company = v.get("name", "") or "4Dach"
-                self._set_company_title(company)
+        if not self._dialog_accepted(dlg):
+            return
+        values = dlg.get_values()
 
-            self._edit(_apply_company_data, "Zaktualizowano dane firmy", label="Edycja danych firmy")
+        def _apply_company_data() -> None:
+            self._config["company_data"] = values
+            self.project_state.company_data = self.project_state.company_data.from_dict(values)
+            company = values.get("name", "") or "4Dach"
+            self._set_company_title(company)
+
+        self._edit(_apply_company_data, "Zaktualizowano dane firmy", label="Edycja danych firmy")
 
     def _dlg_settings(self) -> None:
         from ui.dialogs.settings_dialog import SettingsDialog
+
         dlg = SettingsDialog(self.project_state.app_settings, parent=self)
-        if dlg.exec() == QDialog.DialogCode.Accepted:
-            new_settings = dlg.build_settings()
-            def _apply_settings() -> None:
-                self.project_state.app_settings = new_settings
-                self._set_undo_stack_depth(new_settings.undo_stack_depth)
-                self._snap_to_grid_enabled = new_settings.snap_to_grid
-                for plane in self.project_state.roof_planes:
-                    if plane.outline is not None and plane.layout_dirty_reason != "manual_override":
-                        plane.layout_dirty_reason = "settings_changed"
-            self._edit(_apply_settings, "Zaktualizowano ustawienia aplikacji",
-                       label="Zmiana ustawień aplikacji")
+        if not self._dialog_accepted(dlg):
+            return
+        new_settings = dlg.build_settings()
+
+        def _apply_settings() -> None:
+            self.project_state.app_settings = new_settings
+            self._set_undo_stack_depth(new_settings.undo_stack_depth)
+            self._snap_to_grid_enabled = new_settings.snap_to_grid
+            for plane in self.project_state.roof_planes:
+                if plane.outline is not None and plane.layout_dirty_reason != "manual_override":
+                    plane.layout_dirty_reason = "settings_changed"
+
+        self._edit(
+            _apply_settings,
+            "Zaktualizowano ustawienia aplikacji",
+            label="Zmiana ustawień aplikacji",
+        )
 
     # ------------------------------------------------------------------
     def closeEvent(self, event: QCloseEvent) -> None:
