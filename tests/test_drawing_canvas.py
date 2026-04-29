@@ -8,7 +8,7 @@ pytest.importorskip("PySide6")
 pytest.importorskip("pytestqt")
 
 from PySide6.QtCore import QEvent, QPoint, QPointF, QRectF, Qt
-from PySide6.QtGui import QMouseEvent
+from PySide6.QtGui import QMouseEvent, QPalette
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
@@ -1431,7 +1431,10 @@ def test_canvas_render_items_preserve_cutout_exclusions(qtbot):
     image = canvas.grab().toImage()
     hole_color = image.pixelColor(_point_on_canvas(canvas, Point2D(40, 45)))
     covered_color = image.pixelColor(_point_on_canvas(canvas, Point2D(15, 50)))
+    base_color = canvas.palette().color(QPalette.ColorRole.Base)
     assert covered_color != hole_color
+    assert hole_color != base_color
+    assert _color_delta(hole_color, covered_color) < _color_delta(base_color, covered_color)
 
 
 def test_canvas_render_items_follow_layout_direction_change(qtbot):
@@ -1473,7 +1476,7 @@ def test_canvas_partial_cutout_top_sheet_uses_final_length_for_visual_height(qtb
     assert canvas._hit_test_sheet(QPointF(protruding_point)) == top_item.placement_id
 
 
-def test_canvas_partial_cutout_render_items_are_clipped_per_placement(qtbot):
+def test_canvas_partial_cutout_render_items_stay_rectangular_under_cutout_overlay(qtbot):
     outline = Polygon2D.rectangle(1000, 1000)
     hole = Polygon2D.rectangle(300, 300, origin_x=0, origin_y=300)
     plane = RoofPlane(id="plane-1", name="PartialVisual", outline=outline, holes=[hole])
@@ -1493,31 +1496,34 @@ def test_canvas_partial_cutout_render_items_are_clipped_per_placement(qtbot):
 
     assert any(point_in_polygon(Point2D(100, 700), polygon) for polygon in lower_item.polygons)
     assert not any(point_in_polygon(Point2D(100, 150), polygon) for polygon in lower_item.polygons)
-    assert not any(point_in_polygon(Point2D(100, 450), polygon) for polygon in lower_item.polygons)
+    assert any(point_in_polygon(Point2D(100, 450), polygon) for polygon in lower_item.polygons)
 
     top_point = canvas._canvas_mapper().map_point(Point2D(100, 150))
     lower_point = canvas._canvas_mapper().map_point(Point2D(100, 700))
     hole_point = canvas._canvas_mapper().map_point(Point2D(100, 450))
     assert canvas._hit_test_sheet(QPointF(top_point)) == top_item.placement_id
     assert canvas._hit_test_sheet(QPointF(lower_point)) == lower_item.placement_id
-    assert canvas._hit_test_sheet(QPointF(hole_point)) is None
+    assert canvas._hit_test_sheet(QPointF(hole_point)) == lower_item.placement_id
 
 
-def test_canvas_sheet_rendering_does_not_draw_fake_internal_notch_seam(qtbot):
-    outline = Polygon2D.rectangle(1000, 1000)
-    hole = Polygon2D.rectangle(300, 300, origin_x=0, origin_y=300)
-    plane = RoofPlane(id="plane-1", name="PartialVisual", outline=outline, holes=[hole])
-    canvas = _make_canvas(qtbot, outline, holes=[hole])
+def test_canvas_sheet_rendering_keeps_rectangular_fill_above_sloped_outline(qtbot):
+    outline = Polygon2D(
+        [
+            Point2D(0, 300),
+            Point2D(300, 0),
+            Point2D(300, 300),
+        ]
+    )
+    plane = RoofPlane(id="plane-1", name="Slope", outline=outline)
+    canvas = _make_canvas(qtbot, outline)
 
-    _apply_layout(canvas, plane, _material(effective_width_cm=510, max_sheet_length_cm=1000, module_length_cm=0))
+    _apply_layout(canvas, plane, _material(effective_width_cm=100, max_sheet_length_cm=1000, module_length_cm=0))
 
     image = canvas.grab().toImage()
-    seam_color = image.pixelColor(_point_on_canvas(canvas, Point2D(300, 150)))
-    left_fill = image.pixelColor(_point_on_canvas(canvas, Point2D(260, 150)))
-    right_fill = image.pixelColor(_point_on_canvas(canvas, Point2D(340, 150)))
+    sheet_only_color = image.pixelColor(_point_on_canvas(canvas, Point2D(10, 250)))
+    base_color = canvas.palette().color(QPalette.ColorRole.Base)
 
-    assert _color_delta(seam_color, left_fill) < 50
-    assert _color_delta(seam_color, right_fill) < 50
+    assert _color_delta(sheet_only_color, base_color) > 20
 
 
 def test_canvas_updates_render_items_after_geometry_edit_and_relayout(qtbot):

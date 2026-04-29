@@ -660,19 +660,41 @@ class DrawingCanvas(QWidget):
         if self._render_items_cache is not None and self._render_items_cache_revision == plane_revision:
             return self._render_items_cache
 
+        visible_placements = self._visible_sheet_placements()
+        placements_by_id = {placement.id: placement for placement in visible_placements}
         render_items: list[_SheetRenderItem] = []
-        segment_map = self._layout_segment_map()
+        seen_ids: set[str] = set()
 
-        for placement in self._visible_sheet_placements():
-            coverage_polygons = self._placement_render_polygons(placement, segment_map)
-            if not coverage_polygons:
-                coverage_polygons = [self._placement_polygon(placement)]
+        for band in self.roof_plane.layout_bands:
+            for segment in band.get("segments", []):
+                placement_id = segment.get("placement_id")
+                if not placement_id:
+                    continue
+                placement = placements_by_id.get(placement_id)
+                if placement is None:
+                    continue
+                render_items.append(
+                    _SheetRenderItem(
+                        placement_id=placement.id,
+                        source=placement.source,
+                        band_index=placement.band_index,
+                        polygons=[self._placement_polygon(placement)],
+                        raw_length_cm=placement.raw_length_cm,
+                        final_length_cm=placement.final_length_cm,
+                        split_reason=placement.split_reason,
+                    )
+                )
+                seen_ids.add(placement.id)
+
+        for placement in visible_placements:
+            if placement.id in seen_ids:
+                continue
             render_items.append(
                 _SheetRenderItem(
                     placement_id=placement.id,
                     source=placement.source,
                     band_index=placement.band_index,
-                    polygons=coverage_polygons,
+                    polygons=[self._placement_polygon(placement)],
                     raw_length_cm=placement.raw_length_cm,
                     final_length_cm=placement.final_length_cm,
                     split_reason=placement.split_reason,
