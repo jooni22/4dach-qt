@@ -222,15 +222,23 @@ def build_report_html(
 ) -> str:
     plane = project_state.roof_plane_by_id(plane_id) if plane_id else project_state.active_roof_plane()
     material = project_state.material_by_id(material_id)
+    preview_placements = project_state.active_sheet_placements_for_plane(plane.id if plane is not None else None)
     section = _build_roof_plane_section(
         plane=plane,
-        placements=project_state.active_sheet_placements_for_plane(plane.id if plane is not None else None),
+        placements=preview_placements,
         material_id=material_id,
         material_name=_material_name(material, material_id),
         warnings=list(report.warnings),
         price_unit=(material.price_unit if material is not None else None),
         price_value=(material.price_value if material is not None else 0.0),
     )
+    section.effective_area_m2 = report.net_roof_area_m2
+    section.material_usage_area_m2 = report.gross_sheet_area_m2
+    section.waste_area_m2 = report.waste_area_m2
+    section.waste_percent = report.waste_percent
+    section.total_cost = report.total_cost
+    section.sheet_rows = list(report.bom_rows)
+    section.warnings = list(report.warnings)
     title = f"Raport 4Dach - {plane.name}" if plane is not None else "Raport 4Dach"
     if title_suffix:
         title = f"{title} ({title_suffix})"

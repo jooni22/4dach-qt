@@ -114,6 +114,12 @@ class WorkspaceController:
         for canvas in self._plane_tab_canvases.values():
             canvas.toggle_grid(enabled)
 
+    def set_snap_to_grid_enabled(self, enabled: bool) -> None:
+        if self.primary_canvas is not None:
+            self.primary_canvas.set_snap_to_grid_enabled(enabled)
+        for canvas in self._plane_tab_canvases.values():
+            canvas.set_snap_to_grid_enabled(enabled)
+
     def toggle_module_count(self, enabled: bool) -> None:
         if self.primary_canvas is not None:
             self.primary_canvas.toggle_module_count(enabled)

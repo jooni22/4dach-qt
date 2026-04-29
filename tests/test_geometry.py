@@ -28,13 +28,13 @@ def test_validate_polygon_detects_self_intersection():
     assert "Polygon zawiera samoprzecięcia" in issues
 
 
-def test_validate_hole_polygon_requires_hole_inside_outline():
+def test_validate_hole_polygon_allows_hole_outside_outline():
     outline = Polygon2D.rectangle(300, 200)
     hole = Polygon2D.rectangle(60, 60, origin_x=260, origin_y=30)
 
     issues = validate_hole_polygon(outline, hole)
 
-    assert "Wycinek musi leżeć w całości wewnątrz obrysu" in issues
+    assert issues == []
 
 
 def test_polygon_edit_operations_keep_expected_points_order():

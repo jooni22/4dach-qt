@@ -3,7 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from math import ceil
 
-from core.geometry import validate_polygon, vertical_segments_for_band
+from core.app_settings import AppSettings
+from core.geometry import polygon_edges, validate_polygon, vertical_segments_for_band
 from core.models import Material, Point2D, Polygon2D, RoofPlane, SheetPlacement
 
 
@@ -39,6 +40,9 @@ class LayoutBandSegment:
     coverage_polygons: list[Polygon2D] = field(default_factory=list)
     placement_id: str | None = None
     split_reason: str | None = None
+    cutout_interaction: str | None = None
+    partial_cut_line_y_cm: float | None = None
+    top_extra_cm: float = 0.0
 
     def to_dict(self) -> dict:
         return {
@@ -51,6 +55,9 @@ class LayoutBandSegment:
             "coverage_polygons": [_polygon_to_dict(polygon) for polygon in self.coverage_polygons],
             "placement_id": self.placement_id,
             "split_reason": self.split_reason,
+            "cutout_interaction": self.cutout_interaction,
+            "partial_cut_line_y_cm": self.partial_cut_line_y_cm,
+            "top_extra_cm": self.top_extra_cm,
         }
 
 
@@ -118,6 +125,10 @@ class _BandPiece:
     right_interval: tuple[float, float]
     polygon: Polygon2D
 
+    @property
+    def raw_length_cm(self) -> float:
+        return self.y_bottom_cm - self.y_top_cm
+
 
 class _UnionFind:
     def __init__(self, size: int) -> None:
@@ -136,28 +147,13 @@ class _UnionFind:
             self._parent[right_root] = left_root
 
 
-def normalize_sheet_length(
-    raw_length_cm: float,
+def generate_layout(
+    plane: RoofPlane,
     material: Material,
-    *,
-    y_top_cm: float = 0.0,
-    y_bottom_cm: float = 0.0,
-    base_line_y_cm: float | None = None,
-) -> float:
-    base_length = raw_length_cm + material.bottom_margin_cm + material.top_margin_cm
-    module_length_cm = material.module_length_cm or 0.0
-    if material.type == "dachówkowa" and module_length_cm > 0:
-        if base_line_y_cm is not None:
-            span_from_base = max(base_line_y_cm - y_top_cm, 0.0)
-            trimmed_bottom = max(base_line_y_cm - y_bottom_cm, 0.0)
-            modules = ceil((span_from_base + material.bottom_margin_cm + material.top_margin_cm) / module_length_cm)
-            return max(modules * module_length_cm - trimmed_bottom, raw_length_cm)
-        modules = ceil(base_length / module_length_cm)
-        return modules * module_length_cm
-    return base_length
+    settings: AppSettings | None = None,
+) -> LayoutResult:
+    _settings = settings if settings is not None else AppSettings()
 
-
-def generate_layout(plane: RoofPlane, material: Material) -> LayoutResult:
     result = LayoutResult()
     if plane.outline is None:
         result.warnings.append(
@@ -190,64 +186,142 @@ def generate_layout(plane: RoofPlane, material: Material) -> LayoutResult:
         band_segments = _build_band_segments(plane, band_index, x_left, x_right)
         layout_band = LayoutBand(band_index=band_index, x_left_cm=x_left, x_right_cm=x_right)
 
+        for band_segment in band_segments:
+            _detect_cutout_interaction(plane, band_segment, _settings)
+
         for segment_index, band_segment in enumerate(band_segments):
-            raw_length = band_segment.raw_length_cm
-            final_length = normalize_sheet_length(
-                raw_length,
-                material,
-                y_top_cm=band_segment.y_top_cm,
-                y_bottom_cm=band_segment.y_bottom_cm,
-                base_line_y_cm=plane.generation_settings.base_line_y_cm,
-            )
+            y_bottom = band_segment.y_bottom_cm
+            y_top = band_segment.y_top_cm
+            max_len = material.max_sheet_length_cm
+            row_index = 0
 
-            if final_length < material.min_sheet_length_cm:
-                result.rejected_segments.append(
-                    RejectedSegment(
-                        band_index=band_index,
-                        x_left_cm=band_segment.x_left_cm,
-                        x_right_cm=band_segment.x_right_cm,
-                        y_top_cm=band_segment.y_top_cm,
-                        y_bottom_cm=band_segment.y_bottom_cm,
-                        raw_length_cm=raw_length,
-                        reason="below_min_length",
-                    )
-                )
-                continue
+            if (
+                band_segment.cutout_interaction == "partial"
+                and band_segment.partial_cut_line_y_cm is not None
+            ):
+                cut_y = band_segment.partial_cut_line_y_cm
+                extra = band_segment.top_extra_cm
 
-            split_reason = None
-            if final_length > material.max_sheet_length_cm:
-                result.requires_transverse_split = True
-                split_reason = "exceeds_max_length"
-                result.warnings.append(
-                    LayoutWarning(
-                        code="requires_transverse_split",
-                        message="Arkusz przekracza maksymalną długość i wymaga podziału poprzecznego",
-                        data={"band_index": band_index, "material_id": material.id, "final_length_cm": final_length},
-                    )
-                )
+                # Phase A — BOTTOM: from y_bottom down to cut_y (below the cutout)
+                y_cursor = y_bottom
+                while y_cursor > cut_y + EPSILON:
+                    sheet_height = min(max_len, y_cursor - cut_y)
+                    sheet_top = y_cursor - sheet_height
+                    sheet_bottom = y_cursor
+                    if sheet_height >= material.min_sheet_length_cm - EPSILON:
+                        placement_id = f"{plane.id}-b{band_index}-s{segment_index}-r{row_index}"
+                        result.placements.append(
+                            SheetPlacement(
+                                id=placement_id,
+                                band_index=band_index,
+                                x_left_cm=band_segment.x_left_cm,
+                                x_right_cm=band_segment.x_right_cm,
+                                y_top_cm=sheet_top,
+                                y_bottom_cm=sheet_bottom,
+                                raw_length_cm=sheet_height,
+                                final_length_cm=sheet_height,
+                                split_reason=None,
+                            )
+                        )
+                    else:
+                        result.rejected_segments.append(
+                            RejectedSegment(
+                                band_index=band_index,
+                                x_left_cm=band_segment.x_left_cm,
+                                x_right_cm=band_segment.x_right_cm,
+                                y_top_cm=sheet_top,
+                                y_bottom_cm=sheet_bottom,
+                                raw_length_cm=sheet_height,
+                                reason=f"Arkusz za krótki: {sheet_height:.1f} cm (min. {material.min_sheet_length_cm:.1f} cm)",
+                            )
+                        )
+                    y_cursor -= sheet_height
+                    row_index += 1
 
-            placement_id = f"{plane.id}-b{band_index}-s{segment_index}"
+                # Phase B — TOP: from cut_y down to y_top (above the cutout)
+                y_cursor = cut_y
+                while y_cursor > y_top + EPSILON:
+                    sheet_height = min(max_len, y_cursor - y_top)
+                    sheet_top = y_cursor - sheet_height
+                    sheet_bottom = y_cursor
+                    is_top_sheet = sheet_top <= y_top + EPSILON
+                    actual_length = sheet_height + (extra if is_top_sheet else 0.0)
+                    placement_split = "partial_cutout_top" if is_top_sheet else None
+                    if sheet_height >= material.min_sheet_length_cm - EPSILON:
+                        placement_id = f"{plane.id}-b{band_index}-s{segment_index}-r{row_index}"
+                        result.placements.append(
+                            SheetPlacement(
+                                id=placement_id,
+                                band_index=band_index,
+                                x_left_cm=band_segment.x_left_cm,
+                                x_right_cm=band_segment.x_right_cm,
+                                y_top_cm=sheet_top,
+                                y_bottom_cm=sheet_bottom,
+                                raw_length_cm=sheet_height,
+                                final_length_cm=actual_length,
+                                split_reason=placement_split,
+                            )
+                        )
+                    else:
+                        result.rejected_segments.append(
+                            RejectedSegment(
+                                band_index=band_index,
+                                x_left_cm=band_segment.x_left_cm,
+                                x_right_cm=band_segment.x_right_cm,
+                                y_top_cm=sheet_top,
+                                y_bottom_cm=sheet_bottom,
+                                raw_length_cm=sheet_height,
+                                reason=f"Arkusz za krótki: {sheet_height:.1f} cm (min. {material.min_sheet_length_cm:.1f} cm)",
+                            )
+                        )
+                    y_cursor -= sheet_height
+                    row_index += 1
+
+            else:
+                # Standard single-phase loop (no partial cutout)
+                y_cursor = y_bottom
+                while y_cursor > y_top + EPSILON:
+                    sheet_height = min(max_len, y_cursor - y_top)
+                    sheet_top = y_cursor - sheet_height
+                    sheet_bottom = y_cursor
+                    if sheet_height >= material.min_sheet_length_cm - EPSILON:
+                        placement_id = f"{plane.id}-b{band_index}-s{segment_index}-r{row_index}"
+                        result.placements.append(
+                            SheetPlacement(
+                                id=placement_id,
+                                band_index=band_index,
+                                x_left_cm=band_segment.x_left_cm,
+                                x_right_cm=band_segment.x_right_cm,
+                                y_top_cm=sheet_top,
+                                y_bottom_cm=sheet_bottom,
+                                raw_length_cm=sheet_height,
+                                final_length_cm=sheet_height,
+                                split_reason=None,
+                            )
+                        )
+                    else:
+                        result.rejected_segments.append(
+                            RejectedSegment(
+                                band_index=band_index,
+                                x_left_cm=band_segment.x_left_cm,
+                                x_right_cm=band_segment.x_right_cm,
+                                y_top_cm=sheet_top,
+                                y_bottom_cm=sheet_bottom,
+                                raw_length_cm=sheet_height,
+                                reason=f"Arkusz za krótki: {sheet_height:.1f} cm (min. {material.min_sheet_length_cm:.1f} cm)",
+                            )
+                        )
+                    y_cursor -= sheet_height
+                    row_index += 1
+
             band_segment.segment_index = segment_index
-            band_segment.placement_id = placement_id
-            band_segment.split_reason = split_reason
+            band_segment.placement_id = f"{plane.id}-b{band_index}-s{segment_index}-r0"
             layout_band.segments.append(band_segment)
-            result.placements.append(
-                SheetPlacement(
-                    id=placement_id,
-                    band_index=band_index,
-                    x_left_cm=band_segment.x_left_cm,
-                    x_right_cm=band_segment.x_right_cm,
-                    y_top_cm=band_segment.y_top_cm,
-                    y_bottom_cm=band_segment.y_bottom_cm,
-                    raw_length_cm=raw_length,
-                    final_length_cm=final_length,
-                    split_reason=split_reason,
-                )
-            )
 
         result.bands.append(layout_band)
 
     return result
+
 
 
 def _iter_band_ranges(plane: RoofPlane, band_width_cm: float) -> list[tuple[float, float]]:
@@ -312,16 +386,16 @@ def _build_band_segments(plane: RoofPlane, band_index: int, x_left: float, x_rig
             piece.polygon
             for piece in sorted(component, key=lambda item: (item.x_left_cm, item.y_top_cm, item.piece_index))
         ]
-        y_top = min(piece.y_top_cm for piece in component)
-        y_bottom = max(piece.y_bottom_cm for piece in component)
+        y_top_cm = min(piece.y_top_cm for piece in component)
+        y_bottom_cm = max(piece.y_bottom_cm for piece in component)
         band_segments.append(
             LayoutBandSegment(
                 segment_index=segment_index,
                 x_left_cm=min(piece.x_left_cm for piece in component),
                 x_right_cm=max(piece.x_right_cm for piece in component),
-                y_top_cm=y_top,
-                y_bottom_cm=y_bottom,
-                raw_length_cm=y_bottom - y_top,
+                y_top_cm=y_top_cm,
+                y_bottom_cm=y_bottom_cm,
+                raw_length_cm=y_bottom_cm - y_top_cm,
                 coverage_polygons=coverage_polygons,
             )
         )
@@ -344,8 +418,8 @@ def _band_pieces_for_range(plane: RoofPlane, x_left: float, x_right: float) -> l
         if not mid_segments:
             continue
 
-        left_segments = vertical_segments_for_band(plane.outline, plane.holes, slab_left, x_mid)
-        right_segments = vertical_segments_for_band(plane.outline, plane.holes, x_mid, slab_right)
+        left_segments = vertical_segments_for_band(plane.outline, plane.holes, slab_left, slab_left)
+        right_segments = vertical_segments_for_band(plane.outline, plane.holes, slab_right, slab_right)
 
         if len(left_segments) != len(mid_segments):
             left_segments = mid_segments
@@ -355,6 +429,8 @@ def _band_pieces_for_range(plane: RoofPlane, x_left: float, x_right: float) -> l
         for segment_index, (mid_top, mid_bottom) in enumerate(mid_segments):
             left_top, left_bottom = left_segments[segment_index]
             right_top, right_bottom = right_segments[segment_index]
+            y_top_cm = min(left_top, mid_top, right_top)
+            y_bottom_cm = max(left_bottom, mid_bottom, right_bottom)
             polygon = Polygon2D(
                 [
                     Point2D(slab_left, left_top),
@@ -369,8 +445,8 @@ def _band_pieces_for_range(plane: RoofPlane, x_left: float, x_right: float) -> l
                     slab_index=slab_index,
                     x_left_cm=slab_left,
                     x_right_cm=slab_right,
-                    y_top_cm=min(left_top, right_top, mid_top),
-                    y_bottom_cm=max(left_bottom, right_bottom, mid_bottom),
+                    y_top_cm=y_top_cm,
+                    y_bottom_cm=y_bottom_cm,
                     left_interval=(left_top, left_bottom),
                     right_interval=(right_top, right_bottom),
                     polygon=polygon,
@@ -406,6 +482,98 @@ def _intervals_touch_or_overlap(left: tuple[float, float], right: tuple[float, f
     left_top, left_bottom = left
     right_top, right_bottom = right
     return min(left_bottom, right_bottom) >= max(left_top, right_top) - EPSILON
+
+
+def _detect_cutout_interaction(
+    plane: RoofPlane,
+    segment: LayoutBandSegment,
+    settings,
+) -> None:
+    """Inspect holes of *plane* against the segment x/y range and annotate
+    *segment* in-place with ``cutout_interaction``, ``partial_cut_line_y_cm``,
+    and ``top_extra_cm``.
+    """
+    full_overlap_detected = False
+    partial_cut_line_y_cm: float | None = None
+
+    for hole in plane.holes:
+        bounds = hole.bounds()
+
+        # Skip holes that don't touch this segment's y-range
+        if bounds.max_y <= segment.y_top_cm or bounds.min_y >= segment.y_bottom_cm:
+            continue
+
+        # Skip holes that don't touch this segment's x-range
+        if bounds.max_x <= segment.x_left_cm or bounds.min_x >= segment.x_right_cm:
+            continue
+
+        # FULL: hole covers the entire band width
+        if bounds.min_x <= segment.x_left_cm and bounds.max_x >= segment.x_right_cm:
+            full_overlap_detected = True
+            continue  # keep inspecting — another hole might be partial
+
+        # PARTIAL: hole partially overlaps this segment in x
+        cut_y = _highest_cutout_edge_y_in_range(hole, segment.x_left_cm, segment.x_right_cm)
+        if cut_y is None:
+            continue
+        if partial_cut_line_y_cm is None or cut_y < partial_cut_line_y_cm:
+            partial_cut_line_y_cm = cut_y
+
+    if partial_cut_line_y_cm is not None:
+        cut_y = min(max(partial_cut_line_y_cm, segment.y_top_cm), segment.y_bottom_cm)
+        extra_raw = getattr(settings, "partial_cutout_top_extra_cm", 15.0)
+        max_possible_extra = cut_y - segment.y_top_cm
+        extra_clamped = max(0.0, min(extra_raw, max_possible_extra))
+
+        segment.cutout_interaction = "partial"
+        segment.partial_cut_line_y_cm = cut_y
+        segment.top_extra_cm = extra_clamped
+        return
+
+    if full_overlap_detected:
+        segment.cutout_interaction = "full"
+
+
+def _highest_cutout_edge_y_in_range(hole: Polygon2D, x_left: float, x_right: float) -> float | None:
+    highest_y: float | None = None
+    for start, end in polygon_edges(hole):
+        clipped = _clip_edge_to_x_range(start, end, x_left, x_right)
+        if clipped is None:
+            continue
+        clipped_start, clipped_end = clipped
+        edge_highest_y = min(clipped_start.y, clipped_end.y)
+        if highest_y is None or edge_highest_y < highest_y:
+            highest_y = edge_highest_y
+    return highest_y
+
+
+def _clip_edge_to_x_range(
+    start: Point2D,
+    end: Point2D,
+    x_left: float,
+    x_right: float,
+) -> tuple[Point2D, Point2D] | None:
+    edge_min_x = min(start.x, end.x)
+    edge_max_x = max(start.x, end.x)
+    if edge_max_x < x_left - EPSILON or edge_min_x > x_right + EPSILON:
+        return None
+
+    if abs(start.x - end.x) <= EPSILON:
+        if x_left - EPSILON <= start.x <= x_right + EPSILON:
+            return start, end
+        return None
+
+    clipped_left = max(x_left, edge_min_x)
+    clipped_right = min(x_right, edge_max_x)
+    if clipped_right < clipped_left - EPSILON:
+        return None
+    return _point_on_edge_at_x(start, end, clipped_left), _point_on_edge_at_x(start, end, clipped_right)
+
+
+def _point_on_edge_at_x(start: Point2D, end: Point2D, x_value: float) -> Point2D:
+    ratio = (x_value - start.x) / (end.x - start.x)
+    y_value = start.y + ratio * (end.y - start.y)
+    return Point2D(x_value, y_value)
 
 
 def _polygon_to_dict(polygon: Polygon2D) -> list[dict[str, float]]:

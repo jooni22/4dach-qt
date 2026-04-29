@@ -1,23 +1,23 @@
 # Codex Hooks
 
-This repository includes a minimal repo-local Codex CLI hooks setup under `.codex/`.
+This repository uses repo-local Codex CLI hooks under `.codex/` to guard branch/task alignment at the end of a turn.
 
 ## Purpose
 
-The hooks are advisory only. They do not edit files, change branches, or block work.
+The previous stacked-PR reminder hooks were removed.
 
-They surface repository workflow context so Codex is reminded to:
+The active flow is now:
 
-- read `AGENTS.md`
-- read `docs/review-backlog.md` when it exists
-- check the current branch
-- consider unresolved review-backlog items before implementation
+1. `UserPromptSubmit` stores a lightweight snapshot of the current branch, `HEAD`, dirty files, and the latest user prompt.
+2. `Stop` checks whether the task described by that prompt still fits the current branch name.
+3. If it does not fit, the hook creates a new branch named `feat/<task>` or `issue/<task>`, stages only files touched in the current turn, commits them, and pushes the branch to `origin`.
 
 ## Files
 
 - `.codex/hooks.json`
-- `.codex/hooks/session_start_review_context.py`
-- `.codex/hooks/user_prompt_review_context.py`
+- `.codex/hooks/branch_guard_common.py`
+- `.codex/hooks/user_prompt_branch_snapshot.py`
+- `.codex/hooks/stop_branch_guard.py`
 
 ## Enabling Hooks
 
@@ -37,6 +37,9 @@ This repository uses the repo-local location.
 
 ## Notes
 
-- The hook commands resolve the repository root via `git rev-parse --show-toplevel` so they still work when Codex is started from a subdirectory.
-- Open backlog items are counted with a minimal heuristic that only scans the `## Open Items` section and counts rows whose status column is `open`.
-- If the session is not inside a git repository, the hooks return a safe reminder instead of failing closed.
+- The hook commands resolve the repository root via `git rev-parse --show-toplevel`, so they work even when Codex starts in a subdirectory.
+- The hook commands use `bash --noprofile --norc` plus an absolute `uv` path so shell profile output does not corrupt hook JSON on stdout.
+- Runtime snapshots are stored under `.git/codex-branch-guard/`, not in tracked files.
+- Branch matching uses a conservative keyword overlap heuristic from the latest prompt. When no meaningful keywords are found, the hook leaves the current branch unchanged.
+- If the current turn touches a file that was already dirty before the prompt, the hook now still creates the branch/commit/push and includes those mixed edits in the new branch, with a warning in the final hook message.
+- The stop hook never rewrites history. If commits already landed on the old branch during the turn, it only creates a new branch from the current `HEAD` and leaves the old branch untouched.

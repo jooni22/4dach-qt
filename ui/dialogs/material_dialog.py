@@ -72,7 +72,10 @@ class BlachyDialog(QDialog):
 
         layout.addLayout(main_layout)
 
-        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
+        )
+        button_box.accepted.connect(self.accept)
         button_box.rejected.connect(self.reject)
         layout.addWidget(button_box)
 
