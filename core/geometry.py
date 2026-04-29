@@ -170,9 +170,30 @@ def validate_polygon(polygon: Polygon2D) -> list[str]:
 
 
 def validate_hole_polygon(outline: Polygon2D, hole: Polygon2D, sibling_holes: list[Polygon2D] | None = None) -> list[str]:
+    """Validate that *hole* is a valid cutout inside *outline*.
+
+    CRITICAL CONTRACT — do not remove any of the three checks below:
+
+    1. Basic polygon geometry (self-intersections, duplicate points, etc.).
+    2. hole must lie ENTIRELY inside outline — enforced by polygon_is_inside_polygon().
+       This check was accidentally removed during refactor (2025) and caused
+       corrupted sheet-cutting results. It is guarded by:
+           tests/test_geometry.py::test_validate_hole_polygon_outside_outline
+       Removing this call will make that test fail immediately.
+    3. Sibling holes must not overlap each other.
+    """
     issues = [f"Wycinek: {issue.lower()}" for issue in validate_polygon(hole)]
+
     if hole.area() >= outline.area() - EPSILON:
         issues.append("Wycinek musi być mniejszy od obrysu połaci")
+
+    # GUARD — DO NOT REMOVE: ensures every vertex AND every edge midpoint of the
+    # hole lies within (or on the boundary of) the outline.  Uses the stronger
+    # polygon_is_inside_polygon() instead of a vertex-only point_in_polygon loop
+    # so that a hole whose edge crosses the outline boundary is also rejected.
+    # Regression test: test_validate_hole_polygon_outside_outline
+    if not polygon_is_inside_polygon(hole, outline):
+        issues.append("Wycinek musi leżeć w całości wewnątrz obrysu")
 
     for sibling_hole in sibling_holes or []:
         if polygons_overlap(hole, sibling_hole):
@@ -267,7 +288,7 @@ def vertical_intersections(polygon: Polygon2D, x: float) -> list[float]:
     points = polygon.points
     if not points:
         return []
-    
+
     poly_max_x = max(p.x for p in points)
     is_max = isclose(x, poly_max_x, abs_tol=EPSILON)
 
@@ -293,14 +314,14 @@ def vertical_intersections(polygon: Polygon2D, x: float) -> list[float]:
         ys.append(y)
 
     ys.sort()
-    
+
     if is_max:
         unique_ys = []
         for y in ys:
             if not unique_ys or not isclose(y, unique_ys[-1], abs_tol=EPSILON):
                 unique_ys.append(y)
         return unique_ys
-        
+
     return ys
 
 
@@ -338,6 +359,11 @@ def polygons_overlap(left: Polygon2D, right: Polygon2D) -> bool:
 
 
 def polygon_is_inside_polygon(inner: Polygon2D, outer: Polygon2D) -> bool:
+    """Return True if *inner* lies entirely within (or on the boundary of) *outer*.
+
+    Checks both vertices and edge midpoints to catch the case where all
+    vertices are inside but an edge still crosses the boundary.
+    """
     if any(not _point_in_polygon_or_on_boundary(point, outer) for point in inner.points):
         return False
 
