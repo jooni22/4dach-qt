@@ -725,6 +725,34 @@ class MainWindow(QMainWindow):
             source="manual",
         )
 
+    def _active_plane_sheets(self, plane) -> list[SheetPlacement]:
+        return self.project_state.active_sheet_placements_for_plane(plane.id)
+
+    def _select_material_id(self, plane, material_ids: list[str]) -> str | None:
+        current = plane.selected_material_id or material_ids[0]
+        selected, ok = QInputDialog.getItem(
+            self,
+            "Zmień materiał",
+            "Materiał:",
+            material_ids,
+            material_ids.index(current) if current in material_ids else 0,
+            False,
+        )
+        return selected if ok else None
+
+    def _sheet_preview_text(self, sheets: list[SheetPlacement]) -> str:
+        return "\n".join(
+            f"{index}. {sheet.id} | pas {sheet.band_index} | {round(sheet.final_length_cm):.0f} cm"
+            for index, sheet in enumerate(sheets)
+        ) or "Brak"
+
+    def _active_sheet_summary_text(self, plane, sheets: list[SheetPlacement]) -> str:
+        return (
+            f"Aktywne: {len(sheets)}\n"
+            f"Ręczne: {len(plane.manual_sheet_placements)}\n"
+            f"Ukryte auto: {len(plane.manually_removed_auto_sheet_ids)}"
+        )
+
     def _edit(self, fn, msg: str, *, label: str | None = None, failure_title: str = "Błąd edycji", after_refresh=None) -> bool:
         return self._perform_command(label or msg, fn, msg, failure_title=failure_title, after_refresh=after_refresh)
 
@@ -1320,29 +1348,31 @@ class MainWindow(QMainWindow):
         plane = self._active_or_warn()
         if plane is None:
             return
-        sheets = self.project_state.active_sheet_placements_for_plane(plane.id)
+        sheets = self._active_plane_sheets(plane)
         if not sheets:
             QMessageBox.information(self, "Brak arkuszy", "Brak arkuszy do usunięcia")
             return
-        idx, ok = QInputDialog.getInt(self, "Usuń arkusz", f"Indeks 0-{len(sheets)-1}:", 0, 0, len(sheets)-1)
-        if ok:
+        idx = self._select_index("Usuń arkusz", len(sheets) - 1)
+        if idx is not None:
             self._edit(lambda: self.project_state.remove_sheet_placement(sheets[idx].id, plane.id), "Usunięto arkusz")
 
     def _dlg_sheet_preview(self) -> None:
         plane = self._active_or_warn()
         if plane is None:
             return
-        sheets = self.project_state.active_sheet_placements_for_plane(plane.id)
-        lines = "\n".join(f"{i}. {s.id} | pas {s.band_index} | {round(s.final_length_cm):.0f} cm" for i, s in enumerate(sheets)) or "Brak"
-        QMessageBox.information(self, f"Arkusze — {plane.name}", lines)
+        sheets = self._active_plane_sheets(plane)
+        QMessageBox.information(self, f"Arkusze — {plane.name}", self._sheet_preview_text(sheets))
 
     def _dlg_active_sheets(self) -> None:
         plane = self._active_or_warn()
         if plane is None:
             return
-        sheets = self.project_state.active_sheet_placements_for_plane(plane.id)
-        QMessageBox.information(self, f"Aktywne arkusze — {plane.name}",
-            f"Aktywne: {len(sheets)}\nRęczne: {len(plane.manual_sheet_placements)}\nUkryte auto: {len(plane.manually_removed_auto_sheet_ids)}")
+        sheets = self._active_plane_sheets(plane)
+        QMessageBox.information(
+            self,
+            f"Aktywne arkusze — {plane.name}",
+            self._active_sheet_summary_text(plane, sheets),
+        )
 
     def _dlg_change_material(self) -> None:
         plane = self._active_or_warn()
@@ -1352,13 +1382,11 @@ class MainWindow(QMainWindow):
         if not ids:
             QMessageBox.warning(self, "Brak materiałów", "Brak materiałów w katalogu")
             return
-        current = plane.selected_material_id or ids[0]
-        sel, ok = QInputDialog.getItem(self, "Zmień materiał", "Materiał:", ids,
-                                       ids.index(current) if current in ids else 0, False)
-        if ok and sel != current:
+        selected_material_id = self._select_material_id(plane, ids)
+        if selected_material_id and selected_material_id != plane.selected_material_id:
             self._edit(
-                lambda: self.project_state.set_active_material_for_plane(sel, plane.id),
-                f"Ustawiono materiał {sel}",
+                lambda: self.project_state.set_active_material_for_plane(selected_material_id, plane.id),
+                f"Ustawiono materiał {selected_material_id}",
                 label=f"Zmiana materiału połaci {plane.name}",
             )
 
