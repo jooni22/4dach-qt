@@ -545,18 +545,8 @@ class MainWindow(QMainWindow):
             self.primary_canvas.set_app_settings(self.project_state.app_settings)
             self.primary_canvas.toggle_grid(self.project_state.app_settings.show_grid)
             self.primary_canvas.set_snap_to_grid_enabled(self._snap_to_grid_enabled)
-        self._apply_origin_edit_mode_to_canvases()
-            
-        if self.primary_canvas:
-            is_selected = self.primary_canvas._plane_selected or self.primary_canvas._selected_hole_index is not None
-            self._on_selection_changed(is_selected)
-            self._set_mode_indicator(self.primary_canvas.mode())
-        else:
-            self._set_mode_indicator(DrawingCanvas.MODE_IDLE)
-
+        self._refresh_active_plane_facets()
         self._refresh_tab_titles()
-        self._refresh_report()
-        self._refresh_status_bar_info()
 
     def _refresh_status_bar_info(self) -> None:
         plane = self.project_state.active_roof_plane()
@@ -767,11 +757,7 @@ class MainWindow(QMainWindow):
             self._workspace.update_tab_title(plane.id, self._tab_title_for_plane(plane))
 
     def _set_plane_layout_origin(self, plane_id: str, origin: str) -> None:
-        plane = self.project_state.roof_plane_by_id(plane_id)
-        if plane is None:
-            raise ValueError("Nie znaleziono aktywnej połaci")
-        plane.generation_settings.layout_origin = origin
-        plane.layout_dirty_reason = "geometry_changed"
+        self.project_state.set_plane_layout_origin(plane_id, origin)
 
     def _sync_layout_direction_actions(self) -> None:
         plane = self.project_state.active_roof_plane()
@@ -784,22 +770,25 @@ class MainWindow(QMainWindow):
         self._tb_ctrl.action_from_right.blockSignals(False)
 
     def _set_plane_base_line_mode(self, plane_id: str, enabled: bool) -> None:
-        plane = self.project_state.roof_plane_by_id(plane_id)
-        if plane is None:
-            raise ValueError("Nie znaleziono aktywnej połaci")
-        if plane.outline is None:
-            raise ValueError("Aktywna połać nie ma jeszcze obrysu")
-        plane.generation_settings.base_line_y_cm = plane.outline.bounds().max_y if enabled else None
-        plane.layout_dirty_reason = "geometry_changed"
+        self.project_state.set_plane_base_line_enabled(plane_id, enabled)
 
     def _set_plane_coordinate_origin(self, plane_id: str, origin: Point2D) -> None:
-        plane = self.project_state.roof_plane_by_id(plane_id)
-        if plane is None:
-            raise ValueError("Nie znaleziono aktywnej połaci")
-        if plane.outline is None:
-            raise ValueError("Aktywna połać nie ma jeszcze obrysu")
-        plane.generation_settings.origin_x_cm = origin.x
-        plane.generation_settings.origin_y_cm = origin.y
+        self.project_state.set_plane_coordinate_origin(plane_id, origin)
+
+    def _refresh_active_canvas_selection_state(self) -> None:
+        if self.primary_canvas:
+            is_selected = self.primary_canvas._plane_selected or self.primary_canvas._selected_hole_index is not None
+            self._on_selection_changed(is_selected)
+            self._set_mode_indicator(self.primary_canvas.mode())
+            return
+        self._set_mode_indicator(DrawingCanvas.MODE_IDLE)
+
+    def _refresh_active_plane_facets(self) -> None:
+        self._sync_layout_direction_actions()
+        self._apply_origin_edit_mode_to_canvases()
+        self._refresh_active_canvas_selection_state()
+        self._refresh_report()
+        self._refresh_status_bar_info()
 
     def _apply_origin_edit_mode_to_canvases(self) -> None:
         enabled = bool(
@@ -895,13 +884,7 @@ class MainWindow(QMainWindow):
             self._workspace.primary_canvas = self._workspace.canvas_for_plane(plane.id) or self._workspace.primary_canvas
             self.primary_canvas = self._workspace.primary_canvas
             self._refresh_material_combo()
-            self._refresh_report()
-            self._apply_origin_edit_mode_to_canvases()
-            
-            if self.primary_canvas:
-                is_selected = self.primary_canvas._plane_selected or self.primary_canvas._selected_hole_index is not None
-                self._on_selection_changed(is_selected)
-                
+            self._refresh_active_plane_facets()
             self.statusBar().showMessage(f"Aktywna połać: {plane.name}", 2500)
 
     def _on_selection_changed(self, is_selected: bool) -> None:
@@ -1125,21 +1108,26 @@ class MainWindow(QMainWindow):
 
     def _on_polygon_closed(self, pixel_points: list) -> None:
         canvas = self._workspace.primary_canvas
-        self._disconnect_canvas_capture_signals(canvas)
-        canvas.set_mode(canvas.MODE_IDLE)
-        self._set_mode_indicator(canvas.mode())
+        if canvas is None:
+            return
 
         if len(pixel_points) < 3:
+            self._disconnect_canvas_capture_signals(canvas)
+            canvas.set_mode(canvas.MODE_IDLE)
+            self._set_mode_indicator(canvas.mode())
             self.statusBar().showMessage("Za mało punktów — minimum 3.", 4000)
             return
 
         mapper = canvas._free_draw_mapper()
         outline = Polygon2D(
             [
-                mapper.unmap_point(point)
+                canvas._pixel_to_domain_point(point, mapper)
                 for point in pixel_points
             ]
         )
+        self._disconnect_canvas_capture_signals(canvas)
+        canvas.set_mode(canvas.MODE_IDLE)
+        self._set_mode_indicator(canvas.mode())
         self._set_active_plane_geometry(outline, "Ustawiono obrys z odręcznego rysowania")
 
     def _on_cutout_closed(self, pixel_points: list) -> None:
@@ -1147,19 +1135,25 @@ class MainWindow(QMainWindow):
         plane = self.project_state.active_roof_plane()
         if canvas is None or plane is None:
             return
-        self._disconnect_canvas_capture_signals(canvas)
-        canvas.set_mode(canvas.MODE_IDLE)
-        self._set_mode_indicator(canvas.mode())
 
         if len(pixel_points) < 3:
+            self._disconnect_canvas_capture_signals(canvas)
+            canvas.set_mode(canvas.MODE_IDLE)
+            self._set_mode_indicator(canvas.mode())
             self.statusBar().showMessage("Za mało punktów — minimum 3.", 4000)
             return
         if plane.outline is None:
+            self._disconnect_canvas_capture_signals(canvas)
+            canvas.set_mode(canvas.MODE_IDLE)
+            self._set_mode_indicator(canvas.mode())
             self.statusBar().showMessage("Aktywna połać nie ma jeszcze obrysu.", 4000)
             return
 
         mapper = DrawingCanvas.build_view_mapper(plane.outline.bounds(), QRectF(canvas.rect()))
-        hole = Polygon2D([mapper.unmap_point(point) for point in pixel_points])
+        hole = Polygon2D([canvas._pixel_to_domain_point(point, mapper) for point in pixel_points])
+        self._disconnect_canvas_capture_signals(canvas)
+        canvas.set_mode(canvas.MODE_IDLE)
+        self._set_mode_indicator(canvas.mode())
         self._edit(lambda: self.project_state.add_hole_to_plane(hole, plane.id), f"Dodano wycinek do {plane.name}")
 
     # ------------------------------------------------------------------
@@ -1406,9 +1400,7 @@ class MainWindow(QMainWindow):
             self.project_state.app_settings = new_settings
             self._set_undo_stack_depth(new_settings.undo_stack_depth)
             self._snap_to_grid_enabled = new_settings.snap_to_grid
-            for plane in self.project_state.roof_planes:
-                if plane.outline is not None and plane.layout_dirty_reason != "manual_override":
-                    plane.layout_dirty_reason = "settings_changed"
+            self.project_state.mark_app_settings_layouts_dirty()
 
         self._edit(
             _apply_settings,

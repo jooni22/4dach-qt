@@ -837,6 +837,7 @@ def test_mainwindow_freehand_outline_uses_same_grid_snap_as_canvas(qtbot):
     window = MainWindow()
     qtbot.addWidget(window)
     window.project_state.app_settings.grid_size_cm = 25.0
+    window.project_state.app_settings.snap_to_grid = True
     window.project_state.delete_roof_plane(window.project_state.active_roof_plane().id)
     window._refresh_canvas_from_state()
     canvas = window._workspace.primary_canvas
@@ -858,8 +859,6 @@ def test_mainwindow_freehand_outline_uses_same_grid_snap_as_canvas(qtbot):
 
     outline = window.project_state.active_roof_plane().outline
     assert outline is not None
-    if outline.points[0].x != pytest.approx(275.0, abs=0.1):
-        pytest.skip("freehand snap origin — pending Package 1 implementation")
     assert outline.points[0].x == pytest.approx(275.0, abs=0.1)
     assert outline.points[0].y == pytest.approx(50.0, abs=0.1)
 
@@ -869,6 +868,7 @@ def test_mainwindow_freehand_outline_does_not_resnap_with_different_origin(qtbot
     qtbot.addWidget(window)
     window.project_state.delete_roof_plane(window.project_state.active_roof_plane().id)
     window.project_state.app_settings.grid_size_cm = 25.0
+    window.project_state.app_settings.snap_to_grid = True
     window._refresh_canvas_from_state()
     canvas = window._workspace.primary_canvas
     canvas.resize(640, 420)
@@ -889,10 +889,85 @@ def test_mainwindow_freehand_outline_does_not_resnap_with_different_origin(qtbot
 
     outline = window.project_state.active_roof_plane().outline
     assert outline is not None
-    if outline.points[0].x != pytest.approx(275.0, abs=0.1):
-        pytest.skip("freehand snap origin — pending Package 1 implementation")
     assert outline.points[0].x == pytest.approx(275.0, abs=0.1)
     assert outline.points[0].y == pytest.approx(50.0, abs=0.1)
+
+
+def test_mainwindow_tab_switch_refreshes_status_report_material_and_origin_mode(qtbot):
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.project_state = ProjectState(
+        materials=[
+            Material(
+                id="PD510",
+                nazwa="PD510",
+                type="dachówkowa",
+                effective_width_cm=51,
+                module_length_cm=25,
+                bottom_margin_cm=10,
+                top_margin_cm=80,
+                min_sheet_length_cm=20,
+            ),
+            Material(
+                id="T20",
+                nazwa="T20",
+                type="trapezowa",
+                effective_width_cm=110,
+                module_length_cm=0,
+                bottom_margin_cm=0,
+                top_margin_cm=0,
+                min_sheet_length_cm=20,
+            ),
+        ]
+    )
+    window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
+    first_plane = window.project_state.add_roof_plane(build_rectangle_outline(320, 180), name="Front", selected_material_id="PD510")
+    second_plane = window.project_state.add_roof_plane(build_rectangle_outline(210, 140), name="Back", selected_material_id="T20")
+    second_plane.generation_settings.layout_origin = "right"
+    window._refresh_canvas_from_state()
+    window._tb_ctrl.action_base_point_toggle.trigger()
+
+    assert window.project_state.active_plane_id == second_plane.id
+    assert "Back" in window._status_label.text()
+
+    window.workspace_tabs.setCurrentIndex(0)
+
+    first_canvas = window._workspace.canvas_for_plane(first_plane.id)
+    second_canvas = window._workspace.canvas_for_plane(second_plane.id)
+
+    assert window.project_state.active_plane_id == first_plane.id
+    assert window.variant_combo.currentText() == "PD510"
+    assert "Front" in window._status_label.text()
+    assert "Blacha: PD510" in window._status_label.text()
+    assert "od lewej" in window._status_label.text()
+    assert "Front" in window._workspace.report_view.toPlainText()
+    assert first_canvas is not None
+    assert second_canvas is not None
+    assert first_canvas._origin_edit_enabled is True
+    assert second_canvas._origin_edit_enabled is False
+
+
+def test_mainwindow_toolbar_grid_toggle_does_not_rebuild_workspace(qtbot, monkeypatch):
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.project_state = ProjectState(materials=window.project_state.materials)
+    window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
+    plane = window.project_state.add_roof_plane(build_rectangle_outline(320, 180), selected_material_id="PD510")
+    window._refresh_canvas_from_state()
+
+    calls: list[str] = []
+    monkeypatch.setattr(window._workspace, "sync", lambda: calls.append("sync"))
+
+    canvas = window._workspace.canvas_for_plane(plane.id)
+    assert canvas is not None
+    assert canvas._show_grid is True
+
+    window._tb_ctrl.action_grid.trigger()
+
+    assert calls == []
+    assert canvas._show_grid is False
 
 
 def test_mainwindow_open_project_resets_cached_report_and_company_title(qtbot, monkeypatch):

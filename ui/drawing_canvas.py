@@ -1723,9 +1723,10 @@ class DrawingCanvas(QWidget):
         origin: Point2D | None = None,
         modifiers: Qt.KeyboardModifier = Qt.KeyboardModifier.NoModifier,
     ) -> Point2D:
-        return self._snap_domain_point(
+        return self._grid_snapped_domain_point(
             mapper.unmap_point(pos),
-            origin=self._snap_origin_point(mapper) if origin is None else origin,
+            mapper,
+            origin=origin,
             modifiers=modifiers,
         )
 
@@ -1979,15 +1980,24 @@ class DrawingCanvas(QWidget):
     def _resolve_grid_snap(self, raw_point: Point2D, mapper: CanvasMapper, modifiers: Qt.KeyboardModifier) -> _DrawSnapState | None:
         if not self.snap_to_grid_enabled():
             return None
-        step_cm = max(float(getattr(self._app_settings, "grid_minor_cm", 10)), 0.1)
-        anchor = self._snap_origin_point(mapper)
-        snapped = Point2D(
-            anchor.x + round((raw_point.x - anchor.x) / step_cm) * step_cm,
-            anchor.y + round((raw_point.y - anchor.y) / step_cm) * step_cm,
-        )
+        snapped = self._grid_snapped_domain_point(raw_point, mapper, modifiers=modifiers)
         if self._distance_cm(raw_point, snapped) <= self._grid_snap_radius_cm(mapper):
             return _DrawSnapState("grid", snapped)
         return None
+
+    def _grid_snapped_domain_point(
+        self,
+        point: Point2D,
+        mapper: CanvasMapper,
+        *,
+        origin: Point2D | None = None,
+        modifiers: Qt.KeyboardModifier = Qt.KeyboardModifier.NoModifier,
+    ) -> Point2D:
+        return self._snap_domain_point(
+            point,
+            origin=self._snap_origin_point(mapper) if origin is None else origin,
+            modifiers=modifiers,
+        )
 
     def _build_draw_inferences(self, raw_point: Point2D, start: Point2D | None, mapper: CanvasMapper) -> list[_InferenceLine]:
         if not getattr(self._app_settings, "show_inferences", True):

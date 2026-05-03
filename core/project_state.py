@@ -210,6 +210,32 @@ class ProjectState:
         self._mark_layout_inputs_changed(plane, "material_changed")
         return True
 
+    def set_plane_layout_origin(self, plane_id: str, origin: str) -> RoofPlane:
+        plane = self._require_plane(plane_id)
+        plane.generation_settings.layout_origin = origin
+        self._mark_layout_soft_dirty(plane, "geometry_changed")
+        return plane
+
+    def set_plane_base_line_enabled(self, plane_id: str, enabled: bool) -> RoofPlane:
+        plane = self._require_plane(plane_id)
+        outline = self._require_plane_outline(plane)
+        plane.generation_settings.base_line_y_cm = outline.bounds().max_y if enabled else None
+        self._mark_layout_soft_dirty(plane, "geometry_changed")
+        return plane
+
+    def set_plane_coordinate_origin(self, plane_id: str, origin: Point2D) -> RoofPlane:
+        plane = self._require_plane(plane_id)
+        self._require_plane_outline(plane)
+        plane.generation_settings.origin_x_cm = origin.x
+        plane.generation_settings.origin_y_cm = origin.y
+        return plane
+
+    def mark_app_settings_layouts_dirty(self) -> None:
+        for plane in self.roof_planes:
+            if plane.outline is None:
+                continue
+            self._mark_layout_soft_dirty(plane, "settings_changed", preserve_manual_override=True)
+
     def add_roof_plane(
         self,
         outline: Polygon2D | None = None,
@@ -585,6 +611,11 @@ class ProjectState:
 
     def _mark_plane_geometry_changed(self, plane: RoofPlane) -> None:
         self._mark_layout_inputs_changed(plane, "geometry_changed")
+
+    def _mark_layout_soft_dirty(self, plane: RoofPlane, reason: str, *, preserve_manual_override: bool = False) -> None:
+        if preserve_manual_override and plane.layout_dirty_reason == "manual_override":
+            return
+        plane.layout_dirty_reason = reason
 
     def _mark_layout_inputs_changed(self, plane: RoofPlane, reason: str) -> None:
         plane.layout_revision += 1

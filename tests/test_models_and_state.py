@@ -248,6 +248,102 @@ def test_project_state_round_trip_preserves_custom_coordinate_origin():
     assert almost_equal(reloaded_plane.generation_settings.origin_y_cm or 0.0, 188.0)
 
 
+def test_project_state_layout_origin_soft_dirty_preserves_existing_layout_artifacts():
+    state = ProjectState(
+        materials=[
+            Material(
+                id="PD510",
+                nazwa="PD510",
+                type="dachówkowa",
+                effective_width_cm=51,
+                module_length_cm=25,
+                bottom_margin_cm=10,
+                top_margin_cm=80,
+                min_sheet_length_cm=20,
+            )
+        ]
+    )
+    plane = state.add_roof_plane(build_rectangle_outline(300, 200), selected_material_id="PD510")
+    state.generate_layout_for_plane(plane.id)
+    original_revision = plane.layout_revision
+    original_auto_ids = [placement.id for placement in plane.auto_sheet_placements]
+    original_bands = list(plane.layout_bands)
+
+    state.set_plane_layout_origin(plane.id, "right")
+
+    assert plane.generation_settings.layout_origin == "right"
+    assert plane.layout_dirty_reason == "geometry_changed"
+    assert plane.layout_revision == original_revision
+    assert [placement.id for placement in plane.auto_sheet_placements] == original_auto_ids
+    assert plane.layout_bands == original_bands
+    assert plane.manually_removed_auto_sheet_ids == []
+
+
+def test_project_state_base_line_soft_dirty_preserves_existing_layout_artifacts():
+    state = ProjectState(
+        materials=[
+            Material(
+                id="PD510",
+                nazwa="PD510",
+                type="dachówkowa",
+                effective_width_cm=51,
+                module_length_cm=25,
+                bottom_margin_cm=10,
+                top_margin_cm=80,
+                min_sheet_length_cm=20,
+            )
+        ]
+    )
+    plane = state.add_roof_plane(build_rectangle_outline(300, 200), selected_material_id="PD510")
+    state.generate_layout_for_plane(plane.id)
+    original_revision = plane.layout_revision
+    original_auto_ids = [placement.id for placement in plane.auto_sheet_placements]
+    original_bands = list(plane.layout_bands)
+
+    state.set_plane_base_line_enabled(plane.id, False)
+
+    assert plane.generation_settings.base_line_y_cm is None
+    assert plane.layout_dirty_reason == "geometry_changed"
+    assert plane.layout_revision == original_revision
+    assert [placement.id for placement in plane.auto_sheet_placements] == original_auto_ids
+    assert plane.layout_bands == original_bands
+
+
+def test_project_state_settings_soft_dirty_preserves_manual_override_and_existing_layout_artifacts():
+    state = ProjectState(
+        materials=[
+            Material(
+                id="PD510",
+                nazwa="PD510",
+                type="dachówkowa",
+                effective_width_cm=51,
+                module_length_cm=25,
+                bottom_margin_cm=10,
+                top_margin_cm=80,
+                min_sheet_length_cm=20,
+            )
+        ]
+    )
+    first_plane = state.add_roof_plane(build_rectangle_outline(300, 200), selected_material_id="PD510")
+    second_plane = state.add_roof_plane(build_rectangle_outline(220, 160), selected_material_id="PD510")
+    state.generate_layout_for_plane(first_plane.id)
+    state.generate_layout_for_plane(second_plane.id)
+    removed_auto_id = first_plane.auto_sheet_placements[0].id
+    state.remove_sheet_placement(removed_auto_id, first_plane.id)
+    second_revision = second_plane.layout_revision
+    second_auto_ids = [placement.id for placement in second_plane.auto_sheet_placements]
+    second_bands = list(second_plane.layout_bands)
+
+    state.mark_app_settings_layouts_dirty()
+
+    assert first_plane.layout_dirty_reason == "manual_override"
+    assert first_plane.manually_removed_auto_sheet_ids == [removed_auto_id]
+    assert second_plane.layout_dirty_reason == "settings_changed"
+    assert second_plane.layout_revision == second_revision
+    assert [placement.id for placement in second_plane.auto_sheet_placements] == second_auto_ids
+    assert second_plane.layout_bands == second_bands
+
+
 def test_project_state_can_switch_active_plane_explicitly():
     state = ProjectState()
     first_plane = state.add_roof_plane(build_rectangle_outline(300, 200))

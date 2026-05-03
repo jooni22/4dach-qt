@@ -1444,6 +1444,36 @@ def test_canvas_ctrl_uses_ten_times_finer_snap_step(qtbot):
     assert preview.points[1].y == pytest.approx(42.5, abs=1.5)
 
 
+def test_canvas_draw_preview_grid_snap_uses_same_ctrl_step_as_dragging(qtbot):
+    canvas = DrawingCanvas()
+    canvas.resize(640, 420)
+    qtbot.addWidget(canvas)
+    canvas.show()
+    qtbot.waitExposed(canvas)
+    canvas.set_app_settings(
+        AppSettings(
+            grid_size_cm=25.0,
+            grid_minor_cm=10,
+            snap_to_axis=False,
+            snap_to_45deg=False,
+            snap_to_points=False,
+        )
+    )
+    canvas.set_mode(DrawingCanvas.MODE_DRAW_OUTLINE)
+    mapper = canvas._free_draw_mapper()
+
+    snapped = canvas._resolve_draw_preview_endpoint(
+        Point2D(263.0, 43.0),
+        mapper,
+        Qt.KeyboardModifier.ControlModifier,
+    )
+
+    assert snapped.x == pytest.approx(262.5, abs=0.1)
+    assert snapped.y == pytest.approx(42.5, abs=0.1)
+    assert canvas._draw_snap_state is not None
+    assert canvas._draw_snap_state.kind == "grid"
+
+
 def test_canvas_ctrl_keeps_visual_grid_step_unchanged(qtbot, monkeypatch):
     outline = Polygon2D.rectangle(300, 200)
     canvas = _make_canvas(qtbot, outline)
