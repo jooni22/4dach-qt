@@ -20,6 +20,7 @@ class ToolbarController:
     def __init__(self, main_window: QMainWindow) -> None:
         self._win = main_window
         self._toolbar_actions: list[tuple[QAction, str]] = []  # (action, icon_kind)
+        self._actions_by_kind: dict[str, QAction] = {}
         self.toolbar = self._create_toolbar()
         self._build_actions()
 
@@ -72,7 +73,11 @@ class ToolbarController:
         )
         self.toolbar.addAction(action)
         self._toolbar_actions.append((action, icon_kind))
+        self._actions_by_kind[icon_kind] = action
         return action
+
+    def _action(self, kind: str) -> QAction:
+        return self._actions_by_kind[kind]
 
     def _icon_color_for_kind(self, kind: str, fg: QColor, accent: QColor, muted: QColor) -> QColor:
         if kind in {"base_point_toggle", "sun", "moon"}:
@@ -94,12 +99,7 @@ class ToolbarController:
             ("undo",           "Cofnij",                                       False, None),
             ("plus",           "Nowa połać",                                  False, None),
             ("duplicate_surface", "Duplikuj połać",                           False, None),
-            ("minus",          "Odejmij / Minus",                             False, None),
             ("trash",          "Usuń zaznaczone (Del)",                       False, None),
-            ("module_count",   "Włącz/wyłącz pokazywanie ilości modułów",     False, None),
-            ("zoom_out",       "Oddal / Pomniejsz",                           False, None),
-            ("fit_view",       "Pokaż wszystko / Dopasuj do ekranu",          False, None),
-            ("broom",          "Wyczyść / Usuń wszystko",                     False, None),
         ]
 
         for index, (icon_kind, text, checkable, callback) in enumerate(icon_rows):
@@ -108,17 +108,16 @@ class ToolbarController:
                 tb.addSeparator()
 
         # Named action references that controllers need
-        self.action_new_project = self._toolbar_actions[0][0]
-        self.action_open_project = self._toolbar_actions[1][0]
-        self.action_save_project = self._toolbar_actions[2][0]
-        self.action_draw_outline = self._toolbar_actions[3][0]
+        self.action_new_project = self._action("new_document")
+        self.action_open_project = self._action("open_folder")
+        self.action_save_project = self._action("save_floppy")
+        self.action_draw_outline = self._action("roof_outline")
         self.action_draw_outline.setCheckable(True)
-        self.action_base_point_toggle = self._toolbar_actions[4][0]
-        self.action_undo = self._toolbar_actions[5][0]
-        self.action_new_surface = self._toolbar_actions[6][0]
-        self.action_duplicate_surface = self._toolbar_actions[7][0]
-        self.action_trash = self._toolbar_actions[9][0]
-        self.action_module_count = self._toolbar_actions[10][0]
+        self.action_base_point_toggle = self._action("base_point_toggle")
+        self.action_undo = self._action("undo")
+        self.action_new_surface = self._action("plus")
+        self.action_duplicate_surface = self._action("duplicate_surface")
+        self.action_trash = self._action("trash")
 
         # Material selector button + combo
         self.material_button = QToolButton(self._win)
@@ -152,19 +151,14 @@ class ToolbarController:
         trailing: list[tuple[str, str, bool, object]] = [
             ("overlay_sheet",    "Pokaż arkusze",                    True,  None),
             ("grid",             "Pokaż siatkę",                     True,  None),
-            ("select_properties","Właściwości / Wybierz",             False, None),
             ("from_left",        "Układaj od lewej",                  True,  None),
             ("from_right",       "Od prawej",                          True,  None),
-            ("from_base",        "Od bazy",                            True,  None),
         ]
         for icon_kind, text, checkable, callback in trailing:
-            action = self._add_action(icon_kind, text, checkable=checkable, callback=callback)
+            self._add_action(icon_kind, text, checkable=checkable, callback=callback)
 
         # Named references for trailing actions
-        trailing_actions = [t[0] for t in self._toolbar_actions[-6:]]
-        self.action_overlay_sheet   = trailing_actions[0]
-        self.action_grid            = trailing_actions[1]
-        self.action_select_props    = trailing_actions[2]
-        self.action_from_left       = trailing_actions[3]
-        self.action_from_right      = trailing_actions[4]
-        self.action_from_base       = trailing_actions[5]
+        self.action_overlay_sheet = self._action("overlay_sheet")
+        self.action_grid = self._action("grid")
+        self.action_from_left = self._action("from_left")
+        self.action_from_right = self._action("from_right")

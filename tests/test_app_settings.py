@@ -11,7 +11,7 @@ def test_default_value():
     s = AppSettings()
     assert s.partial_cutout_top_extra_cm == 15.0
     assert s.grid_size_cm == 10.0
-    assert s.shift_drag_behavior == "free_move"
+    assert s.shift_drag_behavior == "orthogonal_lock"
     assert s.show_grid is True
     assert s.show_axis_overlay is True
     assert s.grid_major_cm == 100
@@ -19,16 +19,16 @@ def test_default_value():
     assert s.show_crosshair is True
     assert s.show_xy_references_during_draw is True
     assert s.live_angle_mode == "absolute"
-    assert s.show_decimal_cm is False
+    assert s.show_decimal_cm is True
     assert s.show_angle_arc is True
     assert s.show_guide_lines is True
-    assert s.ui_element_scale == 1.6
+    assert s.ui_element_scale == 1.0
     assert s.close_on_rmb is True
     assert s.edge_drag_mode == "move_vertices"
     assert s.show_edge_length_labels is True
     assert s.show_vertex_angle_labels is False
     assert s.label_always_visible is False
-    assert s.undo_stack_depth == 50
+    assert s.undo_stack_depth == 20
 
 
 def test_round_trip():
@@ -37,17 +37,15 @@ def test_round_trip():
         grid_size_cm=25.0,
         shift_drag_behavior="orthogonal_lock",
         show_grid=False,
-        show_axis_overlay=False,
         grid_major_cm=50,
         grid_minor_cm=5,
         show_crosshair=False,
-        show_xy_references_during_draw=False,
         live_angle_mode=LIVE_ANGLE_MODE_RELATIVE_TO_PREV,
         show_decimal_cm=True,
-        show_angle_arc=False,
+        show_angle_arc=True,
         show_guide_lines=False,
-        ui_element_scale=2.1,
-        close_on_rmb=False,
+        ui_element_scale=1.0,
+        close_on_rmb=True,
         snap_to_grid=False,
         snap_to_axis=False,
         snap_to_45deg=False,
@@ -61,24 +59,24 @@ def test_round_trip():
         show_edge_length_labels=False,
         show_vertex_angle_labels=True,
         label_always_visible=True,
-        undo_stack_depth=120,
+        undo_stack_depth=20,
     )
     s2 = AppSettings.from_dict(s.to_dict())
     assert s2.partial_cutout_top_extra_cm == 22.5
     assert s2.grid_size_cm == 25.0
     assert s2.shift_drag_behavior == "orthogonal_lock"
     assert s2.show_grid is False
-    assert s2.show_axis_overlay is False
+    assert s2.show_axis_overlay is True
     assert s2.grid_major_cm == 50
     assert s2.grid_minor_cm == 5
     assert s2.show_crosshair is False
-    assert s2.show_xy_references_during_draw is False
+    assert s2.show_xy_references_during_draw is True
     assert s2.live_angle_mode == LIVE_ANGLE_MODE_RELATIVE_TO_PREV
     assert s2.show_decimal_cm is True
-    assert s2.show_angle_arc is False
+    assert s2.show_angle_arc is True
     assert s2.show_guide_lines is False
-    assert s2.ui_element_scale == 2.1
-    assert s2.close_on_rmb is False
+    assert s2.ui_element_scale == 1.0
+    assert s2.close_on_rmb is True
     assert s2.snap_to_grid is False
     assert s2.snap_to_axis is False
     assert s2.snap_to_45deg is False
@@ -92,7 +90,7 @@ def test_round_trip():
     assert s2.show_edge_length_labels is False
     assert s2.show_vertex_angle_labels is True
     assert s2.label_always_visible is True
-    assert s2.undo_stack_depth == 120
+    assert s2.undo_stack_depth == 20
 
 
 def test_negative_clamped_to_zero():
@@ -132,16 +130,16 @@ def test_missing_key_uses_default():
     assert s.show_crosshair is True
     assert s.show_xy_references_during_draw is True
     assert s.live_angle_mode == "absolute"
-    assert s.show_decimal_cm is False
+    assert s.show_decimal_cm is True
     assert s.show_angle_arc is True
     assert s.show_guide_lines is True
-    assert s.ui_element_scale == 1.6
+    assert s.ui_element_scale == 1.0
     assert s.close_on_rmb is True
     assert s.edge_drag_mode == "move_vertices"
     assert s.show_edge_length_labels is True
     assert s.show_vertex_angle_labels is False
     assert s.label_always_visible is False
-    assert s.undo_stack_depth == 50
+    assert s.undo_stack_depth == 20
 
 
 def test_nonpositive_grid_size_uses_default():
@@ -153,7 +151,7 @@ def test_nonpositive_grid_size_uses_default():
 
 def test_invalid_shift_drag_behavior_uses_default():
     s = AppSettings.from_dict({"shift_drag_behavior": "diagonal_rocket"})
-    assert s.shift_drag_behavior == "free_move"
+    assert s.shift_drag_behavior == "orthogonal_lock"
 
 
 def test_invalid_live_angle_mode_uses_default():
@@ -177,9 +175,9 @@ def test_nonpositive_snap_thresholds_use_defaults():
     assert s.snap_axis_threshold_deg == 3.0
     assert s.snap_45_threshold_deg == 2.5
     assert s.snap_radius_px == 12
-    assert s.ui_element_scale == 1.6
+    assert s.ui_element_scale == 1.0
 
 
 def test_nonpositive_undo_depth_uses_default():
     s = AppSettings.from_dict({"undo_stack_depth": 0})
-    assert s.undo_stack_depth == 50
+    assert s.undo_stack_depth == 20

@@ -30,15 +30,12 @@ class WorkspaceController:
         self.tabs.setMovable(False)
         self.tabs.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
 
-        # Build the report tab content — parent is tabs so it lives inside the tab widget
+        # Report rendering stays available for printing/export flows,
+        # but the dedicated report tab is no longer part of the workspace.
         from PySide6.QtWidgets import QTextBrowser  # noqa: PLC0415
-        self.report_tab = QWidget()
-        report_layout = QVBoxLayout(self.report_tab)
-        report_layout.setContentsMargins(0, 0, 0, 0)
         self.report_view = QTextBrowser()
         self.report_view.setObjectName("report_view")
         self.report_view.setOpenExternalLinks(False)
-        report_layout.addWidget(self.report_view)
 
         # primary_canvas is assigned in sync() — never create a floating one here
         self.primary_canvas: DrawingCanvas | None = None
@@ -76,20 +73,12 @@ class WorkspaceController:
             layout.addWidget(self.primary_canvas)
             self.tabs.addTab(placeholder, "1")
 
-        self.tabs.addTab(self.report_tab, "Raport")
-        report_index = self.report_tab_index()
-        self.tabs.tabBar().setTabButton(report_index, self.tabs.tabBar().ButtonPosition.RightSide, None)
-        self.tabs.tabBar().setTabButton(report_index, self.tabs.tabBar().ButtonPosition.LeftSide, None)
-
         target_index = self._active_plane_tab_index() if ps.roof_planes else 0
         self.tabs.setCurrentIndex(target_index)
         self.tabs.blockSignals(False)
 
-    def report_tab_index(self) -> int:
-        return self.tabs.count() - 1
-
     def plane_id_for_tab_index(self, index: int) -> str | None:
-        if index < 0 or index >= self.report_tab_index():
+        if index < 0 or index >= self.tabs.count():
             return None
         widget = self.tabs.widget(index)
         return widget.property("plane_id") if widget is not None else None
@@ -97,7 +86,7 @@ class WorkspaceController:
     def tab_index_for_plane(self, plane_id: str | None) -> int:
         if plane_id is None:
             return -1
-        for index in range(self.report_tab_index()):
+        for index in range(self.tabs.count()):
             if self.plane_id_for_tab_index(index) == plane_id:
                 return index
         return -1
@@ -106,9 +95,6 @@ class WorkspaceController:
         index = self.tab_index_for_plane(plane_id)
         if index >= 0:
             self.tabs.setTabText(index, title)
-
-    def is_report_tab_index(self, index: int) -> bool:
-        return index == self.report_tab_index()
 
     def _for_each_canvas(self, callback: Callable[[DrawingCanvas], None]) -> None:
         # Preserve the existing primary-first fan-out contract.
@@ -126,9 +112,6 @@ class WorkspaceController:
     def set_sheet_visibility(self, visible: bool) -> None:
         self._sheets_visible = visible
         self._for_each_canvas(lambda canvas: canvas.set_sheet_visibility(visible))
-
-    def toggle_module_count(self, enabled: bool) -> None:
-        self._for_each_canvas(lambda canvas: canvas.toggle_module_count(enabled))
 
     def canvas_for_plane(self, plane_id: str) -> DrawingCanvas | None:
         return self._plane_tab_canvases.get(plane_id)

@@ -18,12 +18,14 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFileDialog,
     QInputDialog,
+    QLabel,
     QMenu,
     QMessageBox,
 )
 
 from mainwindow import MainWindow
-from ui.dialogs.material_dialog import BlachyDialog
+from ui.dialogs.material_dialog import BlachyDialog, DaneBlachyDialog
+from ui.dialogs.settings_dialog import SettingsDialog
 from ui.drawing_canvas import CommittedOutlineEdit
 
 
@@ -67,6 +69,109 @@ def test_mainwindow_exposes_expected_ui_contract(qtbot):
     assert window._mode_label.text() == "Mode: IDLE"
 
 
+def test_mainwindow_toolbar_hides_removed_actions_after_cleanup(qtbot):
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    assert hasattr(window._tb_ctrl, "action_new_surface") is True
+    assert hasattr(window._tb_ctrl, "action_duplicate_surface") is True
+    assert hasattr(window._tb_ctrl, "action_overlay_sheet") is True
+    assert hasattr(window._tb_ctrl, "action_grid") is True
+    assert hasattr(window._tb_ctrl, "action_base_point_toggle") is True
+    assert hasattr(window._tb_ctrl, "action_from_left") is True
+    assert hasattr(window._tb_ctrl, "action_from_right") is True
+
+    assert hasattr(window._tb_ctrl, "action_module_count") is False
+    assert hasattr(window._tb_ctrl, "action_select_props") is False
+    assert hasattr(window._tb_ctrl, "action_from_base") is False
+
+
+def test_settings_dialog_exposes_only_supported_controls_after_cleanup(qtbot):
+    dialog = SettingsDialog(AppSettings())
+    qtbot.addWidget(dialog)
+
+    assert hasattr(dialog, "_spin_top_extra") is True
+    assert hasattr(dialog, "_spin_grid_size") is True
+    assert hasattr(dialog, "_spin_grid_major") is True
+    assert hasattr(dialog, "_spin_grid_minor") is True
+    assert hasattr(dialog, "_check_crosshair") is True
+    assert hasattr(dialog, "_check_snap_to_grid") is True
+    assert hasattr(dialog, "_check_snap_to_axis") is True
+    assert hasattr(dialog, "_check_snap_to_45deg") is True
+    assert hasattr(dialog, "_check_snap_to_3060deg") is True
+    assert hasattr(dialog, "_check_snap_to_points") is True
+    assert hasattr(dialog, "_check_show_inferences") is True
+    assert hasattr(dialog, "_combo_live_angle_mode") is True
+    assert hasattr(dialog, "_check_show_guide_lines") is True
+    assert hasattr(dialog, "_combo_edge_drag_mode") is True
+    assert hasattr(dialog, "_check_show_edge_length_labels") is True
+    assert hasattr(dialog, "_check_show_vertex_angle_labels") is True
+    assert hasattr(dialog, "_check_label_always_visible") is True
+
+    assert hasattr(dialog, "_combo_shift_behavior") is False
+    assert hasattr(dialog, "_check_show_grid") is False
+    assert hasattr(dialog, "_check_axis_overlay") is False
+    assert hasattr(dialog, "_check_show_decimal_cm") is False
+    assert hasattr(dialog, "_check_show_angle_arc") is False
+    assert hasattr(dialog, "_spin_ui_element_scale") is False
+    assert hasattr(dialog, "_check_show_xy_references") is False
+    assert hasattr(dialog, "_check_close_on_rmb") is False
+    assert hasattr(dialog, "_spin_undo_stack_depth") is False
+
+
+def test_settings_dialog_build_settings_keeps_fixed_defaults(qtbot):
+    dialog = SettingsDialog(AppSettings())
+    qtbot.addWidget(dialog)
+
+    settings = dialog.build_settings()
+
+    assert settings.shift_drag_behavior == "orthogonal_lock"
+    assert settings.show_axis_overlay is True
+    assert settings.show_xy_references_during_draw is True
+    assert settings.show_decimal_cm is True
+    assert settings.show_angle_arc is True
+    assert settings.close_on_rmb is True
+    assert settings.ui_element_scale == pytest.approx(1.0)
+    assert settings.undo_stack_depth == 20
+
+
+def test_dane_blachy_dialog_exposes_only_trapez_minimal_fields_after_cleanup(qtbot):
+    dialog = DaneBlachyDialog(None)
+    qtbot.addWidget(dialog)
+
+    assert hasattr(dialog, "id_edit") is True
+    assert hasattr(dialog, "nazwa_edit") is True
+    assert hasattr(dialog, "szerokosc_efektywna_spin") is True
+    assert hasattr(dialog, "min_dlugosc_spin") is True
+    assert hasattr(dialog, "max_dlugosc_spin") is True
+
+    assert hasattr(dialog, "radio_dachowkowa") is False
+    assert hasattr(dialog, "radio_trapezowa") is False
+    assert hasattr(dialog, "zapas_dolny_spin") is False
+    assert hasattr(dialog, "zapas_gorny_spin") is False
+    assert hasattr(dialog, "dlugosc_modulu_spin") is False
+    assert hasattr(dialog, "cena_zl_spin") is False
+    assert hasattr(dialog, "cena_gr_spin") is False
+
+
+def test_blachy_dialog_hides_legacy_material_detail_labels_after_cleanup(qtbot):
+    dialog = BlachyDialog([], None)
+    qtbot.addWidget(dialog)
+
+    label_texts = {label.text() for label in dialog.findChildren(QLabel)}
+
+    assert "Id:" in label_texts
+    assert "Nazwa:" in label_texts
+    assert "Szerokość efektywna arkusza:" in label_texts
+    assert "Min. długość arkusza:" in label_texts
+    assert "Maks. długość arkusza:" in label_texts
+
+    assert "Zapas górny:" not in label_texts
+    assert "Zapas dolny:" not in label_texts
+    assert "Długość modułu:" not in label_texts
+    assert "Cena za m2:" not in label_texts
+
+
 def test_mainwindow_mode_indicator_tracks_draw_and_idle_transitions(qtbot):
     window = MainWindow()
     qtbot.addWidget(window)
@@ -104,10 +209,9 @@ def test_mainwindow_creates_plane_tabs_and_switches_active_plane(qtbot):
     second_plane = window.project_state.add_roof_plane(build_rectangle_outline(210, 140), selected_material_id="PD510")
     window._refresh_canvas_from_state()
 
-    assert window.workspace_tabs.count() == 3
+    assert window.workspace_tabs.count() == 2
     assert window.workspace_tabs.tabText(0) == first_plane.name
     assert window.workspace_tabs.tabText(1) == second_plane.name
-    assert window.workspace_tabs.tabText(2) == "Raport"
     assert window.project_state.active_plane_id == second_plane.id
     assert window.primary_canvas.roof_plane is not None
     assert window.primary_canvas.roof_plane.id == second_plane.id
@@ -289,7 +393,7 @@ def test_mainwindow_generates_project_report_for_all_roof_planes(qtbot):
     assert "Back" in window._latest_report_html
     assert "Zbiorcze zestawienie materiałów" in window._latest_report_html
     assert window._latest_report_plane_id is None
-    assert window.workspace_tabs.currentIndex() == window._workspace.report_tab_index()
+    assert window.workspace_tabs.currentIndex() == 1
 
 
 def test_mainwindow_commits_canvas_outline_edits_to_project_state(qtbot):
@@ -466,22 +570,22 @@ def test_mainwindow_settings_dialog_updates_grid_size_on_project_state_and_canva
                 grid_size_cm=25.0,
                 shift_drag_behavior="orthogonal_lock",
                 show_grid=False,
-                show_axis_overlay=False,
                 grid_major_cm=50,
                 grid_minor_cm=5,
                 show_crosshair=False,
-                show_xy_references_during_draw=False,
                 live_angle_mode="relative_to_prev",
                 show_decimal_cm=True,
-                show_angle_arc=False,
+                show_angle_arc=True,
                 show_guide_lines=False,
-                close_on_rmb=False,
+                close_on_rmb=True,
                 snap_to_grid=False,
                 snap_to_axis=False,
                 snap_to_45deg=False,
                 snap_to_3060deg=True,
                 snap_to_points=False,
                 show_inferences=False,
+                ui_element_scale=1.0,
+                undo_stack_depth=20,
             )
 
     monkeypatch.setattr("ui.dialogs.settings_dialog.SettingsDialog", FakeSettingsDialog)
@@ -492,33 +596,35 @@ def test_mainwindow_settings_dialog_updates_grid_size_on_project_state_and_canva
     assert window.project_state.app_settings.grid_size_cm == pytest.approx(25.0)
     assert window.project_state.app_settings.shift_drag_behavior == "orthogonal_lock"
     assert window.project_state.app_settings.show_grid is False
-    assert window.project_state.app_settings.show_axis_overlay is False
+    assert window.project_state.app_settings.show_axis_overlay is True
     assert window.project_state.app_settings.grid_major_cm == 50
     assert window.project_state.app_settings.grid_minor_cm == 5
     assert window.project_state.app_settings.show_crosshair is False
-    assert window.project_state.app_settings.show_xy_references_during_draw is False
+    assert window.project_state.app_settings.show_xy_references_during_draw is True
     assert window.project_state.app_settings.live_angle_mode == "relative_to_prev"
     assert window.project_state.app_settings.show_decimal_cm is True
-    assert window.project_state.app_settings.show_angle_arc is False
+    assert window.project_state.app_settings.show_angle_arc is True
     assert window.project_state.app_settings.show_guide_lines is False
-    assert window.project_state.app_settings.close_on_rmb is False
+    assert window.project_state.app_settings.close_on_rmb is True
     assert window.project_state.app_settings.snap_to_grid is False
     assert window.project_state.app_settings.snap_to_axis is False
     assert window.project_state.app_settings.snap_to_45deg is False
     assert window.project_state.app_settings.snap_to_3060deg is True
     assert window.project_state.app_settings.snap_to_points is False
     assert window.project_state.app_settings.show_inferences is False
+    assert window.project_state.app_settings.ui_element_scale == pytest.approx(1.0)
+    assert window.project_state.app_settings.undo_stack_depth == 20
     assert canvas is not None
     assert canvas._edit_overlay_grid_step_cm(canvas._canvas_mapper()) == pytest.approx(25.0)
     assert canvas._app_settings.live_angle_mode == "relative_to_prev"
-    assert canvas._app_settings.close_on_rmb is False
+    assert canvas._app_settings.close_on_rmb is True
     assert canvas._app_settings.shift_drag_behavior == "orthogonal_lock"
     assert canvas._show_grid is False
-    assert canvas._app_settings.show_axis_overlay is False
+    assert canvas._app_settings.show_axis_overlay is True
     assert canvas._app_settings.grid_major_cm == 50
     assert canvas._app_settings.grid_minor_cm == 5
     assert canvas._app_settings.show_crosshair is False
-    assert canvas._app_settings.show_xy_references_during_draw is False
+    assert canvas._app_settings.show_xy_references_during_draw is True
     assert canvas.snap_to_grid_enabled() is False
     assert window._tb_ctrl.action_grid.isChecked() is False
 
@@ -548,6 +654,19 @@ def test_mainwindow_toolbar_grid_toggle_updates_canvas_grid_visibility_only(qtbo
     assert canvas._app_settings.show_axis_overlay is True
     assert window.project_state.app_settings.show_grid is False
     assert window.project_state.app_settings.snap_to_grid is True
+
+
+def test_mainwindow_cutout_menu_exposes_only_add_and_draw_actions(qtbot):
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.show()
+
+    actions = window.menuBar().actions()
+    cutouts_menu = actions[2].menu()
+
+    assert isinstance(cutouts_menu, QMenu)
+    cutout_actions = [action.text() for action in cutouts_menu.actions() if not action.isSeparator()]
+    assert cutout_actions == ["Dodaj prostokątny wycinek...", "Rysuj wycinek"]
 
 
 def test_mainwindow_toolbar_sheet_toggle_switches_wireframe_mode_without_recalc(qtbot, monkeypatch):

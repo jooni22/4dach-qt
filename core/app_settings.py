@@ -49,7 +49,7 @@ class AppSettings:
 
     partial_cutout_top_extra_cm: float = 15.0
     grid_size_cm: float = 10.0
-    shift_drag_behavior: str = SHIFT_DRAG_BEHAVIOR_FREE_MOVE
+    shift_drag_behavior: str = SHIFT_DRAG_BEHAVIOR_ORTHOGONAL_LOCK
     show_grid: bool = True
     show_axis_overlay: bool = True
     grid_major_cm: int = 100
@@ -57,10 +57,10 @@ class AppSettings:
     show_crosshair: bool = True
     show_xy_references_during_draw: bool = True
     live_angle_mode: str = LIVE_ANGLE_MODE_ABSOLUTE
-    show_decimal_cm: bool = False
+    show_decimal_cm: bool = True
     show_angle_arc: bool = True
     show_guide_lines: bool = True
-    ui_element_scale: float = 1.6
+    ui_element_scale: float = 1.0
     close_on_rmb: bool = True
     snap_to_grid: bool = True
     snap_to_axis: bool = True
@@ -75,7 +75,7 @@ class AppSettings:
     show_edge_length_labels: bool = True
     show_vertex_angle_labels: bool = False
     label_always_visible: bool = False
-    undo_stack_depth: int = 50
+    undo_stack_depth: int = 20
 
     @classmethod
     def from_dict(cls, data: dict | None) -> AppSettings:
@@ -92,13 +92,13 @@ class AppSettings:
             grid_size = 10.0
         if grid_size <= 0:
             grid_size = 10.0
-        shift_drag_behavior = str(d.get("shift_drag_behavior", SHIFT_DRAG_BEHAVIOR_FREE_MOVE))
+        shift_drag_behavior = str(d.get("shift_drag_behavior", SHIFT_DRAG_BEHAVIOR_ORTHOGONAL_LOCK))
         if shift_drag_behavior not in _VALID_SHIFT_DRAG_BEHAVIORS:
-            shift_drag_behavior = SHIFT_DRAG_BEHAVIOR_FREE_MOVE
+            shift_drag_behavior = SHIFT_DRAG_BEHAVIOR_ORTHOGONAL_LOCK
         show_grid = bool(d.get("show_grid", True))
-        show_axis_overlay = bool(d.get("show_axis_overlay", True))
+        show_axis_overlay = True
         show_crosshair = bool(d.get("show_crosshair", True))
-        show_xy_references_during_draw = bool(d.get("show_xy_references_during_draw", True))
+        show_xy_references_during_draw = True
         try:
             grid_major_cm = int(d.get("grid_major_cm", 100))
         except (TypeError, ValueError):
@@ -118,11 +118,11 @@ class AppSettings:
         if edge_drag_mode not in _VALID_EDGE_DRAG_MODES:
             edge_drag_mode = EDGE_DRAG_MODE_MOVE_VERTICES
         try:
-            ui_element_scale = float(d.get("ui_element_scale", 1.6))
+            ui_element_scale = float(d.get("ui_element_scale", 1.0))
         except (TypeError, ValueError):
-            ui_element_scale = 1.6
+            ui_element_scale = 1.0
         if ui_element_scale <= 0:
-            ui_element_scale = 1.6
+            ui_element_scale = 1.0
         try:
             snap_axis_threshold_deg = float(d.get("snap_axis_threshold_deg", 3.0))
         except (TypeError, ValueError):
@@ -142,11 +142,11 @@ class AppSettings:
         if snap_radius_px <= 0:
             snap_radius_px = 12
         try:
-            undo_stack_depth = int(d.get("undo_stack_depth", 50))
+            undo_stack_depth = int(d.get("undo_stack_depth", 20))
         except (TypeError, ValueError):
-            undo_stack_depth = 50
+            undo_stack_depth = 20
         if undo_stack_depth <= 0:
-            undo_stack_depth = 50
+            undo_stack_depth = 20
         return cls(
             partial_cutout_top_extra_cm=max(0.0, value),
             grid_size_cm=grid_size,
@@ -158,11 +158,11 @@ class AppSettings:
             show_crosshair=show_crosshair,
             show_xy_references_during_draw=show_xy_references_during_draw,
             live_angle_mode=live_angle_mode,
-            show_decimal_cm=bool(d.get("show_decimal_cm", False)),
-            show_angle_arc=bool(d.get("show_angle_arc", True)),
+            show_decimal_cm=True,
+            show_angle_arc=True,
             show_guide_lines=bool(d.get("show_guide_lines", True)),
             ui_element_scale=ui_element_scale,
-            close_on_rmb=bool(d.get("close_on_rmb", True)),
+            close_on_rmb=True,
             snap_to_grid=bool(d.get("snap_to_grid", True)),
             snap_to_axis=bool(d.get("snap_to_axis", True)),
             snap_to_45deg=bool(d.get("snap_to_45deg", True)),

@@ -23,9 +23,6 @@ class _RecordingCanvas:
     def set_sheet_visibility(self, visible: bool) -> None:
         self.calls.append(("set_sheet_visibility", visible))
 
-    def toggle_module_count(self, enabled: bool) -> None:
-        self.calls.append(("toggle_module_count", enabled))
-
     def update(self) -> None:
         self.calls.append(("update", None))
 
@@ -47,7 +44,6 @@ def _workspace_with_recording_canvases(qtbot):
         ("toggle_grid", False, ("toggle_grid", False)),
         ("set_snap_to_grid_enabled", True, ("set_snap_to_grid_enabled", True)),
         ("set_sheet_visibility", False, ("set_sheet_visibility", False)),
-        ("toggle_module_count", True, ("toggle_module_count", True)),
     ],
 )
 def test_workspace_controller_propagates_canvas_operations_with_existing_primary_contract(

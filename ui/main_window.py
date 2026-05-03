@@ -174,8 +174,6 @@ class MainWindow(QMainWindow):
         wyc = mb.addMenu("Wycinki")
         wyc.addAction(act("Dodaj prostokątny wycinek...", None, self._dlg_add_hole))
         wyc.addAction(act("Rysuj wycinek", None, self._start_draw_cutout))
-        wyc.addAction(act("Przesuń wycinek...", None, self._dlg_move_hole))
-        wyc.addAction(act("Usuń wycinek", None, self._dlg_del_hole))
 
         kat = mb.addMenu("Katalog")
         kat.addAction(act("Blachy...", None, self._dlg_blachy))
@@ -207,11 +205,9 @@ class MainWindow(QMainWindow):
         self._tb_ctrl.action_trash.setEnabled(False)
         self._tb_ctrl.action_grid.triggered.connect(self._on_grid_toggled)
         self._tb_ctrl.action_grid.setChecked(self.project_state.app_settings.show_grid)
-        self._tb_ctrl.action_module_count.triggered.connect(self._on_module_count_toggled)
         self._tb_ctrl.action_base_point_toggle.triggered.connect(self._on_origin_mode_toggled)
         self._tb_ctrl.action_from_left.triggered.connect(self._on_from_left_toggled)
         self._tb_ctrl.action_from_right.triggered.connect(self._on_from_right_toggled)
-        self._tb_ctrl.action_from_base.triggered.connect(self._on_from_base_toggled)
         self._tb_ctrl.action_overlay_sheet.triggered.connect(self._on_sheet_visibility_toggled)
         self._tb_ctrl.action_overlay_sheet.setChecked(self._sheets_visible)
         self._refresh_material_combo()
@@ -766,9 +762,6 @@ class MainWindow(QMainWindow):
         self._tb_ctrl.action_from_left.blockSignals(False)
         self._tb_ctrl.action_from_right.blockSignals(False)
 
-    def _set_plane_base_line_mode(self, plane_id: str, enabled: bool) -> None:
-        self.project_state.set_plane_base_line_enabled(plane_id, enabled)
-
     def _set_plane_coordinate_origin(self, plane_id: str, origin: Point2D) -> None:
         self.project_state.set_plane_coordinate_origin(plane_id, origin)
 
@@ -867,7 +860,7 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
     # Signal handlers
     def _on_tab_changed(self, index: int) -> None:
-        if index < 0 or self._workspace.is_report_tab_index(index):
+        if index < 0:
             return
         plane_id = self._workspace.plane_id_for_tab_index(index)
         if plane_id is None:
@@ -906,14 +899,12 @@ class MainWindow(QMainWindow):
                 self._delete_active_roof_plane()
 
     def _on_tab_close_requested(self, index: int) -> None:
-        if self._workspace.is_report_tab_index(index):
-            return
         plane_id = self._workspace.plane_id_for_tab_index(index)
         if plane_id is not None:
             self._delete_roof_plane_by_id(plane_id)
 
     def _on_tab_bar_double_clicked(self, index: int) -> None:
-        if index < 0 or self._workspace.is_report_tab_index(index):
+        if index < 0:
             return
         plane_id = self._workspace.plane_id_for_tab_index(index)
         if plane_id is not None:
@@ -921,7 +912,7 @@ class MainWindow(QMainWindow):
 
     def _open_tab_context_menu(self, pos) -> None:
         index = self._workspace.tabs.tabBar().tabAt(pos)
-        if index < 0 or self._workspace.is_report_tab_index(index):
+        if index < 0:
             return
         plane_id = self._workspace.plane_id_for_tab_index(index)
         if plane_id is None:
@@ -1010,9 +1001,6 @@ class MainWindow(QMainWindow):
         message = "Pokazano arkusze" if checked else "Ukryto arkusze i włączono widok obrysów"
         self.statusBar().showMessage(message, 3000)
 
-    def _on_module_count_toggled(self, checked: bool) -> None:
-        self._workspace.toggle_module_count(checked)
-
     def _on_origin_mode_toggled(self, checked: bool) -> None:
         if checked and self._active_with_outline_or_warn() is None:
             self._tb_ctrl.action_base_point_toggle.blockSignals(True)
@@ -1049,16 +1037,6 @@ class MainWindow(QMainWindow):
             lambda: self._set_plane_layout_origin(plane.id, origin),
             f"Ustawiono kierunek układania dla {plane.name}",
             label=f"Zmiana kierunku układania {plane.name}",
-        )
-
-    def _on_from_base_toggled(self, checked: bool) -> None:
-        plane = self._active_with_outline_or_warn()
-        if plane is None:
-            return
-        self._edit(
-            lambda: self._set_plane_base_line_mode(plane.id, checked),
-            f"Zmieniono bazę układania dla {plane.name}",
-            label=f"Zmiana bazy układania {plane.name}",
         )
 
     # ------------------------------------------------------------------
@@ -1190,7 +1168,9 @@ class MainWindow(QMainWindow):
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(p)))
         else:
             self._report_ctrl.show_html(html)
-            self._workspace.tabs.setCurrentIndex(self._workspace.report_tab_index())
+            active_index = self._workspace.tab_index_for_plane(self.project_state.active_plane_id)
+            if active_index >= 0:
+                self._workspace.tabs.setCurrentIndex(active_index)
         return True
 
     def _recalculate(self) -> None:

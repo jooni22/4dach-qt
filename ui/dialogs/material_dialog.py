@@ -12,7 +12,6 @@ from PySide6.QtWidgets import (
     QListWidget,
     QMessageBox,
     QPushButton,
-    QRadioButton,
     QSpinBox,
     QVBoxLayout,
 )
@@ -49,14 +48,6 @@ class BlachyDialog(QDialog):
         params_layout.addRow("Min. długość arkusza:", self.min_dlugosc_label)
         self.max_dlugosc_label = QLabel()
         params_layout.addRow("Maks. długość arkusza:", self.max_dlugosc_label)
-        self.zapas_gorny_label = QLabel()
-        params_layout.addRow("Zapas górny:", self.zapas_gorny_label)
-        self.zapas_dolny_label = QLabel()
-        params_layout.addRow("Zapas dolny:", self.zapas_dolny_label)
-        self.dlugosc_modulu_label = QLabel()
-        params_layout.addRow("Długość modułu:", self.dlugosc_modulu_label)
-        self.cena_label = QLabel()
-        params_layout.addRow("Cena za m2:", self.cena_label)
         self.params_group.setLayout(params_layout)
         main_layout.addWidget(self.params_group)
 
@@ -101,10 +92,6 @@ class BlachyDialog(QDialog):
             self.szerokosc_efektywna_label,
             self.min_dlugosc_label,
             self.max_dlugosc_label,
-            self.zapas_gorny_label,
-            self.zapas_dolny_label,
-            self.dlugosc_modulu_label,
-            self.cena_label,
         ):
             label.setText("-")
 
@@ -116,10 +103,6 @@ class BlachyDialog(QDialog):
             self.szerokosc_efektywna_label.setText(f"{material.effective_width_cm:g} cm")
             self.min_dlugosc_label.setText(f"{material.min_sheet_length_cm:g} cm")
             self.max_dlugosc_label.setText(f"{material.max_sheet_length_cm:g} cm")
-            self.zapas_gorny_label.setText(f"{material.top_margin_cm:g} cm")
-            self.zapas_dolny_label.setText(f"{material.bottom_margin_cm:g} cm")
-            self.dlugosc_modulu_label.setText("-" if material.module_length_cm is None else f"{material.module_length_cm:g} cm")
-            self.cena_label.setText("-" if material.price_per_m2 is None else f"{material.price_per_m2:.2f} zł")
         else:
             self._clear_details()
 
@@ -173,15 +156,6 @@ class DaneBlachyDialog(QDialog):
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
 
-        type_group = QGroupBox("Typ blachy")
-        type_layout = QVBoxLayout()
-        self.radio_dachowkowa = QRadioButton("dachówkowa")
-        self.radio_trapezowa = QRadioButton("trapezowa")
-        type_layout.addWidget(self.radio_dachowkowa)
-        type_layout.addWidget(self.radio_trapezowa)
-        type_group.setLayout(type_layout)
-        layout.addWidget(type_group)
-
         form_layout = QFormLayout()
 
         self.id_edit = QLineEdit()
@@ -206,32 +180,6 @@ class DaneBlachyDialog(QDialog):
         self.max_dlugosc_spin.setSuffix(" cm")
         form_layout.addRow("Maksymalna długość arkusza:", self.max_dlugosc_spin)
 
-        self.zapas_dolny_spin = QSpinBox()
-        self.zapas_dolny_spin.setRange(0, 9999)
-        self.zapas_dolny_spin.setSuffix(" cm")
-        form_layout.addRow("Zapas dolny:", self.zapas_dolny_spin)
-
-        self.zapas_gorny_spin = QSpinBox()
-        self.zapas_gorny_spin.setRange(0, 9999)
-        self.zapas_gorny_spin.setSuffix(" cm")
-        form_layout.addRow("Zapas górny:", self.zapas_gorny_spin)
-
-        self.dlugosc_modulu_spin = QSpinBox()
-        self.dlugosc_modulu_spin.setRange(0, 9999)
-        self.dlugosc_modulu_spin.setSpecialValueText("brak")
-        self.dlugosc_modulu_spin.setSuffix(" cm")
-        form_layout.addRow("Długość modułu:", self.dlugosc_modulu_spin)
-
-        self.cena_zl_spin = QSpinBox()
-        self.cena_zl_spin.setRange(0, 99999)
-        self.cena_zl_spin.setSuffix(" zł")
-        form_layout.addRow("Cena za m2:", self.cena_zl_spin)
-
-        self.cena_gr_spin = QSpinBox()
-        self.cena_gr_spin.setRange(0, 99)
-        self.cena_gr_spin.setSuffix(" gr")
-        form_layout.addRow("Cena za m2 (gr):", self.cena_gr_spin)
-
         layout.addLayout(form_layout)
 
         button_box = QDialogButtonBox(
@@ -244,23 +192,13 @@ class DaneBlachyDialog(QDialog):
     def _load_values(self) -> None:
         material = self.material_data
         if material is None:
-            self.radio_dachowkowa.setChecked(True)
             return
 
-        (self.radio_dachowkowa if material.type == "dachówkowa" else self.radio_trapezowa).setChecked(True)
         self.id_edit.setText(material.id)
         self.nazwa_edit.setText(material.display_name)
         self.szerokosc_efektywna_spin.setValue(round(material.effective_width_cm))
         self.min_dlugosc_spin.setValue(round(material.min_sheet_length_cm))
         self.max_dlugosc_spin.setValue(round(material.max_sheet_length_cm))
-        self.zapas_dolny_spin.setValue(round(material.bottom_margin_cm))
-        self.zapas_gorny_spin.setValue(round(material.top_margin_cm))
-        self.dlugosc_modulu_spin.setValue(round(material.module_length_cm or 0))
-        price_value = material.price_per_m2 or 0.0
-        zl = int(price_value)
-        gr = int(round((price_value - zl) * 100))
-        self.cena_zl_spin.setValue(zl)
-        self.cena_gr_spin.setValue(gr)
 
     def _accept_if_valid(self) -> None:
         if not self.id_edit.text().strip():
@@ -279,17 +217,11 @@ class DaneBlachyDialog(QDialog):
         self.accept()
 
     def get_values(self) -> Material:
-        module_length_cm = self.dlugosc_modulu_spin.value() or None
-        price_value = self.cena_zl_spin.value() + (self.cena_gr_spin.value() / 100.0)
         return Material(
             id=self.id_edit.text().strip(),
             display_name=self.nazwa_edit.text().strip(),
-            type="dachówkowa" if self.radio_dachowkowa.isChecked() else "trapezowa",
+            type="trapezowa",
             effective_width_cm=self.szerokosc_efektywna_spin.value(),
             min_sheet_length_cm=self.min_dlugosc_spin.value(),
             max_sheet_length_cm=self.max_dlugosc_spin.value(),
-            bottom_margin_cm=self.zapas_dolny_spin.value(),
-            top_margin_cm=self.zapas_gorny_spin.value(),
-            module_length_cm=module_length_cm,
-            price_per_m2=price_value if price_value > 0 else None,
         )

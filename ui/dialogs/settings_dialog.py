@@ -20,8 +20,6 @@ from core.app_settings import (
     EDGE_DRAG_MODE_MOVE_VERTICES,
     LIVE_ANGLE_MODE_ABSOLUTE,
     LIVE_ANGLE_MODE_RELATIVE_TO_PREV,
-    SHIFT_DRAG_BEHAVIOR_FREE_MOVE,
-    SHIFT_DRAG_BEHAVIOR_ORTHOGONAL_LOCK,
     AppSettings,
 )
 
@@ -89,25 +87,6 @@ class SettingsDialog(QDialog):
         grid_label.setWordWrap(True)
         grid_form.addRow(grid_label, self._spin_grid_size)
 
-        self._combo_shift_behavior = QComboBox()
-        self._combo_shift_behavior.addItem("Shift: swobodny ruch bez przyciągania", SHIFT_DRAG_BEHAVIOR_FREE_MOVE)
-        self._combo_shift_behavior.addItem("Shift: blokada osi X/Y co 1 cm", SHIFT_DRAG_BEHAVIOR_ORTHOGONAL_LOCK)
-        self._combo_shift_behavior.setToolTip(
-            "Określa działanie klawisza Shift podczas przeciągania punktów,\n"
-            "wycinków i punktu bazowego."
-        )
-        shift_label = QLabel("Zachowanie klawisza Shift:")
-        shift_label.setWordWrap(True)
-        grid_form.addRow(shift_label, self._combo_shift_behavior)
-
-        self._check_show_grid = QCheckBox("Pokaż siatkę roboczą")
-        self._check_show_grid.setToolTip("Steruje tylko widocznością siatki. Nie wyłącza przyciągania ani referencji X/Y.")
-        grid_form.addRow("Widoczność siatki:", self._check_show_grid)
-
-        self._check_axis_overlay = QCheckBox("Pokaż wskaźnik osi X/Y")
-        self._check_axis_overlay.setToolTip("Pokazuje mały wskaźnik osi podczas rysowania odręcznego.")
-        grid_form.addRow("Orientacja:", self._check_axis_overlay)
-
         self._spin_grid_major = QSpinBox()
         self._spin_grid_major.setRange(1, 10000)
         self._spin_grid_major.setSingleStep(10)
@@ -155,29 +134,8 @@ class SettingsDialog(QDialog):
         self._combo_live_angle_mode.addItem("Kąt względem poprzedniej krawędzi", LIVE_ANGLE_MODE_RELATIVE_TO_PREV)
         live_form.addRow("Tryb kąta:", self._combo_live_angle_mode)
 
-        self._check_show_decimal_cm = QCheckBox("Pokazuj długości z dokładnością do 0.1 cm")
-        live_form.addRow("Precyzja długości:", self._check_show_decimal_cm)
-
-        self._check_show_angle_arc = QCheckBox("Pokaż łuk kąta przy aktywnym wierzchołku")
-        live_form.addRow("Łuk kąta:", self._check_show_angle_arc)
-
         self._check_show_guide_lines = QCheckBox("Pokaż subtelne linie pomocnicze aktywnego segmentu")
         live_form.addRow("Linie pomocnicze:", self._check_show_guide_lines)
-
-        self._spin_ui_element_scale = QDoubleSpinBox()
-        self._spin_ui_element_scale.setRange(1.0, 3.0)
-        self._spin_ui_element_scale.setSingleStep(0.1)
-        self._spin_ui_element_scale.setDecimals(1)
-        live_form.addRow("Skala overlayów:", self._spin_ui_element_scale)
-
-        self._check_show_xy_references = QCheckBox("Pokaż referencje X/Y podczas rysowania")
-        self._check_show_xy_references.setToolTip(
-            "Pokazuje lekkie prowadnice CAD z odległościami od aktywnego punktu odniesienia, niezależnie od widoczności siatki."
-        )
-        live_form.addRow("Referencje X/Y:", self._check_show_xy_references)
-
-        self._check_close_on_rmb = QCheckBox("Zamykaj wielokąt prawym przyciskiem myszy")
-        live_form.addRow("Zamykanie:", self._check_close_on_rmb)
 
         root.addWidget(grp_live_drawing)
 
@@ -199,11 +157,6 @@ class SettingsDialog(QDialog):
         self._check_label_always_visible = QCheckBox("Pokazuj etykiety także bez zaznaczenia")
         post_form.addRow("Widoczność:", self._check_label_always_visible)
 
-        self._spin_undo_stack_depth = QSpinBox()
-        self._spin_undo_stack_depth.setRange(1, 500)
-        self._spin_undo_stack_depth.setSingleStep(1)
-        post_form.addRow("Głębokość undo:", self._spin_undo_stack_depth)
-
         root.addWidget(grp_post_draw)
 
         # --- Przyciski ---
@@ -218,21 +171,12 @@ class SettingsDialog(QDialog):
     def _load_values(self, settings: AppSettings) -> None:
         self._spin_top_extra.setValue(settings.partial_cutout_top_extra_cm)
         self._spin_grid_size.setValue(settings.grid_size_cm)
-        index = self._combo_shift_behavior.findData(settings.shift_drag_behavior)
-        self._combo_shift_behavior.setCurrentIndex(max(0, index))
-        self._check_show_grid.setChecked(settings.show_grid)
-        self._check_axis_overlay.setChecked(settings.show_axis_overlay)
         self._spin_grid_major.setValue(settings.grid_major_cm)
         self._spin_grid_minor.setValue(settings.grid_minor_cm)
         self._check_crosshair.setChecked(settings.show_crosshair)
-        self._check_show_xy_references.setChecked(settings.show_xy_references_during_draw)
         live_angle_index = self._combo_live_angle_mode.findData(settings.live_angle_mode)
         self._combo_live_angle_mode.setCurrentIndex(max(0, live_angle_index))
-        self._check_show_decimal_cm.setChecked(settings.show_decimal_cm)
-        self._check_show_angle_arc.setChecked(settings.show_angle_arc)
         self._check_show_guide_lines.setChecked(settings.show_guide_lines)
-        self._spin_ui_element_scale.setValue(settings.ui_element_scale)
-        self._check_close_on_rmb.setChecked(settings.close_on_rmb)
         self._check_snap_to_grid.setChecked(settings.snap_to_grid)
         self._check_snap_to_axis.setChecked(settings.snap_to_axis)
         self._check_snap_to_45deg.setChecked(settings.snap_to_45deg)
@@ -244,26 +188,17 @@ class SettingsDialog(QDialog):
         self._check_show_edge_length_labels.setChecked(settings.show_edge_length_labels)
         self._check_show_vertex_angle_labels.setChecked(settings.show_vertex_angle_labels)
         self._check_label_always_visible.setChecked(settings.label_always_visible)
-        self._spin_undo_stack_depth.setValue(settings.undo_stack_depth)
 
     def get_values(self) -> dict:
         """Return current dialog values as a dict matching AppSettings fields."""
         return {
             "partial_cutout_top_extra_cm": self._spin_top_extra.value(),
             "grid_size_cm": self._spin_grid_size.value(),
-            "shift_drag_behavior": self._combo_shift_behavior.currentData(),
-            "show_grid": self._check_show_grid.isChecked(),
-            "show_axis_overlay": self._check_axis_overlay.isChecked(),
             "grid_major_cm": self._spin_grid_major.value(),
             "grid_minor_cm": self._spin_grid_minor.value(),
             "show_crosshair": self._check_crosshair.isChecked(),
-            "show_xy_references_during_draw": self._check_show_xy_references.isChecked(),
             "live_angle_mode": self._combo_live_angle_mode.currentData(),
-            "show_decimal_cm": self._check_show_decimal_cm.isChecked(),
-            "show_angle_arc": self._check_show_angle_arc.isChecked(),
             "show_guide_lines": self._check_show_guide_lines.isChecked(),
-            "ui_element_scale": self._spin_ui_element_scale.value(),
-            "close_on_rmb": self._check_close_on_rmb.isChecked(),
             "snap_to_grid": self._check_snap_to_grid.isChecked(),
             "snap_to_axis": self._check_snap_to_axis.isChecked(),
             "snap_to_45deg": self._check_snap_to_45deg.isChecked(),
@@ -274,7 +209,6 @@ class SettingsDialog(QDialog):
             "show_edge_length_labels": self._check_show_edge_length_labels.isChecked(),
             "show_vertex_angle_labels": self._check_show_vertex_angle_labels.isChecked(),
             "label_always_visible": self._check_label_always_visible.isChecked(),
-            "undo_stack_depth": self._spin_undo_stack_depth.value(),
         }
 
     def build_settings(self) -> AppSettings:
