@@ -1775,11 +1775,27 @@ class DrawingCanvas(QWidget):
                 edges.extend(polygon_edges(polygon))
         return edges
 
+    def _draw_point_snap_edges(self) -> list[tuple[Point2D, Point2D]]:
+        if self._mode == self.MODE_DRAW_OUTLINE:
+            edges: list[tuple[Point2D, Point2D]] = []
+            mapper = self._active_mapper()
+            if mapper is not None and len(self.user_points) >= 2:
+                domain_points = [mapper.unmap_point(point) for point in self.user_points]
+                for i in range(len(domain_points) - 1):
+                    edges.append((domain_points[i], domain_points[i + 1]))
+                if len(domain_points) >= 3:
+                    edges.append((domain_points[-1], domain_points[0]))
+            return edges
+        return self._draw_target_edges()
+
     def _draw_target_vertices(self) -> list[Point2D]:
         vertices: list[Point2D] = []
         mapper = self._active_mapper()
         if mapper is not None:
             vertices.extend(mapper.unmap_point(point) for point in self.user_points)
+
+        if self._mode == self.MODE_DRAW_OUTLINE:
+            return vertices
 
         for polygon in self._draw_target_polygons():
             vertices.extend(polygon.points)
@@ -1940,14 +1956,14 @@ class DrawingCanvas(QWidget):
         if vertex is not None:
             return vertex
         midpoint_candidates: list[tuple[str, Point2D]] = []
-        for edge_start, edge_end in self._draw_target_edges():
+        for edge_start, edge_end in self._draw_point_snap_edges():
             midpoint_candidates.append(("midpoint", Point2D((edge_start.x + edge_end.x) / 2.0, (edge_start.y + edge_end.y) / 2.0)))
         midpoint = self._best_near_point(midpoint_candidates, raw_point, mapper)
         if midpoint is not None:
             return midpoint
         intersection_candidates: list[tuple[str, Point2D]] = []
         projection_candidates: list[tuple[str, Point2D]] = []
-        for edge_start, edge_end in self._draw_target_edges():
+        for edge_start, edge_end in self._draw_point_snap_edges():
             projection = self._project_point_to_segment_inside(raw_point, edge_start, edge_end)
             if projection is not None:
                 projection_candidates.append(("perpendicular", projection))
@@ -2031,10 +2047,6 @@ class DrawingCanvas(QWidget):
         if not self._draw_snap_enabled(modifiers):
             return raw_point
         self._draw_inference_lines = self._build_draw_inferences(raw_point, start, mapper)
-        inference_state = self._resolve_inference_snap(raw_point, mapper)
-        if inference_state is not None:
-            self._draw_snap_state = inference_state
-            return inference_state.point
         if start is not None:
             for resolver in (
                 self._resolve_axis_snap,
@@ -2050,6 +2062,10 @@ class DrawingCanvas(QWidget):
             if state is not None:
                 self._draw_snap_state = state
                 return state.point
+        inference_state = self._resolve_inference_snap(raw_point, mapper)
+        if inference_state is not None:
+            self._draw_snap_state = inference_state
+            return inference_state.point
         state = self._resolve_grid_snap(raw_point, mapper, modifiers)
         if state is not None:
             self._draw_snap_state = state
@@ -3527,8 +3543,8 @@ class DrawingCanvas(QWidget):
             painter.setPen(QPen(QColor(255, 255, 255, 120), 0.8))
             painter.setBrush(QColor(18, 18, 18, 215))
             painter.drawRoundedRect(label_rect, 4.0, 4.0)
-        painter.setPen(QColor(255, 255, 255))
-        painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, label_text)
+            painter.setPen(QColor(255, 255, 255))
+            painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, label_text)
         painter.restore()
 
     def _draw_active_drawing_references(self, painter: QPainter) -> None:

@@ -761,6 +761,42 @@ def test_canvas_vertex_and_midpoint_snap_precede_grid(qtbot):
     assert canvas._draw_snap_state.kind == "midpoint"
 
 
+def test_canvas_explicit_snap_kinds_take_priority_over_inference_state(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+    canvas.set_app_settings(AppSettings(grid_minor_cm=25, snap_to_45deg=False))
+    canvas.set_mode(DrawingCanvas.MODE_DRAW_CUTOUT)
+    mapper = canvas._active_mapper()
+    assert mapper is not None
+
+    canvas.user_points.append(mapper.map_point(Point2D(100.0, 100.0)))
+
+    axis_result = canvas._resolve_draw_preview_endpoint(Point2D(190.0, 104.0), mapper)
+    assert axis_result.y == pytest.approx(100.0, abs=0.1)
+    assert canvas._draw_snap_state is not None
+    assert canvas._draw_snap_state.kind == "axis"
+
+    canvas.user_points.clear()
+
+    vertex_result = canvas._resolve_draw_preview_endpoint(Point2D(2.0, 2.0), mapper)
+    assert vertex_result == Point2D(0.0, 0.0)
+    assert canvas._draw_snap_state is not None
+    assert canvas._draw_snap_state.kind == "vertex"
+
+
+def test_canvas_draw_outline_mode_ignores_existing_plane_vertices_for_point_snap(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+    canvas.set_mode(DrawingCanvas.MODE_DRAW_OUTLINE)
+    mapper = canvas._free_draw_mapper()
+
+    result = canvas._resolve_draw_preview_endpoint(Point2D(2.0, 2.0), mapper)
+
+    assert result == Point2D(0.0, 0.0)
+    assert canvas._draw_snap_state is not None
+    assert canvas._draw_snap_state.kind == "grid"
+
+
 def test_canvas_inference_state_tracks_horizontal_and_vertical_alignment(qtbot):
     outline = Polygon2D.rectangle(300, 200)
     canvas = _make_canvas(qtbot, outline)
@@ -1151,6 +1187,22 @@ def test_canvas_dragging_origin_label_uses_previous_origin_as_reference(qtbot):
 
     label = canvas._origin_drag_label_text()
     assert "55" in label and "30" in label, f"Unexpected label: {label!r}"
+
+
+def test_canvas_origin_marker_draws_without_drag_label_when_origin_edit_is_idle(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+    canvas.set_origin_edit_enabled(True)
+
+    image = QImage(canvas.size(), QImage.Format.Format_ARGB32_Premultiplied)
+    image.fill(0)
+    painter = QPainter(image)
+    try:
+        mapper = canvas._canvas_mapper()
+        assert mapper is not None
+        canvas._draw_origin_marker(painter, mapper)
+    finally:
+        painter.end()
 
 
 def test_canvas_geometry_undo_and_redo_restore_vertex_drag(qtbot):
