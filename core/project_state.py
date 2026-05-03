@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import logging
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from core.app_settings import AppSettings
@@ -333,9 +334,11 @@ class ProjectState:
     def move_roof_plane(self, dx: float, dy: float, plane_id: str | None = None) -> RoofPlane:
         plane = self._require_plane(plane_id)
         outline = self._require_plane_outline(plane)
-        plane.outline = translate_polygon(outline, dx, dy)
-        plane.holes = [translate_polygon(hole, dx, dy) for hole in plane.holes]
-        self._mark_plane_geometry_changed(plane)
+        self._set_plane_geometry(
+            plane,
+            translate_polygon(outline, dx, dy),
+            holes=[translate_polygon(hole, dx, dy) for hole in plane.holes],
+        )
         return plane
 
     def move_roof_plane_point(self, point_index: int, dx: float, dy: float, plane_id: str | None = None) -> RoofPlane:
@@ -376,10 +379,18 @@ class ProjectState:
     def add_hole_to_plane(self, hole: Polygon2D, plane_id: str | None = None) -> RoofPlane:
         plane = self._require_plane(plane_id)
         outline = self._require_plane_outline(plane)
-
-        self._validate_hole_geometry(outline, hole, plane.holes, hole_index=len(plane.holes))
-
-        self._set_plane_geometry(plane, outline, holes=[*plane.holes, hole], validate_geometry=False)
+        next_holes = [*plane.holes, hole]
+        self._set_plane_geometry(
+            plane,
+            outline,
+            holes=next_holes,
+            validate_geometry=lambda: self._validate_hole_geometry(
+                outline,
+                hole,
+                plane.holes,
+                hole_index=len(plane.holes),
+            ),
+        )
         return plane
 
     def set_hole_polygon(self, hole_index: int, hole: Polygon2D, plane_id: str | None = None) -> RoofPlane:
@@ -389,21 +400,29 @@ class ProjectState:
             raise IndexError("Nie znaleziono wycinku o podanym indeksie")
 
         sibling_holes = [candidate for index, candidate in enumerate(plane.holes) if index != hole_index]
-        self._validate_hole_geometry(outline, hole, sibling_holes, hole_index=hole_index)
-
         next_holes = list(plane.holes)
         next_holes[hole_index] = hole
-        self._set_plane_geometry(plane, outline, holes=next_holes, validate_geometry=False)
+        self._set_plane_geometry(
+            plane,
+            outline,
+            holes=next_holes,
+            validate_geometry=lambda: self._validate_hole_geometry(
+                outline,
+                hole,
+                sibling_holes,
+                hole_index=hole_index,
+            ),
+        )
         return plane
 
     def delete_hole_from_plane(self, hole_index: int, plane_id: str | None = None) -> RoofPlane:
         plane = self._require_plane(plane_id)
-        self._require_plane_outline(plane)
+        outline = self._require_plane_outline(plane)
         if hole_index < 0 or hole_index >= len(plane.holes):
             raise IndexError("Nie znaleziono wycinku o podanym indeksie")
 
-        del plane.holes[hole_index]
-        self._mark_plane_geometry_changed(plane)
+        next_holes = [candidate for index, candidate in enumerate(plane.holes) if index != hole_index]
+        self._set_plane_geometry(plane, outline, holes=next_holes)
         return plane
 
     def move_hole_in_plane(self, hole_index: int, dx: float, dy: float, plane_id: str | None = None) -> RoofPlane:
@@ -575,9 +594,11 @@ class ProjectState:
         outline: Polygon2D,
         *,
         holes: list[Polygon2D],
-        validate_geometry: bool = True,
+        validate_geometry: bool | Callable[[], None] = True,
     ) -> None:
-        if validate_geometry:
+        if callable(validate_geometry):
+            validate_geometry()
+        elif validate_geometry:
             self._validate_plane_geometry(outline, holes)
         plane.outline = outline
         plane.holes = holes
@@ -608,9 +629,6 @@ class ProjectState:
             log.warning("Hole %d partially or fully outside outline — allowed", hole_index)
         if blocking_issues:
             raise ValueError("; ".join(blocking_issues))
-
-    def _mark_plane_geometry_changed(self, plane: RoofPlane) -> None:
-        self._mark_layout_inputs_changed(plane, "geometry_changed")
 
     def _mark_layout_soft_dirty(self, plane: RoofPlane, reason: str, *, preserve_manual_override: bool = False) -> None:
         if preserve_manual_override and plane.layout_dirty_reason == "manual_override":

@@ -544,6 +544,35 @@ def test_project_state_roof_plane_edit_operations_update_geometry_revision():
     assert almost_equal(edited_plane.generation_settings.base_line_y_cm or 0.0, 205.0)
 
 
+def test_project_state_move_roof_plane_uses_shared_geometry_lifecycle(monkeypatch: pytest.MonkeyPatch):
+    state = ProjectState()
+    plane = state.add_roof_plane(build_rectangle_outline(300, 200))
+    state.add_hole_to_plane(Polygon2D.rectangle(40, 40, origin_x=30, origin_y=30), plane.id)
+    original = ProjectState._set_plane_geometry
+    calls: list[tuple[Polygon2D, list[Polygon2D]]] = []
+
+    def spy(
+        self: ProjectState,
+        plane_arg: RoofPlane,
+        outline: Polygon2D,
+        *,
+        holes: list[Polygon2D],
+        **kwargs,
+    ) -> None:
+        calls.append((outline, holes))
+        original(self, plane_arg, outline, holes=holes, **kwargs)
+
+    monkeypatch.setattr(ProjectState, "_set_plane_geometry", spy)
+
+    moved_plane = state.move_roof_plane(10, 5, plane.id)
+
+    assert len(calls) == 1
+    assert calls[0][0] == moved_plane.outline
+    assert calls[0][1] == moved_plane.holes
+    assert moved_plane.outline.points[0] == Point2D(10, 5)
+    assert moved_plane.holes[0].points[0] == Point2D(40, 35)
+
+
 def test_project_state_set_roof_plane_geometry_replaces_outline_and_holes_together():
     state = ProjectState()
     plane = state.add_roof_plane(build_rectangle_outline(300, 200))
@@ -622,6 +651,37 @@ def test_project_state_delete_hole_marks_geometry_changed():
     assert updated_plane.layout_revision == 2
     assert updated_plane.holes == []
     assert almost_equal(updated_plane.generation_settings.base_line_y_cm or 0.0, 200.0)
+
+
+def test_project_state_delete_hole_uses_shared_geometry_lifecycle(monkeypatch: pytest.MonkeyPatch):
+    state = ProjectState()
+    plane = state.add_roof_plane(build_rectangle_outline(300, 200))
+    first_hole = Polygon2D.rectangle(50, 50, origin_x=80, origin_y=60)
+    second_hole = Polygon2D.rectangle(40, 40, origin_x=180, origin_y=90)
+    state.add_hole_to_plane(first_hole, plane.id)
+    state.add_hole_to_plane(second_hole, plane.id)
+    original = ProjectState._set_plane_geometry
+    calls: list[tuple[Polygon2D, list[Polygon2D]]] = []
+
+    def spy(
+        self: ProjectState,
+        plane_arg: RoofPlane,
+        outline: Polygon2D,
+        *,
+        holes: list[Polygon2D],
+        **kwargs,
+    ) -> None:
+        calls.append((outline, holes))
+        original(self, plane_arg, outline, holes=holes, **kwargs)
+
+    monkeypatch.setattr(ProjectState, "_set_plane_geometry", spy)
+
+    updated_plane = state.delete_hole_from_plane(0, plane.id)
+
+    assert len(calls) == 1
+    assert calls[0][0] == updated_plane.outline
+    assert calls[0][1] == [second_hole]
+    assert updated_plane.holes == [second_hole]
 
 
 def test_project_state_can_edit_cutout_vertex_and_persist_result():
