@@ -119,6 +119,39 @@ def test_material_definition_supports_min_sheet_length_dual_keys():
     assert payload["min_dlugosc_arkusza"] == 42
 
 
+def test_material_definition_falls_back_to_legacy_numeric_keys_when_compact_keys_are_none():
+    material = Material.from_dict(
+        {
+            "id": "MAT1",
+            "display_name": "Material 1",
+            "type": "trapezowa",
+            "effective_width_cm": None,
+            "szerokosc_efektywna": 51,
+            "min_sheet_length_cm": None,
+            "min_dlugosc_arkusza": 42,
+            "max_sheet_length_cm": None,
+            "max_dlugosc_arkusza": 300,
+            "top_allowance_cm": None,
+            "zapas_gorny": 15,
+            "bottom_allowance_cm": None,
+            "zapas_dolny": 10,
+            "module_length_cm": None,
+            "dlugosc_modulu": 25,
+            "price_per_m2": None,
+            "cena_zl": 123,
+            "cena_gr": 45,
+        }
+    )
+
+    assert material.effective_width_cm == 51
+    assert material.min_sheet_length_cm == 42
+    assert material.max_sheet_length_cm == 300
+    assert material.top_margin_cm == 15
+    assert material.bottom_margin_cm == 10
+    assert material.module_length_cm == 25
+    assert material.price_per_m2 == pytest.approx(123.45)
+
+
 def test_material_definition_rounds_centimeter_fields_to_ints():
     material = Material.from_dict(
         {

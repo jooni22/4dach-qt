@@ -7,6 +7,15 @@ from typing import Literal
 MaterialType = Literal["dachówkowa", "trapezowa"]
 SheetSource = Literal["auto", "manual"]
 LayoutOrigin = Literal["left", "right"]
+_MISSING = object()
+
+
+def _first_non_none(payload: dict, *keys: str, default=_MISSING):
+    for key in keys:
+        value = payload.get(key, _MISSING)
+        if value is not _MISSING and value is not None:
+            return value
+    return default
 
 
 @dataclass(slots=True, frozen=True)
@@ -164,25 +173,23 @@ class MaterialDefinition:
 
     @classmethod
     def from_dict(cls, data: dict) -> MaterialDefinition:
+        price_per_m2 = _first_non_none(data, "price_per_m2")
+        if price_per_m2 is _MISSING:
+            if "cena_zl" in data or "cena_gr" in data:
+                price_per_m2 = float(data.get("cena_zl", 0)) + float(data.get("cena_gr", 0)) / 100.0
+            else:
+                price_per_m2 = None
         return cls(
             id=data.get("id") or data.get("nazwa") or data.get("display_name") or "material",
             display_name=data.get("display_name") or data.get("nazwa") or data.get("id") or "material",
             type=data.get("type", "dachówkowa"),
-            effective_width_cm=int(round(float(data.get("effective_width_cm", data.get("szerokosc_efektywna", 0))))),
-            min_sheet_length_cm=int(round(float(data.get("min_sheet_length_cm", data.get("min_dlugosc_arkusza", 0))))),
-            max_sheet_length_cm=int(round(float(data.get("max_sheet_length_cm", data.get("max_dlugosc_arkusza", 900))))),
-            top_margin_cm=int(round(float(data.get("top_allowance_cm", data.get("zapas_gorny", 0))))),
-            bottom_margin_cm=int(round(float(data.get("bottom_allowance_cm", data.get("zapas_dolny", 0))))),
-            module_length_cm=(
-                int(round(float(data.get("module_length_cm", data.get("dlugosc_modulu")))))
-                if data.get("module_length_cm", data.get("dlugosc_modulu")) not in (None, 0, 0.0)
-                else None
-            ),
-            price_per_m2=(
-                data.get("price_per_m2")
-                if "price_per_m2" in data
-                else float(data.get("cena_zl", 0)) + float(data.get("cena_gr", 0)) / 100.0
-            ),
+            effective_width_cm=_first_non_none(data, "effective_width_cm", "szerokosc_efektywna", default=0),
+            min_sheet_length_cm=_first_non_none(data, "min_sheet_length_cm", "min_dlugosc_arkusza", default=0),
+            max_sheet_length_cm=_first_non_none(data, "max_sheet_length_cm", "max_dlugosc_arkusza", default=900),
+            top_margin_cm=_first_non_none(data, "top_allowance_cm", "zapas_gorny", default=0),
+            bottom_margin_cm=_first_non_none(data, "bottom_allowance_cm", "zapas_dolny", default=0),
+            module_length_cm=_first_non_none(data, "module_length_cm", "dlugosc_modulu", default=None),
+            price_per_m2=price_per_m2,
             batten_spacing_cm=int(round(float(data.get("odleglosc_miedzy_latami", 0)))),
             counter_batten_spacing_cm=int(round(float(data.get("odleglosc_miedzy_kontrlatami", 0)))),
             modules=[int(value) for value in data.get("moduly", [])],
