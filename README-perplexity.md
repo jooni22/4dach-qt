@@ -24,17 +24,9 @@
 4dach/
 ├── __main__.py              # Punkt wejścia aplikacji
 ├── core/
-│   ├── models.py            # Modele domenowe (RoofPlane, Material, SheetPlacement)
-│   ├── geometry.py           # Operacje geometryczne (Polygon2D, Bounds2D)
-│   ├── layout_engine.py      # Silnik generowania rozkładu arkuszy
-│   ├── project_state.py     # Stan projektu, zarządzanie połaciami
-│   └── reporting.py         # Generowanie raportów HTML/BOM
+...
 ├── ui/
-│   ├── main_window.py       # Główne okno aplikacji
-│   ├── drawing_canvas.py    # Canvas do rysowania geometrii
-│   ├── workspace.py         # Kontroler zakładek dla połaci
-│   ├── dialogs.py           # Dialogi (kształty, blachy, dane firmy)
-│   └── theme_manager.py     # Obsługa jasnego/ciemnego motywu
+...
 ├── tests/                   # Testy jednostkowe i integracyjne
 ├── docs/knowledge/          # Dokumentacja techniczna
 ├── AGENTS.md                # Instrukcje dla agentów AI
@@ -84,12 +76,6 @@ Generuje pionowe pasy na podstawie `effective_width_cm` materiału, przecina je 
 
 ## Pliki do załączenia
 
-- `core/models.py` — definicje modeli danych
-- `core/geometry.py` — klasa Polygon2D i operacje geometryczne
-- `core/layout_engine.py` — logika generowania rozkładu arkuszy
-- `core/project_state.py` — zarządzanie stanem projektu
-- `ui/main_window.py` — główne okno Qt
-- `ui/drawing_canvas.py` — canvas do rysowania
 
 ## Referencje
 
