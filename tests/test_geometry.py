@@ -21,7 +21,10 @@ import pytest
 
 from core.geometry import (
     canonicalize_polygon,
+    point_on_polygon_boundary,
     polygon_is_inside_polygon,
+    project_point_to_segment_clamped,
+    project_point_to_segment_inside,
     validate_hole_polygon,
     validate_polygon,
 )
@@ -174,6 +177,28 @@ class TestPolygonIsInsidePolygon:
         outer = _rect(0, 0, 100, 100)
         inner = _rect(50, 50, 150, 150)  # bottom-right quadrant outside
         assert polygon_is_inside_polygon(inner, outer) is False
+
+
+class TestBoundaryAndProjectionHelpers:
+    def test_point_on_polygon_boundary_accepts_edge_point(self) -> None:
+        polygon = _rect(0, 0, 100, 100)
+        assert point_on_polygon_boundary(Point2D(50, 0), polygon) is True
+        assert point_on_polygon_boundary(Point2D(50, 50), polygon) is False
+
+    def test_project_point_to_segment_inside_returns_none_outside_segment(self) -> None:
+        start = Point2D(0, 0)
+        end = Point2D(10, 0)
+
+        assert project_point_to_segment_inside(Point2D(5, 3), start, end) == Point2D(5, 0)
+        assert project_point_to_segment_inside(Point2D(15, 3), start, end) is None
+
+    def test_project_point_to_segment_clamped_clamps_to_segment_endpoints(self) -> None:
+        start = Point2D(0, 0)
+        end = Point2D(10, 0)
+
+        assert project_point_to_segment_clamped(Point2D(5, 3), start, end) == Point2D(5, 0)
+        assert project_point_to_segment_clamped(Point2D(-5, 3), start, end) == start
+        assert project_point_to_segment_clamped(Point2D(15, 3), start, end) == end
 
 
 # ---------------------------------------------------------------------------

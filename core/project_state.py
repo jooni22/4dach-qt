@@ -929,4 +929,4 @@ def _deserialize_layout_bands(payload: object) -> list[dict]:
 def _clone_polygon(polygon: Polygon2D | None) -> Polygon2D | None:
     if polygon is None:
         return None
-    return Polygon2D([Point2D(point.x, point.y) for point in polygon.points])
+    return polygon.copy()

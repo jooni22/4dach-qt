@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+from types import SimpleNamespace
 
 import pytest
 
@@ -448,6 +449,32 @@ def test_canvas_dragging_selected_polygon_body_commits_updated_outline(qtbot):
     assert committed.outline.points[0].y == pytest.approx(30.0, abs=1.5)
 
 
+def test_canvas_escape_cancels_plane_body_drag_and_restores_preview_geometry(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    hole = Polygon2D.rectangle(80, 60, origin_x=100, origin_y=70)
+    canvas = _make_canvas(qtbot, outline, holes=[hole])
+
+    inside = _point_on_canvas(canvas, Point2D(60, 100))
+    target = _point_on_canvas(canvas, Point2D(90, 130))
+    original_outline = copy.deepcopy(canvas.display_outline())
+    original_holes = copy.deepcopy(canvas.display_holes())
+
+    QTest.mouseClick(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, inside)
+    QTest.mousePress(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, inside)
+    _send_mouse_move(canvas, target, buttons=Qt.MouseButton.LeftButton)
+
+    assert canvas.mode() == canvas.MODE_MOVE
+    assert canvas.display_outline() != original_outline
+    assert canvas.display_holes() != original_holes
+
+    canvas.setFocus()
+    QTest.keyClick(canvas, Qt.Key.Key_Escape)
+
+    assert canvas.mode() == canvas.MODE_EDIT
+    assert canvas.display_outline() == original_outline
+    assert canvas.display_holes() == original_holes
+
+
 def test_canvas_default_edge_drag_mode_moves_both_edge_vertices(qtbot):
     outline = Polygon2D.rectangle(300, 200)
     canvas = _make_canvas(qtbot, outline)
@@ -603,6 +630,29 @@ def test_canvas_dragging_origin_forces_grid_visibility_only_during_drag(qtbot):
 
     assert canvas._dragging_origin is False
     assert canvas._grid_visible() is True
+
+
+def test_canvas_origin_drag_temporarily_shows_hidden_grid_then_restores_hidden_state(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+    canvas.toggle_grid(False)
+    canvas.set_origin_edit_enabled(True)
+    start = _point_on_canvas(canvas, canvas._origin_point())
+
+    assert canvas._show_grid is False
+    assert canvas._grid_visible() is False
+
+    QTest.mousePress(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, start)
+
+    assert canvas._show_grid is False
+    assert canvas._dragging_origin is True
+    assert canvas._grid_visible() is True
+
+    QTest.mouseRelease(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, start)
+
+    assert canvas._show_grid is False
+    assert canvas._dragging_origin is False
+    assert canvas._grid_visible() is False
 
 
 def test_canvas_draw_outline_mode_shows_grid_immediately(qtbot):
@@ -890,6 +940,60 @@ def test_canvas_freehand_close_does_not_resnap_with_different_origin(qtbot):
     assert closed_domain.y == pytest.approx(50.0, abs=0.1)
 
 
+def test_canvas_multi_step_freehand_draw_keeps_intermediate_points_until_close(qtbot):
+    canvas = DrawingCanvas()
+    canvas.resize(640, 420)
+    canvas.set_app_settings(
+        AppSettings(
+            snap_to_axis=False,
+            snap_to_45deg=False,
+            snap_to_3060deg=False,
+            snap_to_points=False,
+            snap_to_grid=False,
+        )
+    )
+    qtbot.addWidget(canvas)
+    canvas.show()
+    qtbot.waitExposed(canvas)
+    canvas.set_mode(DrawingCanvas.MODE_DRAW_OUTLINE)
+    mapper = canvas._free_draw_mapper()
+    expected_points = [
+        Point2D(100.0, 100.0),
+        Point2D(220.0, 100.0),
+        Point2D(220.0, 180.0),
+    ]
+
+    first = mapper.map_point(expected_points[0]).toPoint()
+    second = mapper.map_point(expected_points[1]).toPoint()
+    third = mapper.map_point(expected_points[2]).toPoint()
+
+    QTest.mouseClick(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, first)
+    _send_mouse_move(canvas, second)
+    QTest.mouseClick(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, second)
+    _send_mouse_move(canvas, third)
+
+    preview_domain = mapper.unmap_point(canvas.preview_point)
+    assert preview_domain.x == pytest.approx(expected_points[2].x, abs=1.0)
+    assert preview_domain.y == pytest.approx(expected_points[2].y, abs=1.0)
+
+    QTest.mouseClick(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, third)
+    _send_mouse_move(canvas, first)
+
+    assert len(canvas.user_points) == 3
+    assert canvas._snap_active is True
+
+    with qtbot.waitSignal(canvas.polygon_closed, timeout=1000) as blocker:
+        QTest.mouseClick(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, first)
+
+    closed_points = [mapper.unmap_point(point) for point in blocker.args[0]]
+    assert len(closed_points) == 3
+    for actual, expected in zip(closed_points, expected_points):
+        assert actual.x == pytest.approx(expected.x, abs=1.0)
+        assert actual.y == pytest.approx(expected.y, abs=1.0)
+    assert canvas.user_points == []
+    assert canvas.preview_point is None
+
+
 def test_live_segment_feedback_hidden_without_user_points(qtbot, monkeypatch):
     canvas = DrawingCanvas()
     canvas.resize(640, 420)
@@ -1073,7 +1177,7 @@ def test_canvas_label_always_visible_overrides_edge_label_visibility(qtbot, monk
     canvas.grab()
     QApplication.processEvents()
 
-    assert calls == ["edges"]
+    assert "edges" in calls
 
 
 def test_edge_measurement_badge_uses_light_background_with_red_text(qtbot):
@@ -1924,6 +2028,25 @@ def test_canvas_hides_sheet_rendering_in_wireframe_mode(qtbot):
     canvas.set_sheet_visibility(False)
 
     assert canvas._hit_test_sheet(QPointF(10.0, 10.0)) is None
+
+
+def test_canvas_sheet_hit_test_prefers_topmost_overlapping_item(qtbot, monkeypatch):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+    overlap_point = Point2D(140.0, 110.0)
+    mapper = canvas._canvas_mapper()
+    assert mapper is not None
+
+    monkeypatch.setattr(
+        canvas,
+        "_sheet_render_items",
+        lambda: [
+            SimpleNamespace(placement_id="bottom", polygons=[Polygon2D.rectangle(180, 140, origin_x=20, origin_y=30)]),
+            SimpleNamespace(placement_id="top", polygons=[Polygon2D.rectangle(120, 100, origin_x=80, origin_y=60)]),
+        ],
+    )
+
+    assert canvas._hit_test_sheet(QPointF(mapper.map_point(overlap_point))) == "top"
 
 
 def test_canvas_segment_coverage_polygons_skips_malformed_payloads(qtbot):

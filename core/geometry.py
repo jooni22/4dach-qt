@@ -100,6 +100,29 @@ def segment_length(start: Point2D, end: Point2D) -> float:
     return sqrt((end.x - start.x) ** 2 + (end.y - start.y) ** 2)
 
 
+def project_point_to_segment_inside(point: Point2D, start: Point2D, end: Point2D) -> Point2D | None:
+    dx = end.x - start.x
+    dy = end.y - start.y
+    length_sq = dx * dx + dy * dy
+    if length_sq <= EPSILON:
+        return None
+    ratio = ((point.x - start.x) * dx + (point.y - start.y) * dy) / length_sq
+    if ratio < 0.0 or ratio > 1.0:
+        return None
+    return Point2D(start.x + ratio * dx, start.y + ratio * dy)
+
+
+def project_point_to_segment_clamped(point: Point2D, start: Point2D, end: Point2D) -> Point2D:
+    dx = end.x - start.x
+    dy = end.y - start.y
+    length_sq = dx * dx + dy * dy
+    if length_sq <= EPSILON:
+        return start
+    projection = ((point.x - start.x) * dx + (point.y - start.y) * dy) / length_sq
+    ratio = min(1.0, max(0.0, projection))
+    return Point2D(start.x + dx * ratio, start.y + dy * ratio)
+
+
 def _orientation(a: Point2D, b: Point2D, c: Point2D) -> float:
     return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
 
@@ -283,6 +306,10 @@ def point_in_polygon(point: Point2D, polygon: Polygon2D) -> bool:
     return inside
 
 
+def point_on_polygon_boundary(point: Point2D, polygon: Polygon2D) -> bool:
+    return any(_point_on_segment(point, start, end) for start, end in polygon_edges(polygon))
+
+
 def vertical_intersections(polygon: Polygon2D, x: float) -> list[float]:
     ys: list[float] = []
     points = polygon.points
@@ -423,4 +450,4 @@ def _point_is_redundant_collinear(point: Point2D, previous: Point2D, next_point:
 def _point_in_polygon_or_on_boundary(point: Point2D, polygon: Polygon2D) -> bool:
     if point_in_polygon(point, polygon):
         return True
-    return any(_point_on_segment(point, start, end) for start, end in polygon_edges(polygon))
+    return point_on_polygon_boundary(point, polygon)

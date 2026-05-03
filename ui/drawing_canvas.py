@@ -21,7 +21,6 @@ Polygon drawing (MODE_DRAW_OUTLINE / MODE_DRAW_CUTOUT)
 from __future__ import annotations
 
 import math
-import re
 from dataclasses import dataclass
 from math import ceil, floor, hypot
 
@@ -49,7 +48,9 @@ from core.app_settings import (
 from core.canvas_mapper import CanvasMapper
 from core.geometry import (
     insert_polygon_point,
+    point_on_polygon_boundary,
     point_in_polygon,
+    project_point_to_segment_clamped,
     polygon_edges,
     replace_polygon_point,
     segment_length,
@@ -57,6 +58,9 @@ from core.geometry import (
     validate_polygon,
 )
 from core.models import Bounds2D, Point2D, Polygon2D
+from ui.canvas import sheet_geometry, snap_helpers
+from ui.canvas.sheet_geometry import SheetRenderItem as _SheetRenderItem
+from ui.canvas.snap_helpers import DrawSnapState as _DrawSnapState, InferenceLine as _InferenceLine
 
 SNAP_RADIUS = 10
 VERTEX_HANDLE_RADIUS = 6
@@ -90,7 +94,6 @@ DRAW_REFERENCE_LABEL_MIN_OFFSET_PX = 18.0
 DRAW_REFERENCE_LABEL_MAX_OFFSET_PX = 42.0
 DRAW_REFERENCE_LABEL_VERTICAL_GAP_PX = 12.0
 DRAW_REFERENCE_LABEL_HORIZONTAL_GAP_PX = 8.0
-SHEET_PLACEMENT_ID_PATTERN = re.compile(r"-b(?P<band>\d+)-s(?P<segment>\d+)-r\d+$")
 
 LIVE_ANGLE_MODE_ABSOLUTE = "absolute"
 LIVE_ANGLE_MODE_RELATIVE_TO_PREV = "relative_to_prev"
@@ -203,18 +206,6 @@ class _InlineSegmentEditor(QFrame):
         y = min(max(y, viewport.top()), max(viewport.top(), viewport.bottom() - height))
         self.move(int(round(x)), int(round(y)))
 
-
-@dataclass(slots=True)
-class _SheetRenderItem:
-    placement_id: str
-    source: str
-    band_index: int
-    polygons: list[Polygon2D]
-    raw_length_cm: float
-    final_length_cm: float
-    split_reason: str | None = None
-
-
 @dataclass(slots=True)
 class _EditOverlayState:
     mode: str
@@ -262,21 +253,6 @@ class _GridContext:
     mapper: CanvasMapper
     bounds: Bounds2D
     origin: Point2D
-
-
-@dataclass(slots=True, frozen=True)
-class _DrawSnapState:
-    kind: str
-    point: Point2D
-    label: str = ""
-
-
-@dataclass(slots=True, frozen=True)
-class _InferenceLine:
-    kind: str
-    start: Point2D
-    end: Point2D
-
 
 @dataclass(slots=True)
 class _UndoRecord:
@@ -540,7 +516,7 @@ class DrawingCanvas(QWidget):
 
     @staticmethod
     def _copy_polygon(polygon: Polygon2D) -> Polygon2D:
-        return Polygon2D([Point2D(point.x, point.y) for point in polygon.points])
+        return polygon.copy()
 
     def _copy_polygons(self, polygons: list[Polygon2D]) -> list[Polygon2D]:
         return [self._copy_polygon(polygon) for polygon in polygons]
@@ -805,47 +781,7 @@ class DrawingCanvas(QWidget):
             return self._render_items_cache
 
         visible_placements = self._visible_sheet_placements()
-        placements_by_id = {placement.id: placement for placement in visible_placements}
-        render_items: list[_SheetRenderItem] = []
-        seen_ids: set[str] = set()
-
-        for band in self.roof_plane.layout_bands:
-            for segment in band.get("segments", []):
-                placement_id = segment.get("placement_id")
-                if not placement_id:
-                    continue
-                placement = placements_by_id.get(placement_id)
-                if placement is None:
-                    continue
-                render_items.append(
-                    _SheetRenderItem(
-                        placement_id=placement.id,
-                        source=placement.source,
-                        band_index=placement.band_index,
-                        polygons=[self._placement_polygon(placement)],
-                        raw_length_cm=placement.raw_length_cm,
-                        final_length_cm=placement.final_length_cm,
-                        split_reason=placement.split_reason,
-                    )
-                )
-                seen_ids.add(placement.id)
-
-        for placement in visible_placements:
-            if placement.id in seen_ids:
-                continue
-            render_items.append(
-                _SheetRenderItem(
-                    placement_id=placement.id,
-                    source=placement.source,
-                    band_index=placement.band_index,
-                    polygons=[self._placement_polygon(placement)],
-                    raw_length_cm=placement.raw_length_cm,
-                    final_length_cm=placement.final_length_cm,
-                    split_reason=placement.split_reason,
-                )
-            )
-
-        sorted_items = sorted(render_items, key=lambda item: (item.source != "auto", item.band_index, item.placement_id))
+        sorted_items = sheet_geometry.build_sheet_render_items(self.roof_plane.layout_bands, visible_placements)
         self._render_items_cache = sorted_items
         self._render_items_cache_revision = plane_revision
         return sorted_items
@@ -853,65 +789,19 @@ class DrawingCanvas(QWidget):
     def _layout_segment_map(self) -> dict[tuple[int, int], dict]:
         if self.roof_plane is None:
             return {}
-        segment_map: dict[tuple[int, int], dict] = {}
-        for band in self.roof_plane.layout_bands:
-            band_index = band.get("band_index")
-            if band_index is None:
-                continue
-            for segment in band.get("segments", []):
-                segment_index = segment.get("segment_index")
-                if segment_index is None:
-                    continue
-                segment_map[(int(band_index), int(segment_index))] = segment
-        return segment_map
+        return sheet_geometry.build_layout_segment_map(self.roof_plane.layout_bands)
 
     def _placement_render_polygons(self, placement, segment_map: dict[tuple[int, int], dict]) -> list[Polygon2D]:
-        segment_key = self._segment_key_for_placement(placement.id)
-        if segment_key is None:
-            return []
-        segment = segment_map.get(segment_key)
-        if segment is None:
-            return []
-        coverage_polygons = self._segment_coverage_polygons(segment)
-        if not coverage_polygons:
-            return []
-        return self._clip_segment_polygons_for_placement(coverage_polygons, placement)
+        return sheet_geometry.placement_render_polygons(placement, segment_map)
 
     def _segment_key_for_placement(self, placement_id: str) -> tuple[int, int] | None:
-        match = SHEET_PLACEMENT_ID_PATTERN.search(placement_id)
-        if match is None:
-            return None
-        return int(match.group("band")), int(match.group("segment"))
+        return sheet_geometry.segment_key_for_placement(placement_id)
 
     def _segment_coverage_polygons(self, segment: dict) -> list[Polygon2D]:
-        polygons: list[Polygon2D] = []
-        for polygon_payload in segment.get("coverage_polygons", []):
-            if not isinstance(polygon_payload, list) or len(polygon_payload) < 3:
-                continue
-            points = [
-                Point2D(float(point[0]), float(point[1]))
-                for point in polygon_payload
-                if isinstance(point, (list, tuple)) and len(point) == 2
-            ]
-            if len(points) >= 3:
-                polygons.append(Polygon2D(points))
-        return polygons
+        return sheet_geometry.segment_coverage_polygons(segment)
 
     def _clip_segment_polygons_for_placement(self, polygons: list[Polygon2D], placement) -> list[Polygon2D]:
-        clipped_polygons: list[Polygon2D] = []
-        top_extension = max(0.0, placement.final_length_cm - placement.raw_length_cm)
-        for polygon in polygons:
-            clipped = self._clip_polygon_to_vertical_span(
-                polygon,
-                placement.y_top_cm,
-                placement.y_bottom_cm,
-            )
-            if clipped is None:
-                continue
-            if placement.split_reason == "partial_cutout_top" and top_extension > 0.0:
-                clipped = self._extend_polygon_top(clipped, placement.y_top_cm, top_extension)
-            clipped_polygons.append(clipped)
-        return clipped_polygons
+        return sheet_geometry.clip_segment_polygons_for_placement(polygons, placement)
 
     def _clip_polygon_to_vertical_span(
         self,
@@ -919,18 +809,7 @@ class DrawingCanvas(QWidget):
         y_top_cm: float,
         y_bottom_cm: float,
     ) -> Polygon2D | None:
-        points = list(polygon.points)
-        if len(points) < 3:
-            return None
-        clipped_to_top = self._clip_polygon_to_half_plane(points, y_value=y_top_cm, keep_below=False)
-        clipped_to_span = self._clip_polygon_to_half_plane(clipped_to_top, y_value=y_bottom_cm, keep_below=True)
-        cleaned = self._clean_polygon_points(clipped_to_span)
-        if len(cleaned) < 3:
-            return None
-        clipped_polygon = Polygon2D(cleaned)
-        if abs(clipped_polygon.area()) <= 1e-6:
-            return None
-        return clipped_polygon
+        return sheet_geometry.clip_polygon_to_vertical_span(polygon, y_top_cm, y_bottom_cm)
 
     def _clip_polygon_to_half_plane(
         self,
@@ -939,76 +818,22 @@ class DrawingCanvas(QWidget):
         y_value: float,
         keep_below: bool,
     ) -> list[Point2D]:
-        if not points:
-            return []
-
-        def inside(point: Point2D) -> bool:
-            if keep_below:
-                return point.y <= y_value + 1e-6
-            return point.y >= y_value - 1e-6
-
-        clipped: list[Point2D] = []
-        previous = points[-1]
-        previous_inside = inside(previous)
-        for current in points:
-            current_inside = inside(current)
-            if current_inside:
-                if not previous_inside:
-                    clipped.append(self._interpolate_point_at_y(previous, current, y_value))
-                clipped.append(current)
-            elif previous_inside:
-                clipped.append(self._interpolate_point_at_y(previous, current, y_value))
-            previous = current
-            previous_inside = current_inside
-        return clipped
+        return sheet_geometry.clip_polygon_to_half_plane(points, y_value=y_value, keep_below=keep_below)
 
     def _interpolate_point_at_y(self, start: Point2D, end: Point2D, y_value: float) -> Point2D:
-        dy = end.y - start.y
-        if abs(dy) <= 1e-9:
-            return Point2D(end.x, y_value)
-        ratio = (y_value - start.y) / dy
-        x_value = start.x + ratio * (end.x - start.x)
-        return Point2D(x_value, y_value)
+        return sheet_geometry.interpolate_point_at_y(start, end, y_value)
 
     def _clean_polygon_points(self, points: list[Point2D]) -> list[Point2D]:
-        cleaned: list[Point2D] = []
-        for point in points:
-            if cleaned and segment_length(cleaned[-1], point) <= 1e-6:
-                continue
-            cleaned.append(point)
-        if len(cleaned) >= 2 and segment_length(cleaned[0], cleaned[-1]) <= 1e-6:
-            cleaned.pop()
-        return cleaned
+        return sheet_geometry.clean_polygon_points(points)
 
     def _extend_polygon_top(self, polygon: Polygon2D, top_y_cm: float, extra_cm: float) -> Polygon2D:
-        return Polygon2D(
-            [
-                Point2D(point.x, point.y - extra_cm) if abs(point.y - top_y_cm) <= 1e-6 else point
-                for point in polygon.points
-            ]
-        )
+        return sheet_geometry.extend_polygon_top(polygon, top_y_cm, extra_cm)
 
     def _sheet_item_path(self, mapper: CanvasMapper, polygons: list[Polygon2D]) -> tuple[list[QPolygonF], QPainterPath]:
-        mapped_polygons = [QPolygonF([mapper.map_point(point) for point in polygon.points]) for polygon in polygons]
-        union_path = QPainterPath()
-        for mapped_polygon in mapped_polygons:
-            polygon_path = QPainterPath()
-            polygon_path.addPolygon(mapped_polygon)
-            union_path = polygon_path if union_path.isEmpty() else union_path.united(polygon_path)
-        return mapped_polygons, union_path.simplified()
+        return sheet_geometry.sheet_item_path(mapper, polygons)
 
     def _placement_polygon(self, placement) -> Polygon2D:
-        visual_top = placement.y_top_cm
-        if placement.split_reason == "partial_cutout_top":
-            visual_top -= max(0.0, placement.final_length_cm - placement.raw_length_cm)
-        return Polygon2D(
-            [
-                Point2D(placement.x_left_cm, visual_top),
-                Point2D(placement.x_right_cm, visual_top),
-                Point2D(placement.x_right_cm, placement.y_bottom_cm),
-                Point2D(placement.x_left_cm, placement.y_bottom_cm),
-            ]
-        )
+        return sheet_geometry.placement_polygon(placement)
 
     def _hit_test_sheet(self, pos: QPointF) -> str | None:
         if not self._show_sheet_placements:
@@ -1707,13 +1532,12 @@ class DrawingCanvas(QWidget):
         origin: Point2D | None = None,
         modifiers: Qt.KeyboardModifier = Qt.KeyboardModifier.NoModifier,
     ) -> Point2D:
-        if not self._snap_should_apply(modifiers):
-            return point
-        step_cm = self._effective_grid_step_cm(modifiers)
-        anchor = self._origin_point() if origin is None else origin
-        snapped_x = anchor.x + round((point.x - anchor.x) / step_cm) * step_cm
-        snapped_y = anchor.y - round((anchor.y - point.y) / step_cm) * step_cm
-        return Point2D(snapped_x, snapped_y)
+        return snap_helpers.snap_domain_point(
+            point,
+            should_snap=self._snap_should_apply(modifiers),
+            step_cm=self._effective_grid_step_cm(modifiers),
+            anchor=self._origin_point() if origin is None else origin,
+        )
 
     def _pixel_to_domain_point(
         self,
@@ -1736,21 +1560,21 @@ class DrawingCanvas(QWidget):
     def _draw_snap_enabled(self, modifiers: Qt.KeyboardModifier) -> bool:
         return not self._shift_free_move_active(modifiers)
 
-    def _distance_cm(self, first: Point2D, second: Point2D) -> float:
-        return math.hypot(first.x - second.x, first.y - second.y)
-
     def _angle_difference_degrees(self, first: float, second: float) -> float:
-        return abs((first - second + 180.0) % 360.0 - 180.0)
+        return snap_helpers.angle_difference_degrees(first, second)
 
     def _point_from_angle_and_radius(self, start: Point2D, angle_deg: float, radius: float) -> Point2D:
-        radians = math.radians(angle_deg)
-        return Point2D(start.x + math.cos(radians) * radius, start.y - math.sin(radians) * radius)
+        return snap_helpers.point_from_angle_and_radius(start, angle_deg, radius)
 
     def _snap_radius_cm(self, mapper: CanvasMapper) -> float:
-        return max(float(getattr(self._app_settings, "snap_radius_px", 12)) * self._ui_scale(), 1.0) / max(mapper.scale, 1e-9)
+        return snap_helpers.snap_radius_cm(
+            snap_radius_px=float(getattr(self._app_settings, "snap_radius_px", 12)),
+            ui_scale=self._ui_scale(),
+            mapper_scale=mapper.scale,
+        )
 
     def _grid_snap_radius_cm(self, mapper: CanvasMapper) -> float:
-        return GRID_SNAP_THRESHOLD_PX / max(mapper.scale, 1e-9)
+        return snap_helpers.grid_snap_radius_cm(mapper.scale)
 
     def _draw_target_polygons(self) -> list[Polygon2D]:
         polygons: list[Polygon2D] = []
@@ -1802,40 +1626,16 @@ class DrawingCanvas(QWidget):
             vertices.extend(polygon.points)
         return vertices
 
-    def _project_point_to_segment_inside(self, point: Point2D, start: Point2D, end: Point2D) -> Point2D | None:
-        dx = end.x - start.x
-        dy = end.y - start.y
-        length_sq = dx * dx + dy * dy
-        if length_sq <= 1e-9:
-            return None
-        ratio = ((point.x - start.x) * dx + (point.y - start.y) * dy) / length_sq
-        if ratio < 0.0 or ratio > 1.0:
-            return None
-        return Point2D(start.x + ratio * dx, start.y + ratio * dy)
-
     def _ray_segment_intersection(self, ray_start: Point2D, ray_end: Point2D, seg_start: Point2D, seg_end: Point2D) -> Point2D | None:
-        rx = ray_end.x - ray_start.x
-        ry = ray_end.y - ray_start.y
-        sx = seg_end.x - seg_start.x
-        sy = seg_end.y - seg_start.y
-        denominator = rx * sy - ry * sx
-        if abs(denominator) <= 1e-9:
-            return None
-        qpx = seg_start.x - ray_start.x
-        qpy = seg_start.y - ray_start.y
-        t = (qpx * sy - qpy * sx) / denominator
-        u = (qpx * ry - qpy * rx) / denominator
-        if t < 0.0 or u < 0.0 or u > 1.0:
-            return None
-        return Point2D(ray_start.x + t * rx, ray_start.y + t * ry)
+        return snap_helpers.ray_segment_intersection(ray_start, ray_end, seg_start, seg_end)
 
     @staticmethod
     def _distance_to_infinite_line(point: Point2D, anchor: Point2D, direction: Point2D) -> float:
-        return abs((point.x - anchor.x) * direction.y - (point.y - anchor.y) * direction.x)
+        return snap_helpers.distance_to_infinite_line(point, anchor, direction)
 
     @staticmethod
     def _points_close(left: Point2D, right: Point2D, tolerance: float = 1e-6) -> bool:
-        return abs(left.x - right.x) <= tolerance and abs(left.y - right.y) <= tolerance
+        return snap_helpers.points_close(left, right, tolerance)
 
     def _clip_infinite_line_to_bounds(
         self,
@@ -1843,145 +1643,53 @@ class DrawingCanvas(QWidget):
         direction: Point2D,
         bounds: Bounds2D,
     ) -> tuple[Point2D, Point2D] | None:
-        intersections: list[tuple[float, Point2D]] = []
-        tolerance = 1e-6
-        if abs(direction.x) > tolerance:
-            for x in (bounds.min_x, bounds.max_x):
-                t = (x - anchor.x) / direction.x
-                y = anchor.y + t * direction.y
-                if bounds.min_y - tolerance <= y <= bounds.max_y + tolerance:
-                    intersections.append((t, Point2D(x, y)))
-        if abs(direction.y) > tolerance:
-            for y in (bounds.min_y, bounds.max_y):
-                t = (y - anchor.y) / direction.y
-                x = anchor.x + t * direction.x
-                if bounds.min_x - tolerance <= x <= bounds.max_x + tolerance:
-                    intersections.append((t, Point2D(x, y)))
-        deduped: list[tuple[float, Point2D]] = []
-        for t, point in intersections:
-            if any(self._points_close(point, existing_point) for _, existing_point in deduped):
-                continue
-            deduped.append((t, point))
-        if len(deduped) < 2:
-            return None
-        deduped.sort(key=lambda item: item[0])
-        start_point = deduped[0][1]
-        end_point = deduped[-1][1]
-        if self._points_close(start_point, end_point):
-            return None
-        return start_point, end_point
+        return snap_helpers.clip_infinite_line_to_bounds(anchor, direction, bounds)
 
     def _best_near_point(self, candidates: list[tuple[str, Point2D]], raw_point: Point2D, mapper: CanvasMapper) -> _DrawSnapState | None:
-        radius = self._snap_radius_cm(mapper)
-        best: tuple[float, _DrawSnapState] | None = None
-        for kind, point in candidates:
-            distance = self._distance_cm(point, raw_point)
-            if distance <= radius and (best is None or distance < best[0]):
-                best = (distance, _DrawSnapState(kind, point))
-        return None if best is None else best[1]
+        return snap_helpers.best_near_point(candidates, raw_point, self._snap_radius_cm(mapper))
 
     @staticmethod
     def _line_intersection(first: _InferenceLine, second: _InferenceLine) -> Point2D | None:
-        horizontal: _InferenceLine | None = None
-        vertical: _InferenceLine | None = None
-        if first.kind == "horizontal" and second.kind == "vertical":
-            horizontal = first
-            vertical = second
-        elif first.kind == "vertical" and second.kind == "horizontal":
-            horizontal = second
-            vertical = first
-        if horizontal is None or vertical is None:
-            return None
-        return Point2D(vertical.start.x, horizontal.start.y)
+        return snap_helpers.line_intersection(first, second)
 
     def _resolve_inference_snap(self, raw_point: Point2D, mapper: CanvasMapper) -> _DrawSnapState | None:
-        if not self._draw_inference_lines:
-            return None
-        line_candidates: list[tuple[str, Point2D]] = []
-        intersection_candidates: list[tuple[str, Point2D]] = []
-        for line in self._draw_inference_lines:
-            if line.kind == "horizontal":
-                line_candidates.append(("horizontal", Point2D(raw_point.x, line.start.y)))
-            elif line.kind == "vertical":
-                line_candidates.append(("vertical", Point2D(line.start.x, raw_point.y)))
-        for index, first in enumerate(self._draw_inference_lines):
-            for second in self._draw_inference_lines[index + 1 :]:
-                intersection = self._line_intersection(first, second)
-                if intersection is not None:
-                    intersection_candidates.append(("intersection", intersection))
-        intersection_state = self._best_near_point(intersection_candidates, raw_point, mapper)
-        if intersection_state is not None:
-            return intersection_state
-        return self._best_near_point(line_candidates, raw_point, mapper)
+        return snap_helpers.resolve_inference_snap(raw_point, self._draw_inference_lines, self._snap_radius_cm(mapper))
 
     def _resolve_axis_snap(self, raw_point: Point2D, start: Point2D) -> _DrawSnapState | None:
         if not getattr(self._app_settings, "snap_to_axis", True):
             return None
-        dx = raw_point.x - start.x
-        dy = raw_point.y - start.y
-        radius = math.hypot(dx, dy)
-        if radius <= 1e-6:
-            return None
-        angle = self._absolute_angle_degrees_from_delta(dx, dy)
-        for target in (0.0, 90.0, 180.0, 270.0):
-            if self._angle_difference_degrees(angle, target) <= self._app_settings.snap_axis_threshold_deg:
-                return _DrawSnapState("axis", self._point_from_angle_and_radius(start, target, radius), f"{int(target)}°")
-        return None
+        return snap_helpers.resolve_axis_snap(
+            raw_point,
+            start,
+            threshold_deg=self._app_settings.snap_axis_threshold_deg,
+        )
 
     def _resolve_angular_snap(self, raw_point: Point2D, start: Point2D) -> _DrawSnapState | None:
-        dx = raw_point.x - start.x
-        dy = raw_point.y - start.y
-        radius = math.hypot(dx, dy)
-        if radius <= 1e-6:
-            return None
-        angle = self._absolute_angle_degrees_from_delta(dx, dy)
-        candidates: list[tuple[float, float]] = []
-        if getattr(self._app_settings, "snap_to_45deg", True):
-            candidates.extend((target, self._app_settings.snap_45_threshold_deg) for target in (45.0, 135.0, 225.0, 315.0))
-        if getattr(self._app_settings, "snap_to_3060deg", False):
-            candidates.extend((target, SNAP_3060_THRESHOLD_DEG) for target in (30.0, 60.0, 120.0, 150.0, 210.0, 240.0, 300.0, 330.0))
-        best: tuple[float, float] | None = None
-        for target, threshold in candidates:
-            delta = self._angle_difference_degrees(angle, target)
-            if delta <= threshold and (best is None or delta < best[0]):
-                best = (delta, target)
-        if best is None:
-            return None
-        target = best[1]
-        return _DrawSnapState("angle", self._point_from_angle_and_radius(start, target, radius), f"{int(target)}°")
+        return snap_helpers.resolve_angular_snap(
+            raw_point,
+            start,
+            snap_to_45deg=getattr(self._app_settings, "snap_to_45deg", True),
+            threshold_45_deg=self._app_settings.snap_45_threshold_deg,
+            snap_to_3060deg=getattr(self._app_settings, "snap_to_3060deg", False),
+            threshold_3060_deg=SNAP_3060_THRESHOLD_DEG,
+        )
 
     def _resolve_point_snap(self, raw_point: Point2D, start: Point2D | None, mapper: CanvasMapper) -> _DrawSnapState | None:
         if not getattr(self._app_settings, "snap_to_points", True):
             return None
-        vertex = self._best_near_point([("vertex", point) for point in self._draw_target_vertices()], raw_point, mapper)
-        if vertex is not None:
-            return vertex
-        midpoint_candidates: list[tuple[str, Point2D]] = []
-        for edge_start, edge_end in self._draw_point_snap_edges():
-            midpoint_candidates.append(("midpoint", Point2D((edge_start.x + edge_end.x) / 2.0, (edge_start.y + edge_end.y) / 2.0)))
-        midpoint = self._best_near_point(midpoint_candidates, raw_point, mapper)
-        if midpoint is not None:
-            return midpoint
-        intersection_candidates: list[tuple[str, Point2D]] = []
-        projection_candidates: list[tuple[str, Point2D]] = []
-        for edge_start, edge_end in self._draw_point_snap_edges():
-            projection = self._project_point_to_segment_inside(raw_point, edge_start, edge_end)
-            if projection is not None:
-                projection_candidates.append(("perpendicular", projection))
-            if start is not None:
-                intersection = self._ray_segment_intersection(start, raw_point, edge_start, edge_end)
-                if intersection is not None:
-                    intersection_candidates.append(("intersection", intersection))
-        intersection = self._best_near_point(intersection_candidates, raw_point, mapper)
-        if intersection is not None:
-            return intersection
-        return self._best_near_point(projection_candidates, raw_point, mapper)
+        return snap_helpers.resolve_point_snap(
+            raw_point,
+            start,
+            radius=self._snap_radius_cm(mapper),
+            vertices=self._draw_target_vertices(),
+            edges=self._draw_point_snap_edges(),
+        )
 
     def _resolve_grid_snap(self, raw_point: Point2D, mapper: CanvasMapper, modifiers: Qt.KeyboardModifier) -> _DrawSnapState | None:
         if not self.snap_to_grid_enabled():
             return None
         snapped = self._grid_snapped_domain_point(raw_point, mapper, modifiers=modifiers)
-        if self._distance_cm(raw_point, snapped) <= self._grid_snap_radius_cm(mapper):
+        if segment_length(raw_point, snapped) <= self._grid_snap_radius_cm(mapper):
             return _DrawSnapState("grid", snapped)
         return None
 
@@ -2002,48 +1710,16 @@ class DrawingCanvas(QWidget):
     def _build_draw_inferences(self, raw_point: Point2D, start: Point2D | None, mapper: CanvasMapper) -> list[_InferenceLine]:
         if not getattr(self._app_settings, "show_inferences", True):
             return []
-        radius = self._snap_radius_cm(mapper)
-        bounds = mapper.bounds
-        lines: list[_InferenceLine] = []
-        for vertex in self._draw_target_vertices():
-            if abs(raw_point.y - vertex.y) <= radius:
-                lines.append(_InferenceLine("horizontal", Point2D(bounds.min_x, vertex.y), Point2D(bounds.max_x, vertex.y)))
-                break
-        for vertex in self._draw_target_vertices():
-            if abs(raw_point.x - vertex.x) <= radius:
-                lines.append(_InferenceLine("vertical", Point2D(vertex.x, bounds.min_y), Point2D(vertex.x, bounds.max_y)))
-                break
-        if start is not None and len(self.user_points) >= 2:
-            previous = mapper.unmap_point(self.user_points[-2])
-            dx = start.x - previous.x
-            dy = start.y - previous.y
-            length = math.hypot(dx, dy)
-            if length > 1e-6:
-                ux = dx / length
-                uy = dy / length
-                span = max(bounds.width, bounds.height) * 2.0
-                lines.append(_InferenceLine("continuation", Point2D(start.x - ux * span, start.y - uy * span), Point2D(start.x + ux * span, start.y + uy * span)))
-        for edge_start, edge_end in self._draw_target_edges():
-            dx = edge_end.x - edge_start.x
-            dy = edge_end.y - edge_start.y
-            length = hypot(dx, dy)
-            if length <= 1e-6:
-                continue
-            direction = Point2D(dx / length, dy / length)
-            if self._distance_to_infinite_line(raw_point, edge_start, direction) > radius:
-                continue
-            clipped = self._clip_infinite_line_to_bounds(edge_start, direction, bounds)
-            if clipped is None:
-                continue
-            if any(
-                line.kind == "edge_extension"
-                and self._points_close(line.start, clipped[0])
-                and self._points_close(line.end, clipped[1])
-                for line in lines
-            ):
-                continue
-            lines.append(_InferenceLine("edge_extension", clipped[0], clipped[1]))
-        return lines
+        previous = mapper.unmap_point(self.user_points[-2]) if start is not None and len(self.user_points) >= 2 else None
+        return snap_helpers.build_draw_inferences(
+            raw_point,
+            start=start,
+            previous_point=previous,
+            target_vertices=self._draw_target_vertices(),
+            target_edges=self._draw_target_edges(),
+            bounds=mapper.bounds,
+            radius=self._snap_radius_cm(mapper),
+        )
 
     def _resolve_draw_preview_endpoint(
         self,
@@ -2484,37 +2160,14 @@ class DrawingCanvas(QWidget):
             for point in translated_points
         ]
 
-    def _point_on_polygon_boundary(self, point: Point2D, polygon: Polygon2D) -> bool:
-        tolerance = 1e-6
-        for start, end in polygon_edges(polygon):
-            cross = (end.x - start.x) * (point.y - start.y) - (end.y - start.y) * (point.x - start.x)
-            if abs(cross) > tolerance:
-                continue
-            if (
-                min(start.x, end.x) - tolerance <= point.x <= max(start.x, end.x) + tolerance
-                and min(start.y, end.y) - tolerance <= point.y <= max(start.y, end.y) + tolerance
-            ):
-                return True
-        return False
-
     def _point_within_plane(self, point: Point2D, outline: Polygon2D) -> bool:
-        return point_in_polygon(point, outline) or self._point_on_polygon_boundary(point, outline)
-
-    def _project_point_to_segment(self, point: Point2D, start: Point2D, end: Point2D) -> Point2D:
-        dx = end.x - start.x
-        dy = end.y - start.y
-        length_sq = dx * dx + dy * dy
-        if length_sq <= 1e-9:
-            return start
-        projection = ((point.x - start.x) * dx + (point.y - start.y) * dy) / length_sq
-        t = min(1.0, max(0.0, projection))
-        return Point2D(start.x + dx * t, start.y + dy * t)
+        return point_in_polygon(point, outline) or point_on_polygon_boundary(point, outline)
 
     def _closest_boundary_point(self, point: Point2D, polygon: Polygon2D) -> Point2D:
         closest_point: Point2D | None = None
         closest_distance_sq: float | None = None
         for start, end in polygon_edges(polygon):
-            candidate = self._project_point_to_segment(point, start, end)
+            candidate = project_point_to_segment_clamped(point, start, end)
             distance_sq = (candidate.x - point.x) ** 2 + (candidate.y - point.y) ** 2
             if closest_distance_sq is None or distance_sq < closest_distance_sq:
                 closest_point = candidate

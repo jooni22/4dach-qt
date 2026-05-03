@@ -136,7 +136,26 @@ If `docs/review-backlog.md` exists, treat it as the persistent source of unresol
 
 ---
 
-## 8. Scope discipline
+## 8. Cleanup roadmap and module boundaries
+
+For cleanup/refactor work after Stage 1:
+
+- The canonical roadmap is `_TODO/12_POST_STAGE1_FULL_CLEANUP_ROADMAP.md`.
+- Stage execution briefs live in `_TODO/12A_STAGE_2_DRAWING_CANVAS_TEST_FIRST_HARDENING.md` through `_TODO/12G_STAGE_8_COMPATIBILITY_AUDIT_LOW_ROI.md`.
+- Follow the stage order from that index. Do not mix multiple cleanup stages in one run unless the active stage brief explicitly allows it.
+- Treat `_TODO/_FEATURES/cleanup_plan.md` as a historical artifact only. Do not use it to decide current stage order or scope.
+
+Current cleanup architecture constraints:
+
+- `ui/drawing_canvas.py` remains the public canvas entry point and compatibility facade.
+- Internal pure helpers may live under `ui/canvas/`, but existing external imports should keep using `ui.drawing_canvas` unless the task explicitly changes the public API.
+- `mainwindow.py` remains a compatibility shim during cleanup. Do not remove or bypass it unless explicitly requested.
+- For canvas cleanup, extract stateless helpers first. Keep widget-owned state, selection, undo/redo, and origin-drag behavior inside `DrawingCanvas` unless the active stage brief expands that scope.
+- Preserve config and serialization compatibility unless a dedicated migration task explicitly requires a format change.
+
+---
+
+## 9. Scope discipline
 
 When implementing a stage:
 - Do only the work needed for that stage
@@ -148,7 +167,7 @@ When implementing a stage:
 
 ---
 
-## 9. Testing expectations
+## 10. Testing expectations
 
 For every meaningful change:
 - run relevant tests with `uv run pytest`
@@ -156,13 +175,19 @@ For every meaningful change:
 - avoid shipping untested geometry/layout behavior
 - prefer small, reviewable commits over large monolithic changes
 
+When touching `ui/drawing_canvas.py` or `ui/canvas/`, prefer this focused gate first:
+
+```bash
+uv run pytest tests/test_canvas_pure_helpers.py tests/test_drawing_canvas.py tests/test_mainwindow_ui_contract.py -q
+```
+
 If a GUI behavior changes, add either:
 - direct unit tests where possible, or
 - a clear manual QA note in the final summary
 
 ---
 
-## 10. Expected final response from an agent
+## 11. Expected final response from an agent
 
 When finishing a task, provide a concise implementation summary including:
 - what was changed
@@ -176,7 +201,6 @@ Do not claim that review comments were synchronized unless that step was actuall
 
 ---
 
-## 11. No lint / typecheck / codegen
+## 12. No lint / typecheck / codegen
 
 This project has no `ruff`, `mypy`, or code-generation tooling configured. The only automated check is `pytest`.
-

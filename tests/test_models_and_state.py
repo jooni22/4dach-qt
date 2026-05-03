@@ -78,6 +78,17 @@ def test_company_data_round_trip():
     assert company.to_dict()["website"] == "example.test"
 
 
+def test_polygon_copy_returns_distinct_point_list_and_points():
+    polygon = Polygon2D.rectangle(120, 80)
+
+    polygon_copy = polygon.copy()
+
+    assert polygon_copy == polygon
+    assert polygon_copy is not polygon
+    assert polygon_copy.points is not polygon.points
+    assert polygon_copy.points[0] is not polygon.points[0]
+
+
 def test_project_state_loads_materials_from_config():
     config_path = Path(__file__).resolve().parents[1] / "config.json"
     config_data = json.loads(config_path.read_text(encoding="utf-8"))

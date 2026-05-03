@@ -58,6 +58,9 @@ class Polygon2D:
     def translated(self, dx: float, dy: float) -> Polygon2D:
         return Polygon2D([Point2D(point.x + dx, point.y + dy) for point in self.points])
 
+    def copy(self) -> Polygon2D:
+        return Polygon2D([Point2D(point.x, point.y) for point in self.points])
+
     @classmethod
     def rectangle(cls, width_cm: float, height_cm: float, origin_x: float = 0.0, origin_y: float = 0.0) -> Polygon2D:
         return cls(
