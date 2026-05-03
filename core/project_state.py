@@ -100,19 +100,13 @@ class ProjectState:
         return state
 
     def active_roof_plane(self) -> RoofPlane | None:
-        if self.active_plane_id is None:
-            return None
-        return next((plane for plane in self.roof_planes if plane.id == self.active_plane_id), None)
+        return self.roof_plane_by_id(self.active_plane_id)
 
     def roof_plane_by_id(self, plane_id: str | None) -> RoofPlane | None:
-        if plane_id is None:
-            return None
-        return next((plane for plane in self.roof_planes if plane.id == plane_id), None)
+        return self._item_by_id(self.roof_planes, plane_id)
 
     def material_by_id(self, material_id: str | None) -> Material | None:
-        if material_id is None:
-            return None
-        return next((material for material in self.materials if material.id == material_id), None)
+        return self._item_by_id(self.materials, material_id)
 
     def available_material_ids(self) -> list[str]:
         return [material.id for material in self.materials]
@@ -169,7 +163,8 @@ class ProjectState:
             self.remove_material(material_id)
         for material in materials:
             self.upsert_material(material)
-        self.materials = [self.material_by_id(material_id) for material_id in desired_ids if self.material_by_id(material_id) is not None]
+        ordered_materials = [self.material_by_id(material_id) for material_id in desired_ids]
+        self.materials = [material for material in ordered_materials if material is not None]
         return self.materials
 
     def next_plane_id(self) -> str:
@@ -204,7 +199,7 @@ class ProjectState:
         if target_plane_id is None:
             return False
 
-        plane = next((item for item in self.roof_planes if item.id == target_plane_id), None)
+        plane = self.roof_plane_by_id(target_plane_id)
         if plane is None:
             return False
 
@@ -281,7 +276,7 @@ class ProjectState:
         return duplicate
 
     def delete_roof_plane(self, plane_id: str) -> RoofPlane:
-        plane_index = next((index for index, plane in enumerate(self.roof_planes) if plane.id == plane_id), None)
+        plane_index = self._item_index_by_id(self.roof_planes, plane_id)
         if plane_index is None:
             raise ValueError("Nie znaleziono połaci o podanym identyfikatorze")
 
@@ -295,9 +290,7 @@ class ProjectState:
 
     def set_roof_plane_outline(self, outline: Polygon2D, plane_id: str | None = None) -> RoofPlane:
         plane = self._require_plane(plane_id)
-        self._validate_plane_geometry(outline, plane.holes)
-        plane.outline = outline
-        self._mark_layout_inputs_changed(plane, "geometry_changed")
+        self._set_plane_geometry(plane, outline, holes=plane.holes)
         return plane
 
     def set_roof_plane_geometry(
@@ -308,10 +301,7 @@ class ProjectState:
     ) -> RoofPlane:
         plane = self._require_plane(plane_id)
         next_holes = list(plane.holes if holes is None else holes)
-        self._validate_plane_geometry(outline, next_holes)
-        plane.outline = outline
-        plane.holes = next_holes
-        self._mark_layout_inputs_changed(plane, "geometry_changed")
+        self._set_plane_geometry(plane, outline, holes=next_holes)
         return plane
 
     def move_roof_plane(self, dx: float, dy: float, plane_id: str | None = None) -> RoofPlane:
@@ -363,8 +353,7 @@ class ProjectState:
 
         self._validate_hole_geometry(outline, hole, plane.holes, hole_index=len(plane.holes))
 
-        plane.holes.append(hole)
-        self._mark_layout_inputs_changed(plane, "geometry_changed")
+        self._set_plane_geometry(plane, outline, holes=[*plane.holes, hole], validate_geometry=False)
         return plane
 
     def set_hole_polygon(self, hole_index: int, hole: Polygon2D, plane_id: str | None = None) -> RoofPlane:
@@ -376,8 +365,9 @@ class ProjectState:
         sibling_holes = [candidate for index, candidate in enumerate(plane.holes) if index != hole_index]
         self._validate_hole_geometry(outline, hole, sibling_holes, hole_index=hole_index)
 
-        plane.holes[hole_index] = hole
-        self._mark_layout_inputs_changed(plane, "geometry_changed")
+        next_holes = list(plane.holes)
+        next_holes[hole_index] = hole
+        self._set_plane_geometry(plane, outline, holes=next_holes, validate_geometry=False)
         return plane
 
     def delete_hole_from_plane(self, hole_index: int, plane_id: str | None = None) -> RoofPlane:
@@ -540,9 +530,31 @@ class ProjectState:
             raise ValueError("Aktywna połać nie ma jeszcze obrysu")
         return plane.outline
 
+    def _item_by_id(self, items: list, item_id: str | None):
+        if item_id is None:
+            return None
+        return next((item for item in items if item.id == item_id), None)
+
+    def _item_index_by_id(self, items: list, item_id: str | None) -> int | None:
+        if item_id is None:
+            return None
+        return next((index for index, item in enumerate(items) if item.id == item_id), None)
+
     def _set_plane_outline(self, plane: RoofPlane, outline: Polygon2D) -> None:
-        self._validate_plane_geometry(outline, plane.holes)
+        self._set_plane_geometry(plane, outline, holes=plane.holes)
+
+    def _set_plane_geometry(
+        self,
+        plane: RoofPlane,
+        outline: Polygon2D,
+        *,
+        holes: list[Polygon2D],
+        validate_geometry: bool = True,
+    ) -> None:
+        if validate_geometry:
+            self._validate_plane_geometry(outline, holes)
         plane.outline = outline
+        plane.holes = holes
         self._mark_layout_inputs_changed(plane, "geometry_changed")
 
     def _validate_plane_geometry(self, outline: Polygon2D, holes: list[Polygon2D]) -> None:

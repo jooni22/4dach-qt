@@ -370,6 +370,66 @@ def test_partial_cut_line_uses_highest_cutout_edge_point_per_band():
     ]
 
 
+def test_partial_cutout_bottom_phase_emits_standard_rows_before_top_phase_row():
+    plane = RoofPlane(
+        id="plane-1",
+        name="PartialBottomRows",
+        outline=Polygon2D.rectangle(100, 260),
+        holes=[Polygon2D.rectangle(30, 60, origin_x=10, origin_y=150)],
+    )
+
+    result = generate_layout(
+        plane,
+        _material(effective_width_cm=50, max_sheet_length_cm=70, min_sheet_length_cm=0),
+        settings=AppSettings(partial_cutout_top_extra_cm=0.0),
+    )
+
+    band0_placements = [p for p in result.placements if p.band_index == 0]
+    assert [(p.y_top_cm, p.y_bottom_cm, p.raw_length_cm, p.split_reason) for p in band0_placements] == [
+        (190.0, 260.0, 70.0, None),
+        (150.0, 190.0, 40.0, None),
+        (80.0, 150.0, 70.0, None),
+        (10.0, 80.0, 70.0, None),
+        (0.0, 10.0, 10.0, "partial_cutout_top"),
+    ]
+    assert result.rejected_segments == []
+
+
+def test_layout_engine_rejects_short_standard_tail_after_full_rows():
+    plane = RoofPlane(id="plane-1", name="StandardTail", outline=Polygon2D.rectangle(50, 250))
+
+    result = generate_layout(
+        plane,
+        _material(effective_width_cm=50, max_sheet_length_cm=120, min_sheet_length_cm=20),
+    )
+
+    assert [(p.y_top_cm, p.y_bottom_cm, p.raw_length_cm, p.final_length_cm) for p in result.placements] == [
+        (130.0, 250.0, 120.0, 120.0),
+        (10.0, 130.0, 120.0, 120.0),
+    ]
+    assert [(segment.y_top_cm, segment.y_bottom_cm, segment.raw_length_cm) for segment in result.rejected_segments] == [
+        (0.0, 10.0, 10.0),
+    ]
+    assert "Arkusz za krótki: 10.0 cm (min. 20.0 cm)" in result.rejected_segments[0].reason
+
+
+def test_layout_engine_warns_when_max_sheet_length_is_not_positive():
+    plane = RoofPlane(id="plane-1", name="InvalidMax", outline=Polygon2D.rectangle(100, 100))
+
+    result = generate_layout(
+        plane,
+        _material(effective_width_cm=100, max_sheet_length_cm=0),
+    )
+
+    assert result.placements == []
+    assert result.rejected_segments == []
+    assert [(warning.code, warning.data) for warning in result.warnings] == [
+        ("invalid_max_sheet_length", {"material_id": "TEST", "max_sheet_length_cm": 0}),
+    ]
+    assert len(result.bands) == 1
+    assert result.bands[0].segments == []
+
+
 def test_generate_layout_backward_compatible():
     """generate_layout(plane, material) without settings still works."""
     plane = RoofPlane(id="plane-1", name="Compat", outline=Polygon2D.rectangle(120, 200))

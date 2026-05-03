@@ -386,6 +386,22 @@ def test_project_state_supports_multiple_holes_and_round_trip():
     assert reloaded.roof_planes[0].holes[1].points == second_hole.points
 
 
+def test_project_state_set_hole_polygon_replaces_only_target_hole():
+    state = ProjectState()
+    plane = state.add_roof_plane(build_rectangle_outline(400, 300))
+    first_hole = Polygon2D.rectangle(50, 60, origin_x=40, origin_y=50)
+    second_hole = Polygon2D.rectangle(70, 40, origin_x=220, origin_y=120)
+    replacement_hole = Polygon2D.rectangle(60, 50, origin_x=55, origin_y=65)
+    state.add_hole_to_plane(first_hole, plane.id)
+    state.add_hole_to_plane(second_hole, plane.id)
+
+    updated_plane = state.set_hole_polygon(0, replacement_hole, plane.id)
+
+    assert updated_plane.holes == [replacement_hole, second_hole]
+    assert updated_plane.layout_revision == 3
+    assert updated_plane.layout_dirty_reason == "geometry_changed"
+
+
 def test_project_state_allows_hole_outside_outline():
     state = ProjectState()
     plane = state.add_roof_plane(build_rectangle_outline(300, 200))
@@ -419,6 +435,25 @@ def test_project_state_roof_plane_edit_operations_update_geometry_revision():
     assert edited_plane.outline.points[1] == Point2D(310, 5)
     assert len(edited_plane.outline.points) == 4
     assert almost_equal(edited_plane.generation_settings.base_line_y_cm or 0.0, 205.0)
+
+
+def test_project_state_set_roof_plane_geometry_replaces_outline_and_holes_together():
+    state = ProjectState()
+    plane = state.add_roof_plane(build_rectangle_outline(300, 200))
+    state.add_hole_to_plane(Polygon2D.rectangle(40, 40, origin_x=30, origin_y=30), plane.id)
+    next_outline = Polygon2D.rectangle(320, 210, origin_x=10, origin_y=5)
+    next_holes = [
+        Polygon2D.rectangle(50, 30, origin_x=40, origin_y=35),
+        Polygon2D.rectangle(60, 40, origin_x=180, origin_y=90),
+    ]
+
+    updated_plane = state.set_roof_plane_geometry(next_outline, next_holes, plane.id)
+
+    assert updated_plane.outline == next_outline
+    assert updated_plane.holes == next_holes
+    assert updated_plane.layout_revision == 2
+    assert updated_plane.layout_dirty_reason == "geometry_changed"
+    assert almost_equal(updated_plane.generation_settings.base_line_y_cm or 0.0, 215.0)
 
 
 def test_project_state_allows_outline_edit_when_it_breaks_hole_containment():

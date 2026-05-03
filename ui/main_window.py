@@ -315,6 +315,25 @@ class MainWindow(QMainWindow):
         self._refresh_window_title()
         self._refresh_tab_titles()
 
+    def _invalidate_cached_report(self) -> None:
+        self._latest_report_html = ""
+        self._latest_report_plane_id = None
+
+    def _refresh_ui_after_state_change(
+        self,
+        *,
+        refresh_materials: bool = False,
+        refresh_dirty_state: bool = False,
+        mark_saved_state: bool = False,
+    ) -> None:
+        if refresh_materials:
+            self._refresh_material_combo()
+        self._refresh_canvas()
+        if mark_saved_state:
+            self._mark_saved_state()
+        elif refresh_dirty_state:
+            self._refresh_dirty_state()
+
     def _plane_has_unsaved_changes(self, plane_id: str | None) -> bool:
         return bool(plane_id and plane_id in self._unsaved_plane_ids)
 
@@ -356,13 +375,10 @@ class MainWindow(QMainWindow):
         self._config = copy.deepcopy(snapshot)
         self.project_state = ProjectState.from_config(self._config)
         self._workspace.bind_project_state(self.project_state, self.project_state.material_by_id)
-        self._latest_report_html = ""
-        self._latest_report_plane_id = None
+        self._invalidate_cached_report()
         company = self._config.get("company_data", {}).get("name", "") or "4Dach"
         self._set_company_title(company)
-        self._refresh_material_combo()
-        self._refresh_canvas()
-        self._refresh_dirty_state()
+        self._refresh_ui_after_state_change(refresh_materials=True, refresh_dirty_state=True)
 
     def _save_project(self) -> bool:
         if self._project_file_path is None:
@@ -421,13 +437,10 @@ class MainWindow(QMainWindow):
         self.project_state = ProjectState.from_config(self._config)
         self._set_undo_stack_depth(self.project_state.app_settings.undo_stack_depth)
         self._workspace.bind_project_state(self.project_state, self.project_state.material_by_id)
-        self._latest_report_html = ""
-        self._latest_report_plane_id = None
+        self._invalidate_cached_report()
         company = self._config.get("company_data", {}).get("name", "") or "4Dach"
         self._set_company_title(company)
-        self._refresh_material_combo()
-        self._refresh_canvas()
-        self._mark_saved_state()
+        self._refresh_ui_after_state_change(refresh_materials=True, mark_saved_state=True)
 
     def _new_project(self) -> None:
         if not self._confirm_discard_unsaved_changes(context="utworzeniem nowego projektu"):
@@ -497,10 +510,8 @@ class MainWindow(QMainWindow):
 
         after_snapshot = self._serialize_current_config()
         self._push_history(label, before_snapshot, after_snapshot)
-        self._latest_report_html = ""
-        self._latest_report_plane_id = None
-        self._refresh_material_combo()
-        self._refresh_canvas()
+        self._invalidate_cached_report()
+        self._refresh_ui_after_state_change(refresh_materials=True)
         if after_refresh is not None:
             after_refresh()
         self._refresh_dirty_state()
@@ -1184,8 +1195,7 @@ class MainWindow(QMainWindow):
             return False
         self._latest_report_html = html
         self._latest_report_plane_id = None
-        self._refresh_dirty_state()
-        self._refresh_canvas()
+        self._refresh_ui_after_state_change(refresh_dirty_state=True)
         if open_external:
             suffix = {"continuous": "_ciagly", "short": "_skrocony"}.get(variant, "")
             p = Path(tempfile.gettempdir()) / f"raport-dach{suffix}.html"
@@ -1202,10 +1212,8 @@ class MainWindow(QMainWindow):
             return
         if not self._recalculate_planes_or_warn([plane.id]):
             return
-        self._latest_report_html = ""
-        self._latest_report_plane_id = None
-        self._refresh_dirty_state()
-        self._refresh_canvas()
+        self._invalidate_cached_report()
+        self._refresh_ui_after_state_change(refresh_dirty_state=True)
         self.statusBar().showMessage(f"Przeliczono połać {plane.name}", 4000)
 
     # ------------------------------------------------------------------
