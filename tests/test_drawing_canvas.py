@@ -15,7 +15,7 @@ from PySide6.QtWidgets import QApplication
 from core.app_settings import AppSettings
 from core.geometry import point_in_polygon, polygon_edges, segment_length
 from core.layout_engine import generate_layout
-from core.models import Material, Point2D, Polygon2D, RoofPlane
+from core.models import Material, Point2D, Polygon2D, RoofPlane, SheetPlacement
 from ui.drawing_canvas import AXIS_WIDGET_PADDING_PX, CommittedOutlineEdit, DrawingCanvas
 
 
@@ -1842,6 +1842,119 @@ def test_canvas_hides_sheet_rendering_in_wireframe_mode(qtbot):
     canvas.set_sheet_visibility(False)
 
     assert canvas._hit_test_sheet(QPointF(10.0, 10.0)) is None
+
+
+def test_canvas_segment_coverage_polygons_skips_malformed_payloads(qtbot):
+    canvas = _make_canvas(qtbot, Polygon2D.rectangle(120, 100))
+
+    polygons = canvas._segment_coverage_polygons(
+        {
+            "coverage_polygons": [
+                [[0, 0], [40, 0], [40, 60], [0, 60]],
+                "bad-payload",
+                [[0, 0], [10, 10]],
+                [[10, 10], [30, 10], [20, 40]],
+            ]
+        }
+    )
+
+    assert [polygon.bounds() for polygon in polygons] == [
+        Polygon2D.rectangle(40, 60).bounds(),
+        Polygon2D([Point2D(10, 10), Point2D(30, 10), Point2D(20, 40)]).bounds(),
+    ]
+
+
+def test_canvas_clip_polygon_to_vertical_span_trims_polygon_to_requested_band(qtbot):
+    canvas = _make_canvas(qtbot, Polygon2D.rectangle(120, 100))
+
+    clipped = canvas._clip_polygon_to_vertical_span(
+        Polygon2D.rectangle(50, 100),
+        20.0,
+        80.0,
+    )
+
+    assert clipped is not None
+    assert clipped.bounds().min_y == pytest.approx(20.0)
+    assert clipped.bounds().max_y == pytest.approx(80.0)
+    assert clipped.bounds().height == pytest.approx(60.0)
+    assert clipped.area() == pytest.approx(3000.0)
+
+
+def test_canvas_placement_render_polygons_clips_segment_coverage_to_sheet_span(qtbot):
+    canvas = _make_canvas(qtbot, Polygon2D.rectangle(120, 100))
+    placement = SheetPlacement(
+        id="plane-1-b2-s1-r0",
+        band_index=2,
+        x_left_cm=0.0,
+        x_right_cm=40.0,
+        y_top_cm=20.0,
+        y_bottom_cm=80.0,
+        raw_length_cm=60.0,
+        final_length_cm=60.0,
+    )
+
+    polygons = canvas._placement_render_polygons(
+        placement,
+        {(2, 1): {"coverage_polygons": [[[0, 0], [40, 0], [40, 100], [0, 100]]]}} ,
+    )
+
+    assert len(polygons) == 1
+    assert polygons[0].bounds().min_y == pytest.approx(20.0)
+    assert polygons[0].bounds().max_y == pytest.approx(80.0)
+    assert polygons[0].bounds().height == pytest.approx(60.0)
+
+
+def test_canvas_partial_cutout_top_render_polygons_extend_visual_top_edge(qtbot):
+    canvas = _make_canvas(qtbot, Polygon2D.rectangle(120, 100))
+    placement = SheetPlacement(
+        id="plane-1-b0-s0-r0",
+        band_index=0,
+        x_left_cm=0.0,
+        x_right_cm=50.0,
+        y_top_cm=30.0,
+        y_bottom_cm=90.0,
+        raw_length_cm=60.0,
+        final_length_cm=75.0,
+        split_reason="partial_cutout_top",
+    )
+
+    polygons = canvas._clip_segment_polygons_for_placement(
+        [Polygon2D.rectangle(50, 60, origin_x=0.0, origin_y=30.0)],
+        placement,
+    )
+
+    assert len(polygons) == 1
+    assert polygons[0].bounds().min_y == pytest.approx(15.0)
+    assert polygons[0].bounds().max_y == pytest.approx(90.0)
+    assert polygons[0].bounds().height == pytest.approx(75.0)
+
+
+def test_canvas_placement_render_polygons_returns_empty_for_unknown_segment_key(qtbot):
+    canvas = _make_canvas(qtbot, Polygon2D.rectangle(120, 100))
+
+    invalid_id = SheetPlacement(
+        id="placement-without-band-segment",
+        band_index=0,
+        x_left_cm=0.0,
+        x_right_cm=40.0,
+        y_top_cm=0.0,
+        y_bottom_cm=50.0,
+        raw_length_cm=50.0,
+        final_length_cm=50.0,
+    )
+    missing_segment = SheetPlacement(
+        id="plane-1-b4-s3-r0",
+        band_index=4,
+        x_left_cm=0.0,
+        x_right_cm=40.0,
+        y_top_cm=0.0,
+        y_bottom_cm=50.0,
+        raw_length_cm=50.0,
+        final_length_cm=50.0,
+    )
+
+    assert canvas._placement_render_polygons(invalid_id, {}) == []
+    assert canvas._placement_render_polygons(missing_segment, {}) == []
 
 
 def test_canvas_edge_scale_preserves_anchor_point(qtbot):
