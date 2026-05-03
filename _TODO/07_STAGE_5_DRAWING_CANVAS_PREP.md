@@ -1,5 +1,6 @@
 # Stage 5: DrawingCanvas prep only
-
+Skills:
+codebase-cleanup-tech-debt, pyside6-reviewer, test-driven-development
 ```markdown
 Wykonaj tylko ostrozny etap przygotowawczy dla `ui/drawing_canvas.py` zgodnie z `_TODO/CLEANUP_PLAN.md`.
 

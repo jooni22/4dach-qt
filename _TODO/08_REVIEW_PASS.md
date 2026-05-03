@@ -1,5 +1,6 @@
 # Review pass po kazdym wiekszym etapie
-
+Skills:
+code-reviewer, pyside6-reviewer
 ```markdown
 Przeprowadz review zmian z ostatniego etapu w tym repo.
 

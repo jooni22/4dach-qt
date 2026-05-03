@@ -175,6 +175,7 @@ def test_mainwindow_duplicates_active_roof_plane_with_geometry_and_cutouts(qtbot
     assert duplicate.holes == plane.holes
     assert duplicate.layout_bands == plane.layout_bands
     assert duplicate.auto_sheet_placements == plane.auto_sheet_placements
+    assert window._workspace.plane_id_for_tab_index(window.workspace_tabs.currentIndex()) == duplicate.id
 
 
 def test_mainwindow_creates_rectangle_geometry_in_active_tab(qtbot, monkeypatch):

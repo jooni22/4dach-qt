@@ -1,5 +1,6 @@
 # Stage 4: MainWindow dalsze porzadkowanie
-
+Skills:
+codebase-cleanup-tech-debt, pyside6-reviewer
 ```markdown
 Wykonaj tylko etap dalszego porzadkowania `ui/main_window.py` zgodnie z `_TODO/CLEANUP_PLAN.md`.
 

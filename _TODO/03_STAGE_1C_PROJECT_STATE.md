@@ -1,5 +1,7 @@
 # Stage 1C: ProjectState local dedup
-
+Skille załaduj:
+/codebase-cleanup-tech-debt
+/test-driven-development
 ```markdown
 Wykonaj tylko lokalny cleanup `core/project_state.py` zgodnie z `_TODO/CLEANUP_PLAN.md`.
 

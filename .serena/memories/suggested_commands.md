@@ -1,0 +1,1 @@
+Run app: `uv run python3 __main__.py`. Run full tests: `uv run pytest`. Run targeted tests: `uv run pytest tests/test_mainwindow_ui_contract.py` or another specific file. Use normal git inspection commands like `git status`, `git diff`, `git branch --show-current`. Main automated verification in this repo is `pytest`; there is no lint/typecheck/codegen pipeline configured.

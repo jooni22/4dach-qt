@@ -1,5 +1,6 @@
 # Stage 3: Layout engine refactor
-
+Skills:
+codebase-cleanup-tech-debt, test-driven-development
 ```markdown
 Wykonaj tylko etap refaktoru `core/layout_engine.py` zgodnie z `_TODO/CLEANUP_PLAN.md`.
 

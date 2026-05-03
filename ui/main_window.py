@@ -522,55 +522,7 @@ class MainWindow(QMainWindow):
             candidate.set_app_settings(self.project_state.app_settings)
             candidate.toggle_grid(self.project_state.app_settings.show_grid)
             candidate.set_snap_to_grid_enabled(self._snap_to_grid_enabled)
-            try:
-                candidate.outline_edit_committed.connect(
-                    self._on_outline_edit_committed,
-                    Qt.ConnectionType.UniqueConnection,
-                )
-            except TypeError:
-                pass
-            try:
-                candidate.outline_edit_rejected.connect(
-                    self._on_outline_edit_rejected,
-                    Qt.ConnectionType.UniqueConnection,
-                )
-            except TypeError:
-                pass
-            try:
-                candidate.hole_edit_committed.connect(
-                    self._on_hole_edit_committed,
-                    Qt.ConnectionType.UniqueConnection,
-                )
-            except TypeError:
-                pass
-            try:
-                candidate.origin_edit_committed.connect(
-                    self._on_origin_edit_committed,
-                    Qt.ConnectionType.UniqueConnection,
-                )
-            except TypeError:
-                pass
-            try:
-                candidate.selection_changed.connect(
-                    self._on_selection_changed,
-                    Qt.ConnectionType.UniqueConnection,
-                )
-            except TypeError:
-                pass
-            try:
-                candidate.delete_requested.connect(
-                    self._delete_selected_geometry,
-                    Qt.ConnectionType.UniqueConnection,
-                )
-            except TypeError:
-                pass
-            try:
-                candidate.mode_changed.connect(
-                    self._on_canvas_mode_changed,
-                    Qt.ConnectionType.UniqueConnection,
-                )
-            except TypeError:
-                pass
+            self._connect_canvas_signals(candidate)
         if plane:
             canvas = self._workspace.canvas_for_plane(plane.id) or self._workspace.primary_canvas
             canvas.set_roof_plane(plane)
@@ -636,13 +588,10 @@ class MainWindow(QMainWindow):
         self._sync_layout_direction_actions()
 
     def _active_or_warn(self):
-        plane = self.project_state.active_roof_plane()
-        if plane is None:
-            QMessageBox.information(self, "Brak połaci", "Brak aktywnej połaci")
-        return plane
+        return self._require_active_plane("Brak połaci", "Brak aktywnej połaci")
 
     def _active_with_outline_or_warn(self):
-        plane = self._active_or_warn()
+        plane = self._require_active_plane("Brak połaci", "Brak aktywnej połaci")
         if plane is None:
             return None
         if plane.outline is None:
@@ -651,13 +600,42 @@ class MainWindow(QMainWindow):
         return plane
 
     def _active_with_holes_or_warn(self):
-        plane = self._active_or_warn()
+        plane = self._require_active_plane("Brak połaci", "Brak aktywnej połaci")
         if plane is None:
             return None
         if not plane.holes:
             QMessageBox.information(self, "Brak wycinków", "Aktywna połać nie ma wycinków")
             return None
         return plane
+
+    def _connect_canvas_signal(self, signal, slot) -> None:
+        try:
+            signal.connect(slot, Qt.ConnectionType.UniqueConnection)
+        except TypeError:
+            pass
+
+    def _connect_canvas_signals(self, canvas: DrawingCanvas) -> None:
+        self._connect_canvas_signal(canvas.outline_edit_committed, self._on_outline_edit_committed)
+        self._connect_canvas_signal(canvas.outline_edit_rejected, self._on_outline_edit_rejected)
+        self._connect_canvas_signal(canvas.hole_edit_committed, self._on_hole_edit_committed)
+        self._connect_canvas_signal(canvas.origin_edit_committed, self._on_origin_edit_committed)
+        self._connect_canvas_signal(canvas.selection_changed, self._on_selection_changed)
+        self._connect_canvas_signal(canvas.delete_requested, self._delete_selected_geometry)
+        self._connect_canvas_signal(canvas.mode_changed, self._on_canvas_mode_changed)
+
+    def _require_active_plane(self, title: str, message: str):
+        plane = self.project_state.active_roof_plane()
+        if plane is None:
+            QMessageBox.information(self, title, message)
+        return plane
+
+    def _focus_active_plane_tab(self) -> None:
+        active_plane = self.project_state.active_roof_plane()
+        if active_plane is None:
+            return
+        index = self._workspace.tab_index_for_plane(active_plane.id)
+        if index >= 0:
+            self._workspace.tabs.setCurrentIndex(index)
 
     def _confirm_yes_no(self, title: str, message: str, *, default=QMessageBox.StandardButton.No) -> bool:
         answer = QMessageBox.question(
@@ -855,11 +833,7 @@ class MainWindow(QMainWindow):
             lambda: self.project_state.add_empty_roof_plane(selected_material_id=selected_material_id),
             "Dodano nową połacię",
         ):
-            active_plane = self.project_state.active_roof_plane()
-            if active_plane is not None:
-                index = self._workspace.tab_index_for_plane(active_plane.id)
-                if index >= 0:
-                    self._workspace.tabs.setCurrentIndex(index)
+            self._focus_active_plane_tab()
 
     def _duplicate_active_roof_plane(self) -> None:
         plane = self._active_or_warn()
@@ -870,11 +844,7 @@ class MainWindow(QMainWindow):
             f"Zduplikowano połacię {plane.name}",
             label=f"Duplikacja połaci {plane.name}",
         ):
-            duplicated_plane = self.project_state.active_roof_plane()
-            if duplicated_plane is not None:
-                index = self._workspace.tab_index_for_plane(duplicated_plane.id)
-                if index >= 0:
-                    self._workspace.tabs.setCurrentIndex(index)
+            self._focus_active_plane_tab()
 
     def _rename_roof_plane_by_id(self, plane_id: str) -> None:
         plane = self.project_state.roof_plane_by_id(plane_id)

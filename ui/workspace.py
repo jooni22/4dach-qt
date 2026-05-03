@@ -7,6 +7,8 @@ Responsibilities:
 """
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QTabWidget, QVBoxLayout, QWidget
 
@@ -108,30 +110,25 @@ class WorkspaceController:
     def is_report_tab_index(self, index: int) -> bool:
         return index == self.report_tab_index()
 
-    def toggle_grid(self, enabled: bool) -> None:
+    def _for_each_canvas(self, callback: Callable[[DrawingCanvas], None]) -> None:
+        # Preserve the existing primary-first fan-out contract.
         if self.primary_canvas is not None:
-            self.primary_canvas.toggle_grid(enabled)
+            callback(self.primary_canvas)
         for canvas in self._plane_tab_canvases.values():
-            canvas.toggle_grid(enabled)
+            callback(canvas)
+
+    def toggle_grid(self, enabled: bool) -> None:
+        self._for_each_canvas(lambda canvas: canvas.toggle_grid(enabled))
 
     def set_snap_to_grid_enabled(self, enabled: bool) -> None:
-        if self.primary_canvas is not None:
-            self.primary_canvas.set_snap_to_grid_enabled(enabled)
-        for canvas in self._plane_tab_canvases.values():
-            canvas.set_snap_to_grid_enabled(enabled)
+        self._for_each_canvas(lambda canvas: canvas.set_snap_to_grid_enabled(enabled))
 
     def set_sheet_visibility(self, visible: bool) -> None:
         self._sheets_visible = visible
-        if self.primary_canvas is not None:
-            self.primary_canvas.set_sheet_visibility(visible)
-        for canvas in self._plane_tab_canvases.values():
-            canvas.set_sheet_visibility(visible)
+        self._for_each_canvas(lambda canvas: canvas.set_sheet_visibility(visible))
 
     def toggle_module_count(self, enabled: bool) -> None:
-        if self.primary_canvas is not None:
-            self.primary_canvas.toggle_module_count(enabled)
-        for canvas in self._plane_tab_canvases.values():
-            canvas.toggle_module_count(enabled)
+        self._for_each_canvas(lambda canvas: canvas.toggle_module_count(enabled))
 
     def canvas_for_plane(self, plane_id: str) -> DrawingCanvas | None:
         return self._plane_tab_canvases.get(plane_id)
@@ -140,10 +137,7 @@ class WorkspaceController:
         return list(self._plane_tab_canvases.values())
 
     def update_all_canvases(self) -> None:
-        if self.primary_canvas is not None:
-            self.primary_canvas.update()
-        for canvas in self._plane_tab_canvases.values():
-            canvas.update()
+        self._for_each_canvas(lambda canvas: canvas.update())
 
     # ------------------------------------------------------------------
     # Internal

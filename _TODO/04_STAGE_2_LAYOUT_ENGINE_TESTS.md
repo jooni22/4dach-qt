@@ -1,5 +1,6 @@
 # Stage 2: Layout engine characterization tests
-
+Skille załaduj:
+/test-driven-development
 ```markdown
 Wykonaj tylko etap testow charakteryzujacych dla `core/layout_engine.py` zgodnie z `_TODO/CLEANUP_PLAN.md`.
 
