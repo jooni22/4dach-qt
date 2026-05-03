@@ -12,7 +12,6 @@ from pathlib import Path
 from PySide6.QtCore import QRectF, QSettings, QSize, Qt, QUrl
 from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QKeySequence
 from PySide6.QtWidgets import (
-    QDialog,
     QFileDialog,
     QInputDialog,
     QLabel,
@@ -39,6 +38,12 @@ from ui.dialogs import (
     TrojkatDialog,
 )
 from ui.drawing_canvas import CommittedOutlineEdit, DrawingCanvas
+from ui.main_window_dialogs import build_centered_hole, dialog_accepted, remember_shape_config
+from ui.main_window_refresh import (
+    PostStateChangeRefresh,
+    apply_post_state_change_refresh,
+    refresh_active_plane_facets,
+)
 from ui.report_view import ReportController
 from ui.theme_manager import ThemeManager
 from ui.workspace import WorkspaceController
@@ -237,25 +242,6 @@ class MainWindow(QMainWindow):
         self._base_window_title = f"4Dach — {company}"
         self._refresh_window_title()
 
-    def _dialog_accepted(self, dialog: QDialog) -> bool:
-        return dialog.exec() == QDialog.DialogCode.Accepted
-
-    def _remember_shape_config(self, shape_key: str, values: dict) -> None:
-        self._config.setdefault("ksztalty", {})[shape_key] = values
-
-    def _build_centered_hole(self, plane, width_cm: int, height_cm: int) -> Polygon2D:
-        if plane.outline is None:
-            return Polygon2D.rectangle(width_cm, height_cm, 0.0, 0.0)
-
-        points = plane.outline.points
-        center_x = sum(point.x for point in points) / len(points)
-        center_y = sum(point.y for point in points) / len(points)
-        offset_x = center_x - width_cm / 2.0
-        offset_y = center_y - height_cm / 2.0
-        if plane.holes:
-            offset_x = max(hole.bounds().max_x for hole in plane.holes) + 10.0
-        return Polygon2D.rectangle(width_cm, height_cm, offset_x, offset_y)
-
     def _refresh_window_title(self) -> None:
         suffix = " *" if self._has_unsaved_changes else ""
         self.setWindowTitle(f"{self._base_window_title}{suffix}")
@@ -322,17 +308,18 @@ class MainWindow(QMainWindow):
     def _refresh_ui_after_state_change(
         self,
         *,
+        invalidate_report_cache: bool = False,
         refresh_materials: bool = False,
-        refresh_dirty_state: bool = False,
-        mark_saved_state: bool = False,
+        dirty_state_mode: str = "preserve",
     ) -> None:
-        if refresh_materials:
-            self._refresh_material_combo()
-        self._refresh_canvas()
-        if mark_saved_state:
-            self._mark_saved_state()
-        elif refresh_dirty_state:
-            self._refresh_dirty_state()
+        apply_post_state_change_refresh(
+            self,
+            PostStateChangeRefresh(
+                invalidate_report_cache=invalidate_report_cache,
+                refresh_materials=refresh_materials,
+                dirty_state_mode=dirty_state_mode,
+            ),
+        )
 
     def _plane_has_unsaved_changes(self, plane_id: str | None) -> bool:
         return bool(plane_id and plane_id in self._unsaved_plane_ids)
@@ -378,7 +365,11 @@ class MainWindow(QMainWindow):
         self._invalidate_cached_report()
         company = self._config.get("company_data", {}).get("name", "") or "4Dach"
         self._set_company_title(company)
-        self._refresh_ui_after_state_change(refresh_materials=True, refresh_dirty_state=True)
+        self._refresh_ui_after_state_change(
+            invalidate_report_cache=True,
+            refresh_materials=True,
+            dirty_state_mode="refresh",
+        )
 
     def _save_project(self) -> bool:
         if self._project_file_path is None:
@@ -440,7 +431,11 @@ class MainWindow(QMainWindow):
         self._invalidate_cached_report()
         company = self._config.get("company_data", {}).get("name", "") or "4Dach"
         self._set_company_title(company)
-        self._refresh_ui_after_state_change(refresh_materials=True, mark_saved_state=True)
+        self._refresh_ui_after_state_change(
+            invalidate_report_cache=True,
+            refresh_materials=True,
+            dirty_state_mode="mark_saved",
+        )
 
     def _new_project(self) -> None:
         if not self._confirm_discard_unsaved_changes(context="utworzeniem nowego projektu"):
@@ -510,11 +505,13 @@ class MainWindow(QMainWindow):
 
         after_snapshot = self._serialize_current_config()
         self._push_history(label, before_snapshot, after_snapshot)
-        self._invalidate_cached_report()
-        self._refresh_ui_after_state_change(refresh_materials=True)
+        self._refresh_ui_after_state_change(
+            invalidate_report_cache=True,
+            refresh_materials=True,
+            dirty_state_mode="refresh",
+        )
         if after_refresh is not None:
             after_refresh()
-        self._refresh_dirty_state()
         self.statusBar().showMessage(success_message, 4000)
         return True
 
@@ -784,11 +781,7 @@ class MainWindow(QMainWindow):
         self._set_mode_indicator(DrawingCanvas.MODE_IDLE)
 
     def _refresh_active_plane_facets(self) -> None:
-        self._sync_layout_direction_actions()
-        self._apply_origin_edit_mode_to_canvases()
-        self._refresh_active_canvas_selection_state()
-        self._refresh_report()
-        self._refresh_status_bar_info()
+        refresh_active_plane_facets(self)
 
     def _apply_origin_edit_mode_to_canvases(self) -> None:
         enabled = bool(
@@ -1189,7 +1182,7 @@ class MainWindow(QMainWindow):
             return False
         self._latest_report_html = html
         self._latest_report_plane_id = None
-        self._refresh_ui_after_state_change(refresh_dirty_state=True)
+        self._refresh_ui_after_state_change(dirty_state_mode="refresh")
         if open_external:
             suffix = {"continuous": "_ciagly", "short": "_skrocony"}.get(variant, "")
             p = Path(tempfile.gettempdir()) / f"raport-dach{suffix}.html"
@@ -1206,18 +1199,20 @@ class MainWindow(QMainWindow):
             return
         if not self._recalculate_planes_or_warn([plane.id]):
             return
-        self._invalidate_cached_report()
-        self._refresh_ui_after_state_change(refresh_dirty_state=True)
+        self._refresh_ui_after_state_change(
+            invalidate_report_cache=True,
+            dirty_state_mode="refresh",
+        )
         self.statusBar().showMessage(f"Przeliczono połać {plane.name}", 4000)
 
     # ------------------------------------------------------------------
     # Shape dialogs
     def _dlg_prostokat(self) -> None:
         dlg = ProstokatDialog(self._config, self)
-        if not self._dialog_accepted(dlg):
+        if not dialog_accepted(dlg):
             return
         values = dlg.get_values()
-        self._remember_shape_config("prostokat", values)
+        remember_shape_config(self._config, "prostokat", values)
         outline = make_rectangle(values["szerokosc"], values["wysokosc"])
         self._set_active_plane_geometry(
             outline,
@@ -1226,7 +1221,7 @@ class MainWindow(QMainWindow):
 
     def _dlg_trojkat(self) -> None:
         dlg = TrojkatDialog(self._config, self)
-        if not self._dialog_accepted(dlg):
+        if not dialog_accepted(dlg):
             return
         values = dlg.get_values()
         side = values["ramie"] if values.get("ramie_enabled") else None
@@ -1235,15 +1230,15 @@ class MainWindow(QMainWindow):
         except ValueError as e:
             QMessageBox.warning(self, "Błąd edycji", str(e))
             return
-        self._remember_shape_config("trojkat", values)
+        remember_shape_config(self._config, "trojkat", values)
         self._set_active_plane_geometry(outline, f"Ustawiono obrys trójkąta {values['typ']}")
 
     def _dlg_trapez(self) -> None:
         dlg = TrapezDialog(self._config, self)
-        if not self._dialog_accepted(dlg):
+        if not dialog_accepted(dlg):
             return
         values = dlg.get_values()
-        self._remember_shape_config("trapez", values)
+        remember_shape_config(self._config, "trapez", values)
         outline = make_trapezoid(
             values["typ"],
             values["podstawa_dolna"],
@@ -1260,10 +1255,10 @@ class MainWindow(QMainWindow):
             return
         dlg = ProstokatDialog(self._config, self)
         dlg.setWindowTitle("Prostokątny wycinek")
-        if not self._dialog_accepted(dlg):
+        if not dialog_accepted(dlg):
             return
         values = dlg.get_values()
-        hole = self._build_centered_hole(plane, values["szerokosc"], values["wysokosc"])
+        hole = build_centered_hole(plane, values["szerokosc"], values["wysokosc"])
         self._edit(lambda: self.project_state.add_hole_to_plane(hole, plane.id), f"Dodano wycinek do {plane.name}")
 
     def _dlg_del_hole(self) -> None:
@@ -1366,7 +1361,7 @@ class MainWindow(QMainWindow):
     # Catalogue dialogs
     def _dlg_blachy(self) -> None:
         dlg = BlachyDialog(self.project_state.materials, self)
-        if not self._dialog_accepted(dlg):
+        if not dialog_accepted(dlg):
             return
         self._edit(
             lambda: self.project_state.replace_materials(dlg.get_values()),
@@ -1376,7 +1371,7 @@ class MainWindow(QMainWindow):
 
     def _dlg_firma(self) -> None:
         dlg = DaneFirmyDialog(self._config, self)
-        if not self._dialog_accepted(dlg):
+        if not dialog_accepted(dlg):
             return
         values = dlg.get_values()
 
@@ -1392,7 +1387,7 @@ class MainWindow(QMainWindow):
         from ui.dialogs.settings_dialog import SettingsDialog
 
         dlg = SettingsDialog(self.project_state.app_settings, parent=self)
-        if not self._dialog_accepted(dlg):
+        if not dialog_accepted(dlg):
             return
         new_settings = dlg.build_settings()
 

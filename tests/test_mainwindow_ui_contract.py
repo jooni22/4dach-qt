@@ -1309,3 +1309,59 @@ def test_mainwindow_settings_dialog_does_not_overwrite_manual_override_on_planes
 
     assert plane.layout_dirty_reason == "manual_override"
     assert list(plane.manually_removed_auto_sheet_ids) == original_removed_ids
+
+
+def test_post_state_change_refresh_contract_orders_cache_materials_canvas_and_dirty_state():
+    from ui.main_window_refresh import PostStateChangeRefresh, apply_post_state_change_refresh
+
+    calls: list[str] = []
+
+    class FakeWindow:
+        def _invalidate_cached_report(self) -> None:
+            calls.append("invalidate_report")
+
+        def _refresh_material_combo(self) -> None:
+            calls.append("refresh_materials")
+
+        def _refresh_canvas(self) -> None:
+            calls.append("refresh_canvas")
+
+        def _mark_saved_state(self) -> None:
+            calls.append("mark_saved")
+
+        def _refresh_dirty_state(self) -> None:
+            calls.append("refresh_dirty")
+
+    apply_post_state_change_refresh(
+        FakeWindow(),
+        PostStateChangeRefresh(
+            invalidate_report_cache=True,
+            refresh_materials=True,
+            dirty_state_mode="refresh",
+        ),
+    )
+
+    assert calls == [
+        "invalidate_report",
+        "refresh_materials",
+        "refresh_canvas",
+        "refresh_dirty",
+    ]
+
+
+def test_build_centered_hole_prefers_space_after_existing_cutouts():
+    from ui.main_window_dialogs import build_centered_hole
+
+    plane = type(
+        "PlaneStub",
+        (),
+        {
+            "outline": build_rectangle_outline(320, 180),
+            "holes": [Polygon2D.rectangle(60, 40, origin_x=40, origin_y=20)],
+        },
+    )()
+
+    hole = build_centered_hole(plane, 50, 30)
+
+    assert hole.bounds().min_x == pytest.approx(110.0)
+    assert hole.bounds().min_y == pytest.approx(75.0)
