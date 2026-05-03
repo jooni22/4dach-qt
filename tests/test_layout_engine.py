@@ -395,6 +395,51 @@ def test_partial_cutout_bottom_phase_emits_standard_rows_before_top_phase_row():
     assert result.rejected_segments == []
 
 
+def test_layout_engine_clamps_partial_cutout_top_extra_to_max_sheet_length():
+    plane = RoofPlane(
+        id="plane-1",
+        name="PartialClampByMax",
+        outline=Polygon2D.rectangle(100, 200),
+        holes=[Polygon2D.rectangle(30, 40, origin_x=10, origin_y=60)],
+    )
+
+    result = generate_layout(
+        plane,
+        _material(effective_width_cm=50, max_sheet_length_cm=70, min_sheet_length_cm=0),
+        settings=AppSettings(partial_cutout_top_extra_cm=20.0),
+    )
+
+    partial_top = [p for p in result.placements if p.split_reason == "partial_cutout_top"]
+    assert len(partial_top) == 1
+    assert partial_top[0].raw_length_cm == 60.0
+    assert partial_top[0].final_length_cm == 70.0
+
+
+def test_layout_engine_uses_displayed_partial_top_length_in_rejection_reason():
+    plane = RoofPlane(
+        id="plane-1",
+        name="PartialTopReject",
+        outline=Polygon2D.rectangle(100, 260),
+        holes=[Polygon2D.rectangle(30, 60, origin_x=10, origin_y=150)],
+    )
+
+    result = generate_layout(
+        plane,
+        _material(effective_width_cm=50, max_sheet_length_cm=70, min_sheet_length_cm=15),
+        settings=AppSettings(partial_cutout_top_extra_cm=4.0),
+    )
+
+    assert [(p.y_top_cm, p.y_bottom_cm, p.final_length_cm, p.split_reason) for p in result.placements if p.band_index == 0] == [
+        (190.0, 260.0, 70.0, None),
+        (150.0, 190.0, 40.0, None),
+        (80.0, 150.0, 70.0, None),
+        (10.0, 80.0, 70.0, None),
+    ]
+    assert len(result.rejected_segments) == 1
+    assert result.rejected_segments[0].raw_length_cm == 10.0
+    assert "Arkusz za krótki: 14.0 cm (min. 15.0 cm)" in result.rejected_segments[0].reason
+
+
 def test_layout_engine_rejects_short_standard_tail_after_full_rows():
     plane = RoofPlane(id="plane-1", name="StandardTail", outline=Polygon2D.rectangle(50, 250))
 
@@ -428,6 +473,22 @@ def test_layout_engine_warns_when_max_sheet_length_is_not_positive():
     ]
     assert len(result.bands) == 1
     assert result.bands[0].segments == []
+
+
+def test_layout_engine_warns_when_sheet_height_collapses_to_zero():
+    plane = RoofPlane(id="plane-1", name="ZeroHeight", outline=Polygon2D.rectangle(50, 100))
+    material = _material(effective_width_cm=50, max_sheet_length_cm=500, min_sheet_length_cm=0)
+    material.max_sheet_length_cm = EPSILON / 2
+
+    result = generate_layout(plane, material)
+
+    assert result.placements == []
+    assert result.rejected_segments == []
+    assert [(warning.code, warning.data) for warning in result.warnings] == [
+        ("zero_sheet_height", {"band_index": 0, "segment_index": 0}),
+    ]
+    assert len(result.bands) == 1
+    assert len(result.bands[0].segments) == 1
 
 
 def test_generate_layout_backward_compatible():

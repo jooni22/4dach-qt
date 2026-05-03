@@ -144,6 +144,14 @@ class _RowGeometry:
     raw_length_cm: float
 
 
+@dataclass(frozen=True, slots=True)
+class _RowPhase:
+    start_y_cm: float
+    limit_y_cm: float
+    terminal_split_reason: str | None = None
+    terminal_extra_cm: float = 0.0
+
+
 class _UnionFind:
     def __init__(self, size: int) -> None:
         self._parent = list(range(size))
@@ -198,123 +206,22 @@ def generate_layout(
             _detect_cutout_interaction(layout_plane, band_segment, _settings)
 
         for segment_index, band_segment in enumerate(band_segments):
-            y_bottom = band_segment.y_bottom_cm
-            y_top = band_segment.y_top_cm
             max_len = material.max_sheet_length_cm
             min_len = material.min_sheet_length_cm
-            
-            # Fix #1: Prevent infinite loop when max_len <= 0
-            if max_len <= 0:
-                result.warnings.append(
-                    LayoutWarning(
-                        code="invalid_max_sheet_length",
-                        message="Maksymalna długość arkusza musi być dodatnia",
-                        data={"material_id": material.id, "max_sheet_length_cm": max_len},
-                    )
-                )
+            segment_is_renderable = _append_segment_rows(
+                result,
+                plane.id,
+                material.id,
+                band_index,
+                segment_index,
+                band_segment,
+                min_length_cm=min_len,
+                max_length_cm=max_len,
+            )
+            if not segment_is_renderable:
                 continue
-            
-            row_index = 0
-
-            if (
-                band_segment.cutout_interaction == "partial"
-                and band_segment.partial_cut_line_y_cm is not None
-            ):
-                cut_y = band_segment.partial_cut_line_y_cm
-                extra = band_segment.top_extra_cm
-
-                # Phase A — BOTTOM: from y_bottom down to cut_y (below the cutout)
-                y_cursor = y_bottom
-                while y_cursor > cut_y + EPSILON:
-                    row = _row_geometry(y_cursor, cut_y, max_len)
-                    
-                    # Fix #1: Defensive guard to prevent infinite loop
-                    if row.raw_length_cm <= EPSILON:
-                        _append_zero_sheet_height_warning(result, band_index, segment_index)
-                        break
-                    
-                    _record_sheet_outcome(
-                        result,
-                        plane.id,
-                        band_index,
-                        segment_index,
-                        row_index,
-                        band_segment,
-                        row,
-                        min_length_cm=min_len,
-                        final_length_cm=row.raw_length_cm,
-                    )
-                    y_cursor -= row.raw_length_cm
-                    row_index += 1
-
-                # Phase B — TOP: from cut_y down to y_top (above the cutout)
-                y_cursor = cut_y
-                while y_cursor > y_top + EPSILON:
-                    row = _row_geometry(y_cursor, y_top, max_len)
-                    is_top_sheet = row.y_top_cm <= y_top + EPSILON
-
-                    if row.raw_length_cm <= EPSILON:
-                        _append_zero_sheet_height_warning(result, band_index, segment_index)
-                        break
-                    
-                    # Fix #2: Clamp actual_length to respect max_sheet_length_cm
-                    effective_extra = 0.0
-                    if is_top_sheet:
-                        effective_extra = min(extra, max(0.0, max_len - row.raw_length_cm))
-                    actual_length = row.raw_length_cm + effective_extra
-                    placement_split = "partial_cutout_top" if is_top_sheet else None
-                    
-                    # Fix #3: Validate actual_length instead of sheet_height for top sheets
-                    placement_id = _record_sheet_outcome(
-                        result,
-                        plane.id,
-                        band_index,
-                        segment_index,
-                        row_index,
-                        band_segment,
-                        row,
-                        min_length_cm=min_len,
-                        final_length_cm=actual_length,
-                        split_reason=placement_split,
-                        displayed_length_cm=actual_length,
-                    )
-
-                    # Fix #7: Update segment coverage_polygons for partial_cutout_top to include visual extension
-                    if placement_id is not None and is_top_sheet and effective_extra > 0:
-                        _extend_segment_coverage_for_top_extra(band_segment, effective_extra)
-
-                        # Update segment placement_id to point to the top sheet.
-                        band_segment.placement_id = placement_id
-                    y_cursor -= row.raw_length_cm
-                    row_index += 1
-
-            else:
-                # Standard single-phase loop (no partial cutout)
-                y_cursor = y_bottom
-                while y_cursor > y_top + EPSILON:
-                    row = _row_geometry(y_cursor, y_top, max_len)
-                    
-                    # Fix #1: Defensive guard to prevent infinite loop
-                    if row.raw_length_cm <= EPSILON:
-                        _append_zero_sheet_height_warning(result, band_index, segment_index)
-                        break
-                    
-                    _record_sheet_outcome(
-                        result,
-                        plane.id,
-                        band_index,
-                        segment_index,
-                        row_index,
-                        band_segment,
-                        row,
-                        min_length_cm=min_len,
-                        final_length_cm=row.raw_length_cm,
-                    )
-                    y_cursor -= row.raw_length_cm
-                    row_index += 1
 
             band_segment.segment_index = segment_index
-            # Only set placement_id to r0 if not already set by partial_cutout_top logic
             if band_segment.placement_id is None:
                 band_segment.placement_id = f"{plane.id}-b{band_index}-s{segment_index}-r0"
             layout_band.segments.append(band_segment)
@@ -347,8 +254,133 @@ def _append_zero_sheet_height_warning(
     )
 
 
+def _append_invalid_max_sheet_length_warning(
+    result: LayoutResult,
+    material_id: str,
+    max_length_cm: float,
+) -> None:
+    result.warnings.append(
+        LayoutWarning(
+            code="invalid_max_sheet_length",
+            message="Maksymalna długość arkusza musi być dodatnia",
+            data={"material_id": material_id, "max_sheet_length_cm": max_length_cm},
+        )
+    )
+
+
 def _make_placement_id(plane_id: str, band_index: int, segment_index: int, row_index: int) -> str:
     return f"{plane_id}-b{band_index}-s{segment_index}-r{row_index}"
+
+
+def _row_phases_for_segment(segment: LayoutBandSegment) -> list[_RowPhase]:
+    if segment.cutout_interaction == "partial" and segment.partial_cut_line_y_cm is not None:
+        return [
+            _RowPhase(start_y_cm=segment.y_bottom_cm, limit_y_cm=segment.partial_cut_line_y_cm),
+            _RowPhase(
+                start_y_cm=segment.partial_cut_line_y_cm,
+                limit_y_cm=segment.y_top_cm,
+                terminal_split_reason="partial_cutout_top",
+                terminal_extra_cm=segment.top_extra_cm,
+            ),
+        ]
+    return [_RowPhase(start_y_cm=segment.y_bottom_cm, limit_y_cm=segment.y_top_cm)]
+
+
+def _terminal_row_extra(
+    phase: _RowPhase,
+    row: _RowGeometry,
+    max_length_cm: float,
+    *,
+    is_terminal_row: bool,
+) -> float:
+    if not is_terminal_row or phase.terminal_extra_cm <= 0:
+        return 0.0
+    return min(phase.terminal_extra_cm, max(0.0, max_length_cm - row.raw_length_cm))
+
+
+def _append_phase_rows(
+    result: LayoutResult,
+    plane_id: str,
+    band_index: int,
+    segment_index: int,
+    band_segment: LayoutBandSegment,
+    phase: _RowPhase,
+    *,
+    min_length_cm: float,
+    max_length_cm: float,
+    row_index_start: int,
+) -> int:
+    row_index = row_index_start
+    y_cursor = phase.start_y_cm
+
+    while y_cursor > phase.limit_y_cm + EPSILON:
+        row = _row_geometry(y_cursor, phase.limit_y_cm, max_length_cm)
+        if row.raw_length_cm <= EPSILON:
+            _append_zero_sheet_height_warning(result, band_index, segment_index)
+            break
+
+        is_terminal_row = row.y_top_cm <= phase.limit_y_cm + EPSILON
+        extra_cm = _terminal_row_extra(
+            phase,
+            row,
+            max_length_cm,
+            is_terminal_row=is_terminal_row,
+        )
+        final_length_cm = row.raw_length_cm + extra_cm
+        split_reason = phase.terminal_split_reason if is_terminal_row else None
+        placement_id = _record_sheet_outcome(
+            result,
+            plane_id,
+            band_index,
+            segment_index,
+            row_index,
+            band_segment,
+            row,
+            min_length_cm=min_length_cm,
+            final_length_cm=final_length_cm,
+            split_reason=split_reason,
+            displayed_length_cm=final_length_cm if split_reason is not None else None,
+        )
+
+        if placement_id is not None and split_reason == "partial_cutout_top" and extra_cm > 0:
+            _extend_segment_coverage_for_top_extra(band_segment, extra_cm)
+            band_segment.placement_id = placement_id
+
+        y_cursor -= row.raw_length_cm
+        row_index += 1
+
+    return row_index
+
+
+def _append_segment_rows(
+    result: LayoutResult,
+    plane_id: str,
+    material_id: str,
+    band_index: int,
+    segment_index: int,
+    band_segment: LayoutBandSegment,
+    *,
+    min_length_cm: float,
+    max_length_cm: float,
+) -> bool:
+    if max_length_cm <= 0:
+        _append_invalid_max_sheet_length_warning(result, material_id, max_length_cm)
+        return False
+
+    row_index = 0
+    for phase in _row_phases_for_segment(band_segment):
+        row_index = _append_phase_rows(
+            result,
+            plane_id,
+            band_index,
+            segment_index,
+            band_segment,
+            phase,
+            min_length_cm=min_length_cm,
+            max_length_cm=max_length_cm,
+            row_index_start=row_index,
+        )
+    return True
 
 
 def _append_placement(
