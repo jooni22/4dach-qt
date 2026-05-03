@@ -76,6 +76,16 @@ Represents a continuous vertical piece of material within a band.
 -   `raw_length_cm`: The total vertical span [core/layout\_engine.py#46](https://github.com/jooni22/4dach-qt/blob/81f560ca/core/layout_engine.py#L46-L46)
 -   `top_extra_cm`: Extension added to handle partial cutouts [core/layout\_engine.py#52](https://github.com/jooni22/4dach-qt/blob/81f560ca/core/layout_engine.py#L52-L52)
 
+### Internal Helper and Diagnostic Types
+
+The module also defines several support dataclasses used by the row/band algorithm and by `LayoutResult`. They are implementation details rather than a stability-guaranteed external API.
+
+-   `_BandPiece`: Temporary slice of a slab within one band, carrying edge intervals and a polygon used for later segment merging.
+-   `_RowGeometry`: Computed top/bottom bounds for a candidate row before it is accepted or rejected.
+-   `_RowPhase`: Phase boundary metadata used when a segment is emitted in multiple row-generation passes.
+-   `LayoutWarning`: Structured warning payload appended to `LayoutResult.warnings`.
+-   `RejectedSegment`: Structured record stored in `LayoutResult.rejected_segments` when a segment cannot satisfy minimum-length rules.
+
 ## Implementation Details
 
 ### Min/Max Length Enforcement

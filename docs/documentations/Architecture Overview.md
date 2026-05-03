@@ -54,7 +54,7 @@ The core contains no references to PySide6/Qt, making it highly portable.
 
 ### UI Layer (`ui/`)
 
--   MainWindow: The central controller. It manages the `QUndoStack` logic via `_HistoryEntry` and coordinates between the toolbar, workspace, and persistence [ui/main\_window.py#59-110](https://github.com/jooni22/4dach-qt/blob/81f560ca/ui/main_window.py#L59-L110)
+-   MainWindow: The central controller. It uses a snapshot-based undo/redo mechanism built around `_HistoryEntry` plus `_undo_stack` and `_redo_stack` `deque` buffers, and coordinates between the toolbar, workspace, and persistence [ui/main\_window.py#59-110](https://github.com/jooni22/4dach-qt/blob/81f560ca/ui/main_window.py#L59-L110)
 -   DrawingCanvas: A complex widget that handles coordinate transformations via `CanvasMapper` and provides interactive modes for drawing outlines and cutouts [ui/drawing\_canvas.py#41](https://github.com/jooni22/4dach-qt/blob/81f560ca/ui/drawing_canvas.py#L41-L41) [core/canvas\_mapper.py#8-15](https://github.com/jooni22/4dach-qt/blob/81f560ca/core/canvas_mapper.py#L8-L15)
 -   WorkspaceController: Manages the `QTabWidget` where each tab represents a different `RoofPlane` [ui/workspace.py#44](https://github.com/jooni22/4dach-qt/blob/81f560ca/ui/workspace.py#L44-L44)
 

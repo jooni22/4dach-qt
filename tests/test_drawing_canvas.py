@@ -575,6 +575,33 @@ def test_canvas_dragging_hole_center_exposes_coordinate_labels_for_all_cutout_ve
     assert [label.domain_point for label in labels[1:5]] == preview_hole.points
 
 
+def test_canvas_edit_mode_exposes_coordinate_labels_for_all_outline_vertices_without_drag(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+    canvas._plane_selected = True
+    canvas.set_mode(DrawingCanvas.MODE_EDIT)
+
+    labels = canvas._coordinate_overlay_labels()
+
+    assert [label.kind for label in labels] == ["vertex", "vertex", "vertex", "vertex"]
+    assert [label.domain_point for label in labels] == outline.points
+
+
+def test_canvas_dragging_outline_edge_exposes_single_coordinate_reference_label(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+    canvas._plane_selected = True
+    midpoint = Point2D(150.0, 200.0)
+    canvas._set_edit_overlay("drag", "outline_edge", midpoint, edge_index=0)
+
+    labels = canvas._coordinate_overlay_labels()
+
+    non_delta_labels = [label for label in labels if label.kind != "delta"]
+    assert len(non_delta_labels) == 1
+    assert non_delta_labels[0].kind == "active"
+    assert non_delta_labels[0].domain_point == midpoint
+
+
 def test_canvas_origin_defaults_to_outline_bottom_left_corner(qtbot):
     outline = Polygon2D.rectangle(300, 200)
     canvas = _make_canvas(qtbot, outline)
@@ -632,7 +659,7 @@ def test_canvas_dragging_origin_forces_grid_visibility_only_during_drag(qtbot):
     assert canvas._grid_visible() is True
 
 
-def test_canvas_origin_drag_temporarily_shows_hidden_grid_then_restores_hidden_state(qtbot):
+def test_canvas_origin_drag_keeps_hidden_grid_hidden(qtbot):
     outline = Polygon2D.rectangle(300, 200)
     canvas = _make_canvas(qtbot, outline)
     canvas.toggle_grid(False)
@@ -646,7 +673,7 @@ def test_canvas_origin_drag_temporarily_shows_hidden_grid_then_restores_hidden_s
 
     assert canvas._show_grid is False
     assert canvas._dragging_origin is True
-    assert canvas._grid_visible() is True
+    assert canvas._grid_visible() is False
 
     QTest.mouseRelease(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, start)
 
@@ -1178,6 +1205,24 @@ def test_canvas_label_always_visible_overrides_edge_label_visibility(qtbot, monk
     QApplication.processEvents()
 
     assert "edges" in calls
+
+
+def test_canvas_draws_edge_measurements_for_outline_and_cutouts(qtbot, monkeypatch):
+    outline = Polygon2D.rectangle(300, 200)
+    hole = Polygon2D.rectangle(80, 60, origin_x=100, origin_y=70)
+    canvas = _make_canvas(qtbot, outline, holes=[hole])
+    canvas._plane_selected = True
+    polygons: list[Polygon2D] = []
+
+    def capture_edges(_painter, _mapper, polygon, *_args, **_kwargs):
+        polygons.append(polygon)
+
+    monkeypatch.setattr(canvas, "_draw_edge_measurements", capture_edges)
+
+    canvas.grab()
+    QApplication.processEvents()
+
+    assert polygons == [outline, hole]
 
 
 def test_edge_measurement_badge_uses_light_background_with_red_text(qtbot):
@@ -1774,7 +1819,7 @@ def test_canvas_drawing_references_do_not_mutate_geometry_or_layout_inputs(qtbot
     assert plane.layout_bands == before_layout_bands
 
 
-def test_canvas_origin_drag_renders_grid_after_roof_plane(qtbot, monkeypatch):
+def test_canvas_origin_drag_renders_grid_before_roof_plane(qtbot, monkeypatch):
     outline = Polygon2D.rectangle(300, 200)
     canvas = _make_canvas(qtbot, outline)
     canvas.set_origin_edit_enabled(True)
@@ -1792,7 +1837,47 @@ def test_canvas_origin_drag_renders_grid_after_roof_plane(qtbot, monkeypatch):
 
     assert "roof" in calls
     assert "grid" in calls
-    assert calls.index("roof") < calls.index("grid")
+    assert calls.index("grid") < calls.index("roof")
+
+
+def test_canvas_grid_extends_beyond_outline_bounds_when_enabled_without_drag(qtbot, monkeypatch):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+    captured_bounds = []
+
+    original = canvas._draw_domain_grid
+
+    def capture_bounds(painter, grid_context):
+        captured_bounds.append(grid_context.bounds)
+        return original(painter, grid_context)
+
+    monkeypatch.setattr(canvas, "_draw_domain_grid", capture_bounds)
+
+    canvas.grab()
+    QApplication.processEvents()
+
+    outline_bounds = outline.bounds()
+    assert captured_bounds
+    assert captured_bounds[0].min_x < outline_bounds.min_x
+    assert captured_bounds[0].max_x > outline_bounds.max_x
+    assert captured_bounds[0].min_y < outline_bounds.min_y
+    assert captured_bounds[0].max_y > outline_bounds.max_y
+
+
+def test_canvas_does_not_draw_margin_axis_widget_in_edit_mode(qtbot, monkeypatch):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+    canvas._plane_selected = True
+    canvas.set_mode(DrawingCanvas.MODE_EDIT)
+    canvas.set_app_settings(AppSettings(show_axis_overlay=True))
+    calls: list[Point2D] = []
+
+    monkeypatch.setattr(canvas, "_draw_axis_indicator_at", lambda _painter, origin: calls.append(origin))
+
+    canvas.grab()
+    QApplication.processEvents()
+
+    assert calls == []
 
 
 def test_canvas_origin_drag_grid_extends_beyond_outline_bounds(qtbot, monkeypatch):

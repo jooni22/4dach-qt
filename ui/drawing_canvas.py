@@ -1653,7 +1653,7 @@ class _DrawingCanvasPaintingMixin:
         return f"X: {self._format_coordinate_value(relative_point.x)} | Y: {self._format_coordinate_value(relative_point.y)}"
 
     def _grid_visible(self) -> bool:
-        return self._show_grid or self._dragging_origin
+        return self._show_grid
 
     def _grid_context(self) -> _GridContext | None:
         mapper = self._active_mapper()
@@ -1669,13 +1669,20 @@ class _DrawingCanvasPaintingMixin:
         return _GridContext(mapper=mapper, bounds=bounds, origin=self._snap_origin_point(mapper))
 
     def _coordinate_overlay_labels(self) -> list[_CoordinateOverlayLabel]:
-        if self._edit_overlay is None:
+        overlay = self._edit_overlay
+        outline = self.display_outline()
+        if overlay is None:
+            if self._mode == self.MODE_EDIT and self._plane_selected and outline is not None:
+                return [_CoordinateOverlayLabel("vertex", point) for point in outline.points]
             return []
 
-        labels = [_CoordinateOverlayLabel("active", self._edit_overlay.domain_point)]
+        if self._mode == self.MODE_EDIT and self._plane_selected and outline is not None and overlay.mode != "drag":
+            return [_CoordinateOverlayLabel("vertex", point) for point in outline.points]
+
+        labels = [_CoordinateOverlayLabel("active", overlay.domain_point)]
         if (
-            self._edit_overlay.mode == "drag"
-            and self._edit_overlay.target_kind == "hole_center"
+            overlay.mode == "drag"
+            and overlay.target_kind == "hole_center"
             and self._preview_hole is not None
         ):
             labels.extend(_CoordinateOverlayLabel("vertex", point) for point in self._preview_hole.points)
@@ -1693,14 +1700,9 @@ class _DrawingCanvasPaintingMixin:
         painter.drawRect(self.rect().adjusted(0, 0, -1, -1))
 
         if self.roof_plane is not None and self.display_outline() is not None:
-            if self._dragging_origin:
-                self._draw_roof_plane(painter)
-                if self._grid_visible():
-                    self._draw_grid(painter)
-            else:
-                if self._grid_visible():
-                    self._draw_grid(painter)
-                self._draw_roof_plane(painter)
+            if self._grid_visible():
+                self._draw_grid(painter)
+            self._draw_roof_plane(painter)
         else:
             if self._grid_visible():
                 self._draw_grid(painter)
@@ -2015,15 +2017,7 @@ class _DrawingCanvasPaintingMixin:
         outline = self.display_outline()
         if outline is None:
             return self._canvas_domain_bounds(mapper)
-        if self._dragging_origin:
-            return self._canvas_domain_bounds(mapper)
-        if (
-            self._edit_overlay is not None
-            and self._edit_overlay.mode == "drag"
-            and self._edit_overlay.target_kind in {"hole_center", "hole_vertex"}
-        ):
-            return self._canvas_domain_bounds(mapper)
-        return outline.bounds()
+        return self._canvas_domain_bounds(mapper)
 
     def _draw_domain_grid(self, painter: QPainter, grid_context: _GridContext) -> None:
         mapper = grid_context.mapper
@@ -2074,8 +2068,8 @@ class _DrawingCanvasPaintingMixin:
             return
 
         overlay = self._edit_overlay
-        bounds = outline.bounds()
-        domain_rect = mapper.map_rect(bounds.min_x, bounds.max_x, bounds.min_y, bounds.max_y)
+        domain_bounds = self._canvas_domain_bounds(mapper)
+        domain_rect = mapper.map_rect(domain_bounds.min_x, domain_bounds.max_x, domain_bounds.min_y, domain_bounds.max_y)
         active_point = overlay.domain_point
 
         if not self._grid_visible():
@@ -2088,10 +2082,10 @@ class _DrawingCanvasPaintingMixin:
         painter.save()
         painter.setClipRect(domain_rect.adjusted(-1, -1, 1, 1))
         painter.setPen(axis_pen)
-        if bounds.min_x <= active_point.x <= bounds.max_x:
+        if domain_bounds.min_x <= active_point.x <= domain_bounds.max_x:
             x = mapper.map_x(active_point.x)
             painter.drawLine(QPointF(x, domain_rect.top()), QPointF(x, domain_rect.bottom()))
-        if bounds.min_y <= active_point.y <= bounds.max_y:
+        if domain_bounds.min_y <= active_point.y <= domain_bounds.max_y:
             y = mapper.map_y(active_point.y)
             painter.drawLine(QPointF(domain_rect.left(), y), QPointF(domain_rect.right(), y))
         painter.restore()
@@ -2404,19 +2398,11 @@ class _DrawingCanvasPaintingMixin:
         if self._mode in {self.MODE_DRAW_OUTLINE, self.MODE_DRAW_CUTOUT}:
             self._draw_axis_indicator_at(painter, self._freehand_axis_origin())
             return
-        if self._mode not in {self.MODE_EDIT, self.MODE_MOVE}:
-            return
-        mapper = self._canvas_mapper()
-        outline = self.display_outline()
-        if mapper is None or outline is None:
-            return
-        anchor = outline.points[0] if outline.points else self._origin_point()
-        self._draw_axis_indicator_at(painter, mapper.map_point(anchor))
 
     def _draw_axis_indicator(self, painter: QPainter) -> None:
         if not self._app_settings.show_axis_overlay:
             return
-        if self._mode in {self.MODE_DRAW_OUTLINE, self.MODE_DRAW_CUTOUT}:
+        if self._mode in {self.MODE_DRAW_OUTLINE, self.MODE_DRAW_CUTOUT, self.MODE_EDIT, self.MODE_MOVE}:
             return
         self._draw_axis_indicator_at(painter, self._axis_indicator_origin())
 
@@ -2590,6 +2576,15 @@ class _DrawingCanvasPaintingMixin:
             self._plane_selected or self._app_settings.label_always_visible
         ):
             self._draw_edge_measurements(painter, mapper, outline, text_color, outline_color)
+            for hole_index, hole in enumerate(holes):
+                self._draw_edge_measurements(
+                    painter,
+                    mapper,
+                    hole,
+                    text_color,
+                    hole_color,
+                    hole_index=hole_index,
+                )
         if self._app_settings.show_vertex_angle_labels and (self._plane_selected or self._app_settings.label_always_visible):
             self._draw_angle_measurements(painter, mapper, outline, text_color)
         self._draw_axis_indicator(painter)
@@ -2626,9 +2621,11 @@ class _DrawingCanvasPaintingMixin:
         self,
         painter: QPainter,
         mapper: CanvasMapper,
-        outline: Polygon2D,
+        polygon: Polygon2D,
         text_color: QColor,
         outline_color: QColor,
+        *,
+        hole_index: int | None = None,
     ) -> None:
         is_light = self.palette().color(QPalette.ColorRole.Base).lightness() > 128
         guide_pen = QPen(outline_color)
@@ -2638,11 +2635,11 @@ class _DrawingCanvasPaintingMixin:
         font.setPointSize(self._scaled_font_point_size(max(font.pointSize(), 8), minimum=9))
         painter.setFont(font)
 
-        polygon_f = QPolygonF([mapper.map_point(point) for point in outline.points])
+        polygon_f = QPolygonF([mapper.map_point(point) for point in polygon.points])
 
-        edge_regions = self._edge_label_regions(mapper, outline, None)
+        edge_regions = self._edge_label_regions(mapper, polygon, hole_index)
         self._label_hit_regions.extend(edge_regions)
-        for region, (start, end) in zip(edge_regions, polygon_edges(outline)):
+        for region, (start, end) in zip(edge_regions, polygon_edges(polygon)):
             start_point = mapper.map_point(start)
             end_point = mapper.map_point(end)
             dx = end_point.x() - start_point.x()

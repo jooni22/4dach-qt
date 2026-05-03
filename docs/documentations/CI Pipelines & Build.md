@@ -49,6 +49,8 @@ ___
 
 The `build-windows.yml` workflow automates the creation of a standalone Windows executable. This allows stakeholders to test the application without a Python environment.
 
+Triggering is intentionally narrow: the workflow runs on manual `workflow_dispatch` and on `push` events to the `cutout-fix` branch only. It does not build automatically for pushes to `main` or `master`; those branches are covered by `lint.yml`.
+
 ### Bundling Strategy
 
 The build uses `PyInstaller` with a specific bundling strategy to ensure all UI resources and core logic are available at runtime. The command utilizes several flags to create a portable "one-file" distribution [.github/workflows/build-windows.yml#37-49](https://github.com/jooni22/4dach-qt/blob/81f560ca/.github/workflows/build-windows.yml#L37-L49):

@@ -10,17 +10,63 @@ The `AppSettings` class is a central dataclass that stores all user-configurable
 
 ### Configuration Categories
 
-# Application Settings (core/app\_settings.py)
+The current `AppSettings` dataclass exposes 29 persisted fields. The groups below reflect runtime responsibility rather than declaration order in the source file.
 
-|    Category    |                          Key Fields                           |                                               Description                                               |
-|----------------|---------------------------------------------------------------|---------------------------------------------------------------------------------------------------------|
-| Business Rules |                    `partial_cutout_top_extra_cm`                    |   Extra material added to sheet tops when a cutout partially covers a band core/app_settings.py#40-42   |
-|  Grid & Snap   |      `grid_size_cm`, `snap_to_grid`, `snap_to_points`, `snap_radius_px`       | Controls the editing grid dimensions and the magnetic behavior of the cursor core/app_settings.py#43-73 |
-|  Interaction   |          `shift_drag_behavior`, `edge_drag_mode`, `close_on_rmb`          |   Defines how the UI responds to mouse modifiers and vertex manipulations core/app_settings.py#45-74    |
-|    Visuals     | `ui_element_scale`, `show_grid`, `live_angle_mode`, `show_edge_length_labels` |  Governs the rendering of the canvas, font scaling, and coordinate displays core/app_settings.py#53-75  |
-|    History     |                        `undo_stack_depth`                         |              Maximum number of states kept in the undo/redo buffer core/app_settings.py#78              |
+#### Business Rules
 
-Sources: [core/app\_settings.py#35-78](https://github.com/jooni22/4dach-qt/blob/81f560ca/core/app_settings.py#L35-L78) [tests/test\_app\_settings.py#10-31](https://github.com/jooni22/4dach-qt/blob/81f560ca/tests/test_app_settings.py#L10-L31)
+| Field | Default | Purpose |
+|-------|---------|---------|
+| `partial_cutout_top_extra_cm` | `15.0` | Extra sheet allowance added above a partial cutout so layout/report output stays reproducible. |
+
+#### Grid & Snap
+
+| Field | Default | Purpose |
+|-------|---------|---------|
+| `grid_size_cm` | `10.0` | Base editing-grid square size expressed in domain centimetres. |
+| `show_grid` | `True` | Toggles visibility of the canvas grid overlay. |
+| `grid_major_cm` | `100` | Interval for stronger major-grid markings. |
+| `grid_minor_cm` | `10` | Interval for lighter minor-grid markings. |
+| `snap_to_grid` | `True` | Enables snapping geometry edits to the configured grid. |
+| `snap_to_axis` | `True` | Enables horizontal/vertical axis snapping. |
+| `snap_to_45deg` | `True` | Enables 45-degree snapping when drawing or editing. |
+| `snap_to_3060deg` | `False` | Enables additional 30/60-degree snapping modes. |
+| `snap_to_points` | `True` | Enables snapping to existing outline, hole, and sheet points. |
+| `show_inferences` | `True` | Shows inference and snap-hint feedback while the cursor moves. |
+| `snap_axis_threshold_deg` | `3.0` | Angular tolerance used for axis snapping. |
+| `snap_45_threshold_deg` | `2.5` | Angular tolerance used for 45-degree snapping. |
+| `snap_radius_px` | `12` | Pixel radius used to detect nearby snap candidates. |
+
+#### Visuals
+
+| Field | Default | Purpose |
+|-------|---------|---------|
+| `show_axis_overlay` | `True` | Displays the axis/origin overlay on the canvas. |
+| `show_crosshair` | `True` | Displays a cursor crosshair during interactive editing. |
+| `show_xy_references_during_draw` | `True` | Shows transient X/Y helper references while drawing segments. |
+| `show_decimal_cm` | `False` | Switches dimension labels from integer-style output to decimal centimetres. |
+| `show_angle_arc` | `True` | Shows the live angle arc while drawing/editing segments. |
+| `show_guide_lines` | `True` | Displays guideline overlays that assist cursor alignment. |
+| `ui_element_scale` | `1.6` | Global scaling factor for canvas UI affordances and handles. |
+| `show_edge_length_labels` | `True` | Displays edge-length annotations on the geometry. |
+| `show_vertex_angle_labels` | `False` | Displays per-vertex angle labels on the geometry. |
+| `label_always_visible` | `False` | Keeps labels visible instead of only showing them contextually. |
+
+#### Interaction
+
+| Field | Default | Purpose |
+|-------|---------|---------|
+| `shift_drag_behavior` | `free_move` | Controls whether Shift bypasses snapping or locks movement orthogonally. |
+| `live_angle_mode` | `absolute` | Chooses whether live angles are measured from the X axis or from the previous segment. |
+| `close_on_rmb` | `True` | Allows right mouse button to close the active freehand sketch. |
+| `edge_drag_mode` | `move_vertices` | Chooses whether edge interaction moves existing vertices or inserts a new one. |
+
+#### History
+
+| Field | Default | Purpose |
+|-------|---------|---------|
+| `undo_stack_depth` | `50` | Maximum number of snapshot entries kept in the undo/redo history. |
+
+Sources: `core/app_settings.py`, `tests/test_app_settings.py`
 
 ___
 
@@ -49,6 +95,8 @@ ___
 A critical architectural feature is the decoupling of global settings from layout results. Because `partial_cutout_top_extra_cm` affects the physical length of sheets generated, changing this setting globally should not retroactively alter existing layouts in a saved project [core/app\_settings.py#6-10](https://github.com/jooni22/4dach-qt/blob/81f560ca/core/app_settings.py#L6-L10)
 
 When the `layout_engine.py` computes a layout, it "snapshots" the relevant `AppSettings` fields into the `LayoutResult`. This ensures that even if the user later changes their global preferences, the report and the visual representation of that specific plane remain consistent with the parameters used at the time of generation.
+
+`core/reporting.py` also tolerates an optional `round_sheet_length_to_int` attribute via `getattr(settings, "round_sheet_length_to_int", False)` when selecting report precision for sheet lengths. That flag is not part of the current `AppSettings` dataclass, so its absence is expected and defaults reporting to one decimal place.
 
 ### Snapshotted Parameters Association
 

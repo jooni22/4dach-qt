@@ -40,6 +40,8 @@ This workflow triggers on every push and pull request to `main` or `master` [.gi
 
 A dedicated workflow for generating a standalone Windows executable using PyInstaller [.github/workflows/build-windows.yml#1-11](https://github.com/jooni22/4dach-qt/blob/81f560ca/.github/workflows/build-windows.yml#L1-L11) It bundles the `config.json` schema, the `form.ui` definition, and the `core/` and `ui/` packages into a single-file distribution [.github/workflows/build-windows.yml#40-49](https://github.com/jooni22/4dach-qt/blob/81f560ca/.github/workflows/build-windows.yml#L40-L49)
 
+The trigger is intentionally restricted to manual `workflow_dispatch` runs and `push` events on `cutout-fix`. It is not a general build that runs automatically on `main` or `master`.
+
 For details on pipeline steps and build artifacts, see [CI Pipelines & Build](https://app.devin.ai/org/jooni22/wiki/jooni22/4dach-qt?branch=issue%2Fprevious-produced-plan-below-accomplish#6.1).
 
 ## Workflow & Code Quality

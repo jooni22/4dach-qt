@@ -4,6 +4,8 @@ Relevant source files
 
 The `MainWindow` class serves as the central orchestrator of the 4Dach application. It manages the application lifecycle, coordinates data flow between the `ProjectState` and the UI components, and maintains the global undo/redo history. It acts as the top-level controller for the `WorkspaceController`, `ToolbarController`, and various dialogs.
 
+The repo-root `mainwindow.py` file is only a compatibility shim: it re-exports `ui.main_window.MainWindow` for legacy imports and does not contain a separate window implementation.
+
 ### Project Lifecycle and Persistence
 
 The `MainWindow` handles project-level operations including creation, loading, and saving. It utilizes the `persistence.py` module for atomic file operations.

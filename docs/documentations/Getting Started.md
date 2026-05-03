@@ -85,6 +85,8 @@ Triggered on every push or PR to `main`/`master` [.github/workflows/lint.yml#4-7
 
 Generates a standalone `.exe` using PyInstaller [.github/workflows/build-windows.yml#40-49](https://github.com/jooni22/4dach-qt/blob/81f560ca/.github/workflows/build-windows.yml#L40-L49)
 
+This workflow is not part of the default `main`/`master` CI path. It runs only when triggered manually with `workflow_dispatch` or when code is pushed to the `cutout-fix` branch.
+
 -   Packaging Strategy: Uses `--onefile` and `--windowed` modes [.github/workflows/build-windows.yml#41-42](https://github.com/jooni22/4dach-qt/blob/81f560ca/.github/workflows/build-windows.yml#L41-L42)
 -   Data Bundling: Explicitly includes `config.json`, `form.ui`, and the `core/` and `ui/` packages via `--add-data` [.github/workflows/build-windows.yml#44-47](https://github.com/jooni22/4dach-qt/blob/81f560ca/.github/workflows/build-windows.yml#L44-L47)
 -   Artifacts: The resulting binary is uploaded as `4dach-windows-exe` [.github/workflows/build-windows.yml#53-57](https://github.com/jooni22/4dach-qt/blob/81f560ca/.github/workflows/build-windows.yml#L53-L57)
