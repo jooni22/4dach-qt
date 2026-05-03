@@ -1430,7 +1430,7 @@ def test_canvas_draws_vertex_axis_projections_before_outline(qtbot, monkeypatch)
     monkeypatch.setattr(canvas, "_draw_axis_indicator", lambda *args, **kwargs: None)
     monkeypatch.setattr(canvas, "_draw_edit_overlay", lambda *args, **kwargs: None)
 
-    original_draw_polygon = DrawingCanvas.__dict__["_draw_roof_plane"]
+    original_draw_polygon = getattr(DrawingCanvas, "_draw_roof_plane")
 
     def wrapped_draw_roof_plane(painter):
         calls.append("roof_start")
@@ -2198,3 +2198,28 @@ def test_canvas_edge_scale_preserves_anchor_point(qtbot):
     # Verify x_min has not moved (shape scaled in-place)
     new_x_min = new_outline.bounds().min_x
     assert new_x_min == pytest.approx(original_x_min, abs=0.01)
+
+
+def test_drawing_canvas_stage4_mixin_split_keeps_interaction_methods_out_of_class_dict():
+    expected_mixins = {
+        "_DrawingCanvasInteractionMixin",
+        "_DrawingCanvasInlineEditorMixin",
+        "_DrawingCanvasPaintingMixin",
+    }
+    assert expected_mixins.issubset({cls.__name__ for cls in DrawingCanvas.__mro__})
+
+    mixin_owned_methods = {
+        "_drag_reference_point",
+        "_apply_shift_orthogonal_lock",
+        "_snap_translated_hole_vertices",
+        "_point_within_plane",
+        "_closest_boundary_point",
+        "_hit_test_origin_handle",
+        "_start_origin_drag",
+        "_update_origin_drag",
+        "_commit_origin_drag",
+        "_cancel_origin_drag",
+        "_update_edit_overlay_hover",
+        "_reset_selection",
+    }
+    assert not (mixin_owned_methods & set(DrawingCanvas.__dict__))
