@@ -5,6 +5,18 @@ from math import isclose, sqrt
 from core.models import Point2D, Polygon2D
 
 EPSILON = 1e-9
+_NORMALIZED_WIZARD_OUTLINES = {
+    "trojkat": ((0.5, 0.0), (1.0, 1.0), (0.0, 1.0)),
+    "pieciokat": ((0.5, 0.0), (1.0, 0.4), (1.0, 1.0), (0.0, 1.0), (0.0, 0.4)),
+    "pieciokat2": ((0.5, 0.0), (1.0, 0.4), (0.85, 1.0), (0.15, 1.0), (0.0, 0.4)),
+}
+_WIZARD_TRAPEZOID_ANCHORS = {
+    "trapez_row": "center",
+    "trapez_prl": "right",
+    "trapez_l": "left",
+    "trapez6": "left",
+    "trapez7": "center",
+}
 
 
 def _require_positive(value: float, label: str) -> None:
@@ -94,6 +106,139 @@ def build_triangle_outline(triangle_type: str, base_cm: float, height_cm: float,
 
 def build_trapezoid_outline(trapezoid_type: str, bottom_base_cm: float, top_base_cm: float, height_cm: float) -> Polygon2D:
     return make_trapezoid(trapezoid_type, bottom_base_cm, top_base_cm, height_cm)
+
+
+def build_add_polac_outline(shape_key: str, values: dict) -> Polygon2D:
+    if shape_key == "prostokat":
+        return make_rectangle(values["A"], values["B"])
+
+    if shape_key in _NORMALIZED_WIZARD_OUTLINES:
+        return _scale_normalized_outline(_NORMALIZED_WIZARD_OUTLINES[shape_key], values["A"], values["B"])
+
+    if shape_key in _WIZARD_TRAPEZOID_ANCHORS:
+        return _build_wizard_trapezoid(
+            _WIZARD_TRAPEZOID_ANCHORS[shape_key],
+            bottom_base_cm=values["A"],
+            top_base_cm=values["C"],
+            height_cm=values["B"],
+        )
+
+    raise ValueError(f"Nieobsługiwany kształt połaci: {shape_key}")
+
+
+def build_add_polac_cutout(cutout_kind: str, values: dict, outline: Polygon2D) -> Polygon2D | None:
+    if cutout_kind == "none":
+        return None
+
+    bounds = outline.bounds()
+    center_x = bounds.min_x + bounds.width / 2.0
+    center_y = bounds.min_y + bounds.height / 2.0
+
+    if cutout_kind == "lukarna1":
+        width_cm = values["A"]
+        height_cm = values["H1"]
+        return Polygon2D.rectangle(
+            width_cm,
+            height_cm,
+            origin_x=center_x - width_cm / 2.0,
+            origin_y=center_y - height_cm / 2.0,
+        )
+
+    if cutout_kind == "lukarna2":
+        return _scale_normalized_outline(
+            ((0.5, 0.0), (1.0, 1.0), (0.0, 1.0)),
+            values["A"],
+            values["H"],
+            origin_x=center_x - values["A"] / 2.0,
+            origin_y=center_y - values["H"] / 2.0,
+        )
+
+    if cutout_kind == "lukarna3":
+        width_cm = values["A"]
+        height_cm = values["H"]
+        top_y = center_y - height_cm / 2.0
+        bottom_y = top_y + height_cm
+        left_x = center_x - width_cm / 2.0
+        right_x = center_x + width_cm / 2.0
+        break_y = top_y + values["H1"]
+        return Polygon2D(
+            [
+                Point2D(center_x, top_y),
+                Point2D(right_x, break_y),
+                Point2D(right_x, bottom_y),
+                Point2D(left_x, bottom_y),
+                Point2D(left_x, break_y),
+            ]
+        )
+
+    raise ValueError(f"Nieobsługiwany wycinek połaci: {cutout_kind}")
+
+
+def flip_polygon_in_bounds(
+    polygon: Polygon2D,
+    *,
+    horizontal: bool = False,
+    vertical: bool = False,
+) -> Polygon2D:
+    if not horizontal and not vertical:
+        return polygon.copy()
+
+    bounds = polygon.bounds()
+
+    def _map_point(point: Point2D) -> Point2D:
+        next_x = bounds.max_x - (point.x - bounds.min_x) if horizontal else point.x
+        next_y = bounds.max_y - (point.y - bounds.min_y) if vertical else point.y
+        return Point2D(next_x, next_y)
+
+    return Polygon2D([_map_point(point) for point in polygon.points])
+
+
+def _scale_normalized_outline(
+    normalized_points: tuple[tuple[float, float], ...],
+    width_cm: float,
+    height_cm: float,
+    *,
+    origin_x: float = 0.0,
+    origin_y: float = 0.0,
+) -> Polygon2D:
+    _require_positive(width_cm, "Szerokość")
+    _require_positive(height_cm, "Wysokość")
+    return Polygon2D(
+        [
+            Point2D(origin_x + x * width_cm, origin_y + y * height_cm)
+            for x, y in normalized_points
+        ]
+    )
+
+
+def _build_wizard_trapezoid(
+    anchor: str,
+    *,
+    bottom_base_cm: float,
+    top_base_cm: float,
+    height_cm: float,
+) -> Polygon2D:
+    _require_positive(bottom_base_cm, "Podstawa dolna")
+    _require_positive(top_base_cm, "Podstawa górna")
+    _require_positive(height_cm, "Wysokość")
+
+    if anchor == "left":
+        top_left_x = 0.0
+    elif anchor == "right":
+        top_left_x = bottom_base_cm - top_base_cm
+    elif anchor == "center":
+        top_left_x = (bottom_base_cm - top_base_cm) / 2.0
+    else:
+        raise ValueError(f"Nieobsługiwane zakotwiczenie trapezu: {anchor}")
+
+    return Polygon2D(
+        [
+            Point2D(top_left_x, 0.0),
+            Point2D(top_left_x + top_base_cm, 0.0),
+            Point2D(bottom_base_cm, height_cm),
+            Point2D(0.0, height_cm),
+        ]
+    )
 
 
 def segment_length(start: Point2D, end: Point2D) -> float:

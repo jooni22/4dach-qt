@@ -9,49 +9,26 @@ on:
 jobs:
   build:
     runs-on: windows-latest
-    
+
     steps:
-      # Check out the repository code
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Set up Python 3.11 environment
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      # Install the uv package manager
       - name: Install uv
         run: pip install uv
 
-      # Sync project dependencies
-      - name: Sync dependencies
-        run: uv sync
-
-      # Install PyInstaller as a development dependency
-      - name: Install PyInstaller
-        run: uv add --dev pyinstaller
-
-      # Build the Windows executable
       - name: Build executable
-        shell: bash
-        run: |
-          uv run pyinstaller \
-            --onefile \
-            --windowed \
-            --name 4dach \
-            --add-data "config.json;." \
-            --add-data "form.ui;." \
-            --add-data "core;core" \
-            --add-data "ui;ui" \
-            --collect-all PySide6 \
-            __main__.py
+        shell: cmd
+        run: build-windows.bat
 
-      # Upload the built executable as a GitHub artifact
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: 4dach-windows-exe
-          path: dist/
+          name: 4dach-windows-onedir
+          path: dist/4dach/
           retention-days: 30

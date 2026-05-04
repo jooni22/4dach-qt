@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMenu,
     QMessageBox,
+    QPushButton,
 )
 
 from mainwindow import MainWindow
@@ -65,7 +66,13 @@ def test_mainwindow_exposes_expected_ui_contract(qtbot):
     assert window._tb_ctrl.action_new_surface.text() == "Nowa połać"
     assert window._tb_ctrl.action_duplicate_surface.text() == "Duplikuj połać"
     assert window._tb_ctrl.action_overlay_sheet.isCheckable() is True
-    assert window._tb_ctrl.action_overlay_sheet.isChecked() is True
+    assert window._tb_ctrl.action_overlay_sheet.isChecked() is False
+    assert hasattr(window._tb_ctrl, "action_snap_to_grid") is True
+    assert window._tb_ctrl.action_snap_to_grid.isCheckable() is True
+    assert window._tb_ctrl.action_snap_to_grid.isChecked() is window.project_state.app_settings.snap_to_grid
+    assert file_actions[-2:] == ["Drukuj raport", "Zakończ"]
+    assert "Drukuj raport ciągły" not in file_actions
+    assert "Drukuj raport skrócony" not in file_actions
     assert window._mode_label.text() == "Mode: IDLE"
 
 
@@ -77,6 +84,7 @@ def test_mainwindow_toolbar_hides_removed_actions_after_cleanup(qtbot):
     assert hasattr(window._tb_ctrl, "action_duplicate_surface") is True
     assert hasattr(window._tb_ctrl, "action_overlay_sheet") is True
     assert hasattr(window._tb_ctrl, "action_grid") is True
+    assert hasattr(window._tb_ctrl, "action_snap_to_grid") is True
     assert hasattr(window._tb_ctrl, "action_base_point_toggle") is True
     assert hasattr(window._tb_ctrl, "action_from_left") is True
     assert hasattr(window._tb_ctrl, "action_from_right") is True
@@ -84,6 +92,7 @@ def test_mainwindow_toolbar_hides_removed_actions_after_cleanup(qtbot):
     assert hasattr(window._tb_ctrl, "action_module_count") is False
     assert hasattr(window._tb_ctrl, "action_select_props") is False
     assert hasattr(window._tb_ctrl, "action_from_base") is False
+    assert hasattr(window._tb_ctrl, "material_button") is False
 
 
 def test_settings_dialog_exposes_only_supported_controls_after_cleanup(qtbot):
@@ -103,10 +112,10 @@ def test_settings_dialog_exposes_only_supported_controls_after_cleanup(qtbot):
     assert hasattr(dialog, "_check_show_inferences") is True
     assert hasattr(dialog, "_combo_live_angle_mode") is True
     assert hasattr(dialog, "_check_show_guide_lines") is True
-    assert hasattr(dialog, "_combo_edge_drag_mode") is True
     assert hasattr(dialog, "_check_show_edge_length_labels") is True
     assert hasattr(dialog, "_check_show_vertex_angle_labels") is True
     assert hasattr(dialog, "_check_label_always_visible") is True
+    assert hasattr(dialog, "_button_restore_defaults") is True
 
     assert hasattr(dialog, "_combo_shift_behavior") is False
     assert hasattr(dialog, "_check_show_grid") is False
@@ -117,6 +126,7 @@ def test_settings_dialog_exposes_only_supported_controls_after_cleanup(qtbot):
     assert hasattr(dialog, "_check_show_xy_references") is False
     assert hasattr(dialog, "_check_close_on_rmb") is False
     assert hasattr(dialog, "_spin_undo_stack_depth") is False
+    assert hasattr(dialog, "_combo_edge_drag_mode") is False
 
 
 def test_settings_dialog_build_settings_keeps_fixed_defaults(qtbot):
@@ -133,6 +143,41 @@ def test_settings_dialog_build_settings_keeps_fixed_defaults(qtbot):
     assert settings.close_on_rmb is True
     assert settings.ui_element_scale == pytest.approx(1.0)
     assert settings.undo_stack_depth == 20
+
+
+def test_settings_dialog_restore_defaults_resets_current_values(qtbot):
+    dialog = SettingsDialog(
+        AppSettings(
+            partial_cutout_top_extra_cm=33,
+            grid_size_cm=25,
+            show_crosshair=True,
+            snap_to_grid=False,
+            snap_to_axis=False,
+            snap_to_45deg=False,
+            snap_to_3060deg=False,
+            snap_to_points=False,
+            show_inferences=False,
+            show_guide_lines=False,
+            label_always_visible=False,
+        )
+    )
+    qtbot.addWidget(dialog)
+
+    button = dialog.findChild(QPushButton, "settings_restore_defaults_button")
+    assert button is dialog._button_restore_defaults
+
+    button.click()
+    settings = dialog.build_settings()
+
+    assert settings.show_crosshair is False
+    assert settings.snap_to_grid is True
+    assert settings.snap_to_axis is True
+    assert settings.snap_to_45deg is True
+    assert settings.snap_to_3060deg is True
+    assert settings.snap_to_points is True
+    assert settings.show_inferences is True
+    assert settings.show_guide_lines is True
+    assert settings.label_always_visible is True
 
 
 def test_dane_blachy_dialog_exposes_only_trapez_minimal_fields_after_cleanup(qtbot):
@@ -702,13 +747,13 @@ def test_mainwindow_toolbar_sheet_toggle_switches_wireframe_mode_without_recalc(
 
     canvas = window._workspace.canvas_for_plane(plane.id)
     assert canvas is not None
-    assert window._tb_ctrl.action_overlay_sheet.isChecked() is True
+    assert window._tb_ctrl.action_overlay_sheet.isChecked() is False
 
     window._tb_ctrl.action_overlay_sheet.trigger()
 
-    assert window._tb_ctrl.action_overlay_sheet.isChecked() is False
-    assert window._sheets_visible is False
-    assert canvas._show_sheet_placements is False
+    assert window._tb_ctrl.action_overlay_sheet.isChecked() is True
+    assert window._sheets_visible is True
+    assert canvas._show_sheet_placements is True
     assert calls == []
 
 

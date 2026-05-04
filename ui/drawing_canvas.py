@@ -39,12 +39,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QLineEdit, QWidget
 
-from core.app_settings import (
-    EDGE_DRAG_MODE_INSERT_VERTEX,
-    SHIFT_DRAG_BEHAVIOR_FREE_MOVE,
-    SHIFT_DRAG_BEHAVIOR_ORTHOGONAL_LOCK,
-    AppSettings,
-)
+from core.app_settings import SHIFT_DRAG_BEHAVIOR_FREE_MOVE, SHIFT_DRAG_BEHAVIOR_ORTHOGONAL_LOCK, AppSettings
 from core.canvas_mapper import CanvasMapper
 from core.geometry import (
     insert_polygon_point,
@@ -328,8 +323,8 @@ class _DrawingCanvasInteractionMixin:
                 return index
         return None
 
-    def _hit_test_edge_midpoint(self, pos: QPointF, mapper: CanvasMapper, outline: Polygon2D) -> int | None:
-        for index, midpoint in enumerate(self._edge_midpoints(mapper, outline)):
+    def _hit_test_edge_midpoint(self, pos: QPointF, mapper: CanvasMapper, polygon: Polygon2D) -> int | None:
+        for index, midpoint in enumerate(self._edge_midpoints(mapper, polygon)):
             if self._distance(pos, midpoint) <= MIDPOINT_HANDLE_RADIUS + 2:
                 return index
         return None
@@ -350,16 +345,6 @@ class _DrawingCanvasInteractionMixin:
         self.setCursor(Qt.CursorShape.ClosedHandCursor)
 
     def _start_outline_edge_split_drag(self, edge_index: int, mapper: CanvasMapper, outline: Polygon2D) -> None:
-        if self._app_settings.edge_drag_mode == EDGE_DRAG_MODE_INSERT_VERTEX:
-            edges = list(polygon_edges(outline))
-            if edge_index >= len(edges):
-                return
-            start, end = edges[edge_index]
-            midpoint = Point2D((start.x + end.x) / 2.0, (start.y + end.y) / 2.0)
-            split_outline = insert_polygon_point(outline, edge_index, midpoint)
-            self._active_edge_index = edge_index
-            self._start_outline_drag(edge_index + 1, mapper, split_outline)
-            return
         self._push_undo("drag_edge")
         self._mode = self.MODE_EDIT
         self._reset_selection(select_plane=True)
@@ -375,6 +360,17 @@ class _DrawingCanvasInteractionMixin:
         midpoint = Point2D((start.x + end.x) / 2.0, (start.y + end.y) / 2.0)
         self._set_edit_overlay("drag", "outline_edge", midpoint, edge_index=edge_index)
         self.setCursor(Qt.CursorShape.ClosedHandCursor)
+
+    def _start_hole_edge_split_drag(self, hole_index: int, edge_index: int, mapper: CanvasMapper, hole: Polygon2D) -> None:
+        edges = list(polygon_edges(hole))
+        if edge_index >= len(edges):
+            return
+        start, end = edges[edge_index]
+        midpoint = Point2D((start.x + end.x) / 2.0, (start.y + end.y) / 2.0)
+        split_hole = insert_polygon_point(hole, edge_index, midpoint)
+        self._selected_hole_index = hole_index
+        self._active_edge_index = edge_index
+        self._start_hole_drag(hole_index, edge_index + 1, mapper, split_hole)
 
     def _start_plane_body_drag(self, pos: QPointF, mapper: CanvasMapper, outline: Polygon2D) -> None:
         self._push_undo("drag_body")
@@ -712,7 +708,8 @@ class _DrawingCanvasInteractionMixin:
                 normal_x = -normal_x
                 normal_y = -normal_y
 
-            label_anchor = QPointF(mid_x + normal_x * EDGE_LABEL_OFFSET_PX, mid_y + normal_y * EDGE_LABEL_OFFSET_PX)
+            label_offset = EDGE_LABEL_OFFSET_PX + MIDPOINT_HANDLE_RADIUS + 10.0
+            label_anchor = QPointF(mid_x + normal_x * label_offset, mid_y + normal_y * label_offset)
             regions.append(
                 _PolygonLabelRect(
                     "edge_length",
@@ -1052,6 +1049,17 @@ class _DrawingCanvasInteractionMixin:
                         return
 
                     self._clear_edit_overlay()
+                    selected_hole_index = self._selected_hole_index
+                    if selected_hole_index is not None:
+                        holes = self.display_holes()
+                        if 0 <= selected_hole_index < len(holes):
+                            hole_edge_index = self._hit_test_edge_midpoint(pos, mapper, holes[selected_hole_index])
+                            if hole_edge_index is not None:
+                                self._start_hole_edge_split_drag(selected_hole_index, hole_edge_index, mapper, holes[selected_hole_index])
+                                self._check_selection_changed()
+                                self.update()
+                                return
+
                     hole_center_index = self._hit_test_hole_center(pos, mapper)
                     if hole_center_index is not None:
                         self._start_hole_center_drag(hole_center_index, pos, mapper, self.display_holes()[hole_center_index])
@@ -1596,12 +1604,28 @@ class _DrawingCanvasInlineEditorMixin:
                 self._cancel_inline_segment_editor()
                 return
             scale = new_length / current_length
-            new_end = Point2D(start.x + dx * scale, start.y + dy * scale)
-            updated = replace_polygon_point(outline, (editor.edge_index + 1) % len(outline.points), new_end)
+
+            def _scale_polygon(polygon: Polygon2D) -> Polygon2D:
+                return Polygon2D([
+                    Point2D(point.x * scale, point.y * scale)
+                    for point in polygon.points
+                ])
+
+            updated = _scale_polygon(outline)
+            updated_holes = [
+                _scale_polygon(hole)
+                for hole in self.display_holes()
+            ]
             self._push_undo("label_edit")
             self._cancel_inline_segment_editor()
             self._finalize_pending_undo()
-            self.outline_edit_committed.emit(updated)
+            self.outline_edit_committed.emit(
+                CommittedOutlineEdit(
+                    outline=updated,
+                    holes=updated_holes,
+                    operation="outline_scale",
+                )
+            )
             return
         if editor.kind == "angle" and editor.vertex_index is not None:
             new_angle = self._parse_segment_input_number(angle_text)
@@ -2511,6 +2535,8 @@ class _DrawingCanvasPaintingMixin:
             painter.drawPolygon(hole_polygon)
 
         self._draw_midpoint_handles(painter, mapper, outline, outline_color)
+        if self._selected_hole_index is not None and self._selected_hole_index < len(holes):
+            self._draw_midpoint_handles(painter, mapper, holes[self._selected_hole_index], selected_hole_color)
         if self._plane_selected:
             self._draw_vertex_handles(
                 painter,
@@ -2527,18 +2553,6 @@ class _DrawingCanvasPaintingMixin:
                 selected_hole_color,
                 active_vertex_index=self._active_hole_vertex_index,
             )
-
-        painter.setPen(QPen(hole_color, 1))
-        for hole_index, hole in enumerate(holes):
-            bounds = hole.bounds()
-            center_x = (bounds.min_x + bounds.max_x) / 2.0
-            center_y = (bounds.min_y + bounds.max_y) / 2.0
-            mapped_center = mapper.map_point(Point2D(center_x, center_y))
-            is_active = hole_index == self._selected_hole_index
-            painter.setBrush(selected_hole_color.lighter(140) if is_active else hole_color)
-            radius = self._scaled_px(MIDPOINT_HANDLE_RADIUS + (2 if is_active else 0))
-            painter.drawEllipse(mapped_center, radius, radius)
-
         if (self._app_settings.show_edge_length_labels or self._app_settings.label_always_visible) and (
             self._plane_selected or self._app_settings.label_always_visible
         ):

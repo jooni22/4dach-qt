@@ -39,7 +39,7 @@ class WorkspaceController:
 
         # primary_canvas is assigned in sync() — never create a floating one here
         self.primary_canvas: DrawingCanvas | None = None
-        self._sheets_visible: bool = True
+        self._sheets_visible: bool = False
 
     # ------------------------------------------------------------------
     # Public API

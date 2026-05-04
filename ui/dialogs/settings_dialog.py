@@ -10,13 +10,12 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QGroupBox,
     QLabel,
+    QPushButton,
     QSpinBox,
     QVBoxLayout,
 )
 
 from core.app_settings import (
-    EDGE_DRAG_MODE_INSERT_VERTEX,
-    EDGE_DRAG_MODE_MOVE_VERTICES,
     LIVE_ANGLE_MODE_ABSOLUTE,
     LIVE_ANGLE_MODE_RELATIVE_TO_PREV,
     AppSettings,
@@ -140,11 +139,6 @@ class SettingsDialog(QDialog):
         post_form = QFormLayout(grp_post_draw)
         post_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
 
-        self._combo_edge_drag_mode = QComboBox()
-        self._combo_edge_drag_mode.addItem("Przeciąganie krawędzi przesuwa oba końce", EDGE_DRAG_MODE_MOVE_VERTICES)
-        self._combo_edge_drag_mode.addItem("Przeciąganie krawędzi wstawia nowy wierzchołek", EDGE_DRAG_MODE_INSERT_VERTEX)
-        post_form.addRow("Środek krawędzi:", self._combo_edge_drag_mode)
-
         self._check_show_edge_length_labels = QCheckBox("Pokaż etykiety długości krawędzi")
         post_form.addRow("Długości:", self._check_show_edge_length_labels)
 
@@ -157,10 +151,15 @@ class SettingsDialog(QDialog):
         root.addWidget(grp_post_draw)
 
         # --- Przyciski ---
+        self._button_restore_defaults = QPushButton("Domyślne")
+        self._button_restore_defaults.setObjectName("settings_restore_defaults_button")
+        self._button_restore_defaults.clicked.connect(self._restore_defaults)
+
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok
             | QDialogButtonBox.StandardButton.Cancel
         )
+        buttons.addButton(self._button_restore_defaults, QDialogButtonBox.ButtonRole.ResetRole)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         root.addWidget(buttons)
@@ -180,11 +179,12 @@ class SettingsDialog(QDialog):
         self._check_snap_to_3060deg.setChecked(settings.snap_to_3060deg)
         self._check_snap_to_points.setChecked(settings.snap_to_points)
         self._check_show_inferences.setChecked(settings.show_inferences)
-        edge_drag_mode_index = self._combo_edge_drag_mode.findData(settings.edge_drag_mode)
-        self._combo_edge_drag_mode.setCurrentIndex(max(0, edge_drag_mode_index))
         self._check_show_edge_length_labels.setChecked(settings.show_edge_length_labels)
         self._check_show_vertex_angle_labels.setChecked(settings.show_vertex_angle_labels)
         self._check_label_always_visible.setChecked(settings.label_always_visible)
+
+    def _restore_defaults(self) -> None:
+        self._load_values(AppSettings())
 
     def get_values(self) -> dict:
         """Return current dialog values as a dict matching AppSettings fields."""
@@ -202,7 +202,6 @@ class SettingsDialog(QDialog):
             "snap_to_3060deg": self._check_snap_to_3060deg.isChecked(),
             "snap_to_points": self._check_snap_to_points.isChecked(),
             "show_inferences": self._check_show_inferences.isChecked(),
-            "edge_drag_mode": self._combo_edge_drag_mode.currentData(),
             "show_edge_length_labels": self._check_show_edge_length_labels.isChecked(),
             "show_vertex_angle_labels": self._check_show_vertex_angle_labels.isChecked(),
             "label_always_visible": self._check_label_always_visible.isChecked(),

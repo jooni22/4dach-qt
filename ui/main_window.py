@@ -6,6 +6,7 @@ import json
 import tempfile
 import warnings
 from collections import deque
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -26,12 +27,20 @@ from PySide6.QtWidgets import (
 
 from app_icons import build_icon
 from core.rounding import ceil_cm
-from core.geometry import make_rectangle, make_trapezoid, make_triangle
+from core.geometry import (
+    build_add_polac_cutout,
+    build_add_polac_outline,
+    flip_polygon_in_bounds,
+    make_rectangle,
+    make_trapezoid,
+    make_triangle,
+)
 from core.models import Point2D, Polygon2D, SheetPlacement
 from core.project_state import ProjectState
 from core.reporting import build_project_report, build_project_report_html
 from persistence import load_config, save_config
 from ui.dialogs import (
+    AddPolacDialog,
     BlachyDialog,
     DaneFirmyDialog,
     ProstokatDialog,
@@ -79,7 +88,7 @@ class MainWindow(QMainWindow):
         self._has_unsaved_changes = False
         self._base_window_title = ""
         self._snap_to_grid_enabled = self.project_state.app_settings.snap_to_grid
-        self._sheets_visible = True
+        self._sheets_visible = False
         self._project_file_path: Path | None = Path(__file__).resolve().parent.parent / "config.json"
 
         self._status_label = QLabel("")
@@ -161,15 +170,11 @@ class MainWindow(QMainWindow):
         plik.addAction(act("Ponów", "Ctrl+Shift+Z", self._redo))
         plik.addSeparator()
         plik.addAction(act("Drukuj raport", "Ctrl+P", lambda: self._gen_report("standard", True)))
-        plik.addAction(act("Drukuj raport ciągły", "Shift+Ctrl+P", lambda: self._gen_report("continuous", True)))
-        plik.addAction(act("Drukuj raport skrócony", None, lambda: self._gen_report("short", True)))
         plik.addSeparator()
         plik.addAction(act("Zakończ", "Ctrl+Q", self.close))
 
         ksztalt = mb.addMenu("Kształt")
-        ksztalt.addAction(act("Prostokąt...", None, self._dlg_prostokat))
-        ksztalt.addAction(act("Trójkąt...", None, self._dlg_trojkat))
-        ksztalt.addAction(act("Trapez...", None, self._dlg_trapez))
+        ksztalt.addAction(act("Kreator połaci...", None, self._dlg_add_polac))
         ksztalt.addAction(act("Dowolny", None, self._start_draw_outline))
 
         wyc = mb.addMenu("Wycinki")
@@ -206,6 +211,8 @@ class MainWindow(QMainWindow):
         self._tb_ctrl.action_trash.setEnabled(False)
         self._tb_ctrl.action_grid.triggered.connect(self._on_grid_toggled)
         self._tb_ctrl.action_grid.setChecked(self.project_state.app_settings.show_grid)
+        self._tb_ctrl.action_snap_to_grid.triggered.connect(self._on_snap_to_grid_toggled)
+        self._tb_ctrl.action_snap_to_grid.setChecked(self._snap_to_grid_enabled)
         self._tb_ctrl.action_base_point_toggle.triggered.connect(self._on_origin_mode_toggled)
         self._tb_ctrl.action_from_left.triggered.connect(self._on_from_left_toggled)
         self._tb_ctrl.action_from_right.triggered.connect(self._on_from_right_toggled)
@@ -521,6 +528,9 @@ class MainWindow(QMainWindow):
             self._tb_ctrl.action_grid.blockSignals(True)
             self._tb_ctrl.action_grid.setChecked(self.project_state.app_settings.show_grid)
             self._tb_ctrl.action_grid.blockSignals(False)
+            self._tb_ctrl.action_snap_to_grid.blockSignals(True)
+            self._tb_ctrl.action_snap_to_grid.setChecked(self._snap_to_grid_enabled)
+            self._tb_ctrl.action_snap_to_grid.blockSignals(False)
         self.primary_canvas = self._workspace.primary_canvas
         self.workspace_tabs = self._workspace.tabs
         for candidate in self._workspace.plane_canvases():
@@ -995,6 +1005,12 @@ class MainWindow(QMainWindow):
         self._workspace.toggle_grid(checked)
         self._refresh_dirty_state()
 
+    def _on_snap_to_grid_toggled(self, checked: bool) -> None:
+        self._snap_to_grid_enabled = checked
+        self.project_state.app_settings.snap_to_grid = checked
+        self._workspace.set_snap_to_grid_enabled(checked)
+        self._refresh_dirty_state()
+
     def _on_sheet_visibility_toggled(self, checked: bool) -> None:
         self._sheets_visible = checked
         self._workspace.set_sheet_visibility(checked)
@@ -1188,6 +1204,47 @@ class MainWindow(QMainWindow):
 
     # ------------------------------------------------------------------
     # Shape dialogs
+    def _dlg_add_polac(self) -> None:
+        dlg = AddPolacDialog(self._config, self)
+        if not dialog_accepted(dlg):
+            return
+        result = dlg.get_result()
+        if result is None:
+            return
+
+        try:
+            outline = build_add_polac_outline(result.shape_key, result.shape_values)
+            outline = flip_polygon_in_bounds(
+                outline,
+                horizontal=result.flip_h,
+                vertical=result.flip_v,
+            )
+            cutout = build_add_polac_cutout(result.cutout_kind, result.cutout_values, outline)
+        except ValueError as exc:
+            QMessageBox.warning(self, "Błąd edycji", str(exc))
+            return
+
+        holes = [] if cutout is None else [cutout]
+        plane = self.project_state.active_roof_plane()
+        selected_material_id = self._tb_ctrl.variant_combo.currentText() or None
+
+        def _apply_wizard_geometry() -> None:
+            if plane is None:
+                created_plane = self.project_state.add_roof_plane(
+                    outline,
+                    selected_material_id=selected_material_id,
+                )
+                self.project_state.set_roof_plane_geometry(outline, holes, created_plane.id)
+                return
+            self.project_state.set_roof_plane_geometry(outline, holes, plane.id)
+
+        if self._edit(
+            _apply_wizard_geometry,
+            "Ustawiono geometrię połaci z kreatora",
+            label="Kreator połaci",
+        ):
+            self._focus_active_plane_tab()
+
     def _dlg_prostokat(self) -> None:
         dlg = ProstokatDialog(self._config, self)
         if not dialog_accepted(dlg):

@@ -24,6 +24,7 @@ from core.models import (
     almost_equal,
 )
 from core.project_state import ProjectState
+from persistence import load_config, save_config
 
 
 def _compact_plane_payload(fragment: dict, plane_id: str) -> dict:
@@ -98,6 +99,86 @@ def test_project_state_loads_materials_from_config():
     assert state.company_data.name == "Super Dach Bis Jerzy Zimnoch"
     assert state.available_material_ids() == ["PD510"]
     assert state.material_by_id("PD510") is not None
+
+
+def test_project_state_round_trip_preserves_add_polac_dialog_cache(tmp_path):
+    config_data = {
+        "add_polac_dialog": {
+            "last_shape": "pieciokat2",
+            "last_cutout": "lukarna3",
+            "flip_h": True,
+            "flip_v": False,
+            "shapes": {
+                "prostokat": {"A": 410, "B": 210},
+                "trojkat": {"A": 365, "B": 220},
+                "trapez_row": {"A": 520, "B": 260, "C": 340},
+                "trapez_prl": {"A": 800, "B": 300, "C": 500},
+                "trapez_l": {"A": 800, "B": 300, "C": 500},
+                "trapez6": {"A": 800, "B": 300, "C": 500},
+                "trapez7": {"A": 800, "B": 300, "C": 500},
+                "pieciokat": {"A": 800, "B": 300},
+                "pieciokat2": {"A": 640, "B": 280},
+            },
+            "cutouts": {
+                "lukarna1": {"A": 80, "H1": 60},
+                "lukarna2": {"A": 80, "H": 60},
+                "lukarna3": {"A": 140, "H1": 50, "H": 90},
+            },
+        },
+        "materials": {
+            "order": ["PD510"],
+            "items": {
+                "PD510": {
+                    "n": "PD510",
+                    "t": "trapezowa",
+                    "w": 51,
+                    "min": 50,
+                    "max": 900,
+                    "top": 0,
+                    "bottom": 0,
+                    "mod": None,
+                    "p": 0.0,
+                    "bat": 0,
+                    "cbat": 0,
+                    "mods": [],
+                    "u": "m2",
+                }
+            },
+        },
+        "project_state": {"version": 2, "roof_planes": {"order": [], "items": {}}, "active_plane_id": None},
+    }
+    state = ProjectState.from_config(config_data)
+    state.add_roof_plane(build_rectangle_outline(300, 200), selected_material_id="PD510")
+    state.apply_to_config(config_data)
+
+    path = tmp_path / "config.json"
+
+    assert save_config(config_data, path=path) is True
+
+    reloaded = load_config(path)
+
+    assert reloaded["add_polac_dialog"] == {
+        "last_shape": "pieciokat2",
+        "last_cutout": "lukarna3",
+        "flip_h": True,
+        "flip_v": False,
+        "shapes": {
+            "prostokat": {"A": 410, "B": 210},
+            "trojkat": {"A": 365, "B": 220},
+            "trapez_row": {"A": 520, "B": 260, "C": 340},
+            "trapez_prl": {"A": 800, "B": 300, "C": 500},
+            "trapez_l": {"A": 800, "B": 300, "C": 500},
+            "trapez6": {"A": 800, "B": 300, "C": 500},
+            "trapez7": {"A": 800, "B": 300, "C": 500},
+            "pieciokat": {"A": 800, "B": 300},
+            "pieciokat2": {"A": 640, "B": 280},
+        },
+        "cutouts": {
+            "lukarna1": {"A": 80, "H1": 60},
+            "lukarna2": {"A": 80, "H": 60},
+            "lukarna3": {"A": 140, "H1": 50, "H": 90},
+        },
+    }
 
 
 def test_material_definition_supports_min_sheet_length_dual_keys():

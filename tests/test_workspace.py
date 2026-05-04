@@ -75,3 +75,9 @@ def test_workspace_controller_set_sheet_visibility_updates_workspace_state(qtbot
     workspace.set_sheet_visibility(False)
 
     assert workspace._sheets_visible is False
+
+
+def test_workspace_controller_defaults_sheet_visibility_to_hidden(qtbot):
+    workspace, _, _ = _workspace_with_recording_canvases(qtbot)
+
+    assert workspace._sheets_visible is False

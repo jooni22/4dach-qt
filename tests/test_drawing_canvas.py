@@ -172,25 +172,48 @@ def test_crosshair_axis_uses_dominant_freehand_direction(qtbot):
 
 
 def test_canvas_clicking_midpoint_inserts_new_vertex_and_starts_drag(qtbot):
+    hole = Polygon2D.rectangle(80, 60, origin_x=100, origin_y=70)
     outline = Polygon2D.rectangle(300, 200)
-    canvas = _make_canvas(qtbot, outline)
-    canvas.set_app_settings(AppSettings(edge_drag_mode="insert_vertex"))
+    canvas = _make_canvas(qtbot, outline, holes=[hole])
+    inside_hole = _point_on_canvas(canvas, Point2D(120, 90))
+    QTest.mouseClick(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, inside_hole)
 
-    midpoint = _point_on_canvas(canvas, Point2D(150, 0))
+    midpoint = _point_on_canvas(canvas, Point2D(140, 70))
     QTest.mousePress(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, midpoint)
 
-    preview = canvas.display_outline()
-    assert preview is not None
+    preview = canvas.display_holes()[0]
     assert len(preview.points) == 5
-    assert preview.points[1] == Point2D(150, 0)
-    assert canvas._active_vertex_index == 1
+    assert preview.points[1] == Point2D(140, 70)
+    assert canvas._active_hole_vertex_index == 1
     assert canvas._dragging_vertex_index == 1
 
 
 def test_canvas_dragging_inserted_midpoint_commits_split_edge_outline(qtbot):
+    hole = Polygon2D.rectangle(80, 60, origin_x=100, origin_y=70)
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline, holes=[hole])
+    inside_hole = _point_on_canvas(canvas, Point2D(120, 90))
+    QTest.mouseClick(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, inside_hole)
+
+    midpoint = _point_on_canvas(canvas, Point2D(140, 70))
+    target_domain = Point2D(140, 40)
+    target = _point_on_canvas(canvas, target_domain)
+
+    with qtbot.waitSignal(canvas.hole_edit_committed, timeout=1000) as blocker:
+        QTest.mousePress(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, midpoint)
+        _send_mouse_move(canvas, target, buttons=Qt.MouseButton.LeftButton)
+        QTest.mouseRelease(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, target)
+
+    assert blocker.args[0] == 0
+    committed_hole = blocker.args[1]
+    assert len(committed_hole.points) == 5
+    assert committed_hole.points[1].x == pytest.approx(target_domain.x, abs=1.5)
+    assert committed_hole.points[1].y == pytest.approx(target_domain.y, abs=1.5)
+
+
+def test_canvas_default_edge_drag_mode_moves_both_edge_vertices(qtbot):
     outline = Polygon2D.rectangle(300, 200)
     canvas = _make_canvas(qtbot, outline)
-    canvas.set_app_settings(AppSettings(edge_drag_mode="insert_vertex"))
 
     midpoint = _point_on_canvas(canvas, Point2D(150, 0))
     target_domain = Point2D(150, 40)
@@ -202,9 +225,9 @@ def test_canvas_dragging_inserted_midpoint_commits_split_edge_outline(qtbot):
         QTest.mouseRelease(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, target)
 
     committed_outline = blocker.args[0]
-    assert len(committed_outline.points) == 5
-    assert committed_outline.points[1].x == pytest.approx(target_domain.x, abs=1.5)
-    assert committed_outline.points[1].y == pytest.approx(target_domain.y, abs=1.5)
+    assert committed_outline.points[0].y == pytest.approx(40.0, abs=1.5)
+    assert committed_outline.points[1].y == pytest.approx(40.0, abs=1.5)
+    assert len(committed_outline.points) == 4
 
 
 def test_canvas_dragging_vertex_updates_preview_geometry_live(qtbot):
@@ -473,25 +496,6 @@ def test_canvas_escape_cancels_plane_body_drag_and_restores_preview_geometry(qtb
     assert canvas.mode() == canvas.MODE_EDIT
     assert canvas.display_outline() == original_outline
     assert canvas.display_holes() == original_holes
-
-
-def test_canvas_default_edge_drag_mode_moves_both_edge_vertices(qtbot):
-    outline = Polygon2D.rectangle(300, 200)
-    canvas = _make_canvas(qtbot, outline)
-
-    midpoint = _point_on_canvas(canvas, Point2D(150, 0))
-    target_domain = Point2D(150, 40)
-    target = _point_on_canvas(canvas, target_domain)
-
-    with qtbot.waitSignal(canvas.outline_edit_committed, timeout=1000) as blocker:
-        QTest.mousePress(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, midpoint)
-        _send_mouse_move(canvas, target, buttons=Qt.MouseButton.LeftButton)
-        QTest.mouseRelease(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, target)
-
-    committed_outline = blocker.args[0]
-    assert committed_outline.points[0].y == pytest.approx(40.0, abs=1.5)
-    assert committed_outline.points[1].y == pytest.approx(40.0, abs=1.5)
-    assert len(committed_outline.points) == 4
 
 
 def test_canvas_escape_returns_from_edit_to_idle(qtbot):
@@ -1292,6 +1296,18 @@ def test_edge_measurement_labels_are_integer_even_when_decimal_cm_enabled(qtbot,
     assert set(labels) == {"300", "200"}
 
 
+def test_edge_measurement_badge_does_not_cover_midpoint_handle(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+    mapper = canvas._canvas_mapper()
+    assert mapper is not None
+
+    region = canvas._edge_label_regions(mapper, outline, None)[0]
+    midpoint = canvas._edge_midpoints(mapper, outline)[0]
+
+    assert region.rect.contains(midpoint) is False
+
+
 def test_canvas_builds_edge_extension_inference_for_existing_polygon_edge(qtbot):
     outline = Polygon2D([
         Point2D(0.0, 0.0),
@@ -1536,6 +1552,67 @@ def test_canvas_inline_length_edit_is_undoable(qtbot):
     QTest.keyClick(canvas, Qt.Key.Key_Z, Qt.KeyboardModifier.ControlModifier)
 
     assert plane.outline.points[1] == outline.points[1]
+
+
+def test_canvas_length_badge_edit_scales_outline_from_zero_origin(qtbot):
+    outline = Polygon2D.rectangle(100, 50)
+    plane = RoofPlane(id="plane-1", name="1", outline=outline)
+    canvas = DrawingCanvas()
+    canvas.resize(640, 420)
+    canvas.set_roof_plane(plane)
+    _wire_canvas_commits_to_plane(canvas, plane)
+    qtbot.addWidget(canvas)
+    canvas.show()
+    qtbot.waitExposed(canvas)
+
+    mapper = canvas._canvas_mapper()
+    assert mapper is not None
+
+    canvas._start_post_draw_length_editor(0, plane.outline, mapper)
+    canvas._inline_segment_editor.length_edit.setText("150")
+    canvas._confirm_post_draw_editor()
+
+    assert plane.outline.points == [
+        Point2D(0, 0),
+        Point2D(150, 0),
+        Point2D(150, 75),
+        Point2D(0, 75),
+    ]
+
+
+def test_canvas_length_badge_edit_scales_outline_and_holes_together(qtbot):
+    outline = Polygon2D.rectangle(100, 50)
+    hole = Polygon2D.rectangle(20, 10, origin_x=20, origin_y=10)
+    plane = RoofPlane(id="plane-1", name="1", outline=outline, holes=[hole])
+    canvas = DrawingCanvas()
+    canvas.resize(640, 420)
+    canvas.set_roof_plane(plane)
+    _wire_canvas_commits_to_plane(canvas, plane)
+    qtbot.addWidget(canvas)
+    canvas.show()
+    qtbot.waitExposed(canvas)
+
+    mapper = canvas._canvas_mapper()
+    assert mapper is not None
+
+    canvas._start_post_draw_length_editor(0, plane.outline, mapper)
+    canvas._inline_segment_editor.length_edit.setText("150")
+    canvas._confirm_post_draw_editor()
+
+    assert plane.outline.points == [
+        Point2D(0, 0),
+        Point2D(150, 0),
+        Point2D(150, 75),
+        Point2D(0, 75),
+    ]
+    assert plane.holes == [
+        Polygon2D([
+            Point2D(30, 15),
+            Point2D(60, 15),
+            Point2D(60, 30),
+            Point2D(30, 30),
+        ])
+    ]
 
 
 def test_canvas_set_roof_plane_clears_geometry_undo_and_redo_stacks(qtbot):
