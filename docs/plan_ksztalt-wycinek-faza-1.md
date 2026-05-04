@@ -1,101 +1,84 @@
-# Plan implementacji fazy 1 — `AddPolacDialog` MVP
+# Faza 1 `AddPolacDialog` — repo-true MVP z baseline repo
 
 ## Cel
-Wprowadzić nowy, dwuetapowy kreator `AddPolacDialog` jako dodatkowy entrypoint w menu `Kształt`, bez usuwania obecnych dialogów `Prostokąt...`, `Trójkąt...`, `Trapez...`. Faza 1 ma dać stabilny MVP, który da się wdrożyć i przetestować bez przebudowy architektury repo.
+Wdrożyć mały, wdrażalny wizard `AddPolacDialog` jako nowy entrypoint w menu `Kształt`, bez naruszania obecnych dialogów `Prostokąt...`, `Trójkąt...`, `Trapez...`, `Dowolny` i menu `Wycinki`. Faza 1 ma być zgodna z aktualnym repo, a nie z hipotetycznym API z `docs/plan_ksztalt-wycinek-v2.md`.
 
-## Stan wyjściowy repo
-- `Plik > Nowa połać` oraz toolbarowe `Nowa połać` tworzą pustą zakładkę połaci.
-- Menu `Kształt` ustawia geometrię aktywnej połaci przez `_dlg_prostokat`, `_dlg_trojkat`, `_dlg_trapez`, albo tworzy pierwszą połacię, jeśli żadna jeszcze nie istnieje.
-- Cache formularzy shape-dialogów jest dziś trzymany w `config["ksztalty"]`.
-- `ProjectState.set_roof_plane_geometry(...)` już istnieje i pozwala zapisać obrys i listę wycinków atomowo.
+## Stan repo będący źródłem prawdy
+- `ProjectState.set_roof_plane_geometry(...)` już potrafi zapisać obrys i listę wycinków atomowo.
+- `MainWindow` obsługuje shape-dialogi i undo/redo przez jedną komendę `_edit(...)`.
+- `config["ksztalty"]` jest istniejącym cache dla trzech legacy flow i pozostaje jedynym miejscem pamiętania ich wartości między sesjami.
+- Repo-root `config.json` jest fixture danych aplikacji i testów, więc jego przywrócenie należy do zakresu fazy 1.
 
-## Zakres funkcjonalny fazy 1
-- Dodać akcję `Kreator połaci...` jako pierwszy wpis menu `Kształt`.
-- Zachować stare trzy akcje shape-dialogów bez zmian.
-- Kreator ma działać na aktywnej połaci. Jeśli aktywnej połaci nie ma, ma utworzyć pierwszą połacię dokładnie tak jak obecne `_dlg_*`.
-- Krok 1 kreatora:
-  - wybór jednego z trzech kształtów: `prostokąt`, `trójkąt`, `trapez`,
-  - dynamiczny formularz zgodny z obecnymi dialogami,
-  - podgląd kształtu,
-  - dwa niezależne przełączniki `Flip H` i `Flip V`.
-- Krok 2 kreatora:
-  - wybór `Bez wycinka` albo `Wycinek prostokątny`,
-  - dla wycinka pola `szerokość` i `wysokość`,
-  - podgląd obrysu z opcjonalnym wycinkiem.
-- Zatwierdzenie ma zapisać obrys i opcjonalny wycinek jako jedną operację undo/redo.
+## Zakres MVP
 
-## Decyzje architektoniczne
-- Nie dodawać nowych typów do `core.models`. Wynik kreatora ma być lokalnym `@dataclass(slots=True)` w `ui/dialogs/add_polac_dialog.py`.
-- Nie przenosić logiki generowania domenowego `Polygon2D` do widoku. Dialog zwraca wynik wejściowy, a integracja buduje geometrię przed zapisem do `ProjectState`.
-- Nie zmieniać semantyki `Plik > Nowa połać`, toolbarowego `Nowa połać`, `Dowolny`, ani menu `Wycinki`.
-- Nie robić migracji `config.json`. W fazie 1 utrzymać istniejące `config["ksztalty"]`.
-- W fazie 1 nie persystować między sesjami stanu `Flip H`, `Flip V` ani formularza wycinka. Te wartości mają być sesyjne.
+### Krok 1 — obrys połaci
+- Obsługiwane są dokładnie trzy flow:
+  - `prostokat`: `szerokosc`, `wysokosc`
+  - `trojkat`: `typ`, `podstawa`, `wysokosc`, opcjonalne `ramie`
+  - `trapez`: `typ`, `podstawa_dolna`, `podstawa_gorna`, `wysokosc`
+- Wynik dialogu jest lokalnym `@dataclass(slots=True)` w `ui/dialogs/add_polac_dialog.py`.
+- Nie ma żadnych zmian w `core.models`.
+- `Flip H` i `Flip V` są niezależne i działają na gotowej geometrii obrysu przez lokalny pure helper oparty o `Polygon2D.bounds()`.
 
-## Zmiany implementacyjne
+### Krok 2 — wycinek
+- Obsługiwane są tylko opcje:
+  - `Bez wycinka`
+  - `Wycinek prostokątny`
+- Dla wycinka prostokątnego dostępne są wyłącznie pola `szerokosc` i `wysokosc`.
+- Obowiązuje decyzja `repo-true`: wizard nie dodaje własnej walidacji containment ponad to, co już robi `ProjectState`.
 
-### 1. Nowy dialog
-- Dodać `ui/dialogs/add_polac_dialog.py`.
-- W pliku umieścić:
-  - lokalny `AddPolacResult`,
-  - katalog trzech kształtów MVP,
-  - widget galerii kształtów,
-  - widget preview,
-  - dynamiczny formularz wymiarów,
-  - krok wycinka z opcją `none` / `rectangle`,
-  - `get_result() -> AddPolacResult | None`.
-- Preview ma używać `QPainter` tylko w `paintEvent`, a miniatury mogą być renderowane do `QPixmap`.
+## Integracja
+- `AddPolacDialog` jest eksportowany przez `ui.dialogs`.
+- W `ui/main_window.py` dochodzi:
+  - akcja `Kreator połaci...` jako pierwszy wpis menu `Kształt`
+  - metoda `MainWindow._dlg_add_polac()`
+- `_dlg_add_polac()` wykonuje jedną komendę `_edit(...)`:
+  - jeśli aktywna połać istnieje, ustawia jej obrys i opcjonalny wycinek przez `set_roof_plane_geometry(...)`
+  - jeśli aktywnej połaci nie ma, w tej samej komendzie tworzy nową połacię, a następnie ustawia jej pełną geometrię
+- Nie ma integracji przez `add_roof_plane(RoofPlane)` ani dodawania nowych metod do domeny tylko pod ten wizard.
 
-### 2. Integracja z menu i `MainWindow`
-- Dodać eksport `AddPolacDialog` do `ui/dialogs/__init__.py`.
-- W `ui/main_window.py`:
-  - dodać import `AddPolacDialog`,
-  - dodać nową akcję `Kreator połaci...` w menu `Kształt`,
-  - dodać metodę `_dlg_add_polac()`.
-- `_dlg_add_polac()` ma:
-  - otworzyć dialog,
-  - zbudować `Polygon2D` dla wybranego kształtu,
-  - zastosować flipy na poziomie punktów,
-  - opcjonalnie zbudować centralnie osadzony prostokątny wycinek,
-  - zapisać wynik przez jedną komendę `_edit(...)`.
-- Jeśli aktywna połać istnieje, kreator ma użyć `ProjectState.set_roof_plane_geometry(...)`.
-- Jeśli aktywnej połaci nie ma, kreator ma utworzyć nową połacię z obrysem i ewentualnym wycinkiem w tej samej komendzie `_edit(...)`.
+## Cache i trwałość
+- Do `config["ksztalty"]` trafiają wyłącznie legacy shape-value dla:
+  - `prostokat`
+  - `trojkat`
+  - `trapez`
+- Nie dodajemy kluczy wizard-only.
+- Nie persystujemy między sesjami:
+  - wyboru kroku wycinka
+  - stanu `Flip H`
+  - stanu `Flip V`
 
-### 3. Reuse istniejących helperów
-- Reuse `make_rectangle`, `make_triangle`, `make_trapezoid` z `core.geometry`.
-- Reuse wzorca helperów z `ui/main_window_dialogs.py`; tam można dodać małe funkcje pomocnicze dla budowy geometrii kreatora.
-- Nie dodawać nowych metod do `ProjectState`, jeśli obecne `add_roof_plane(...)`, `set_roof_plane_geometry(...)` i walidacja wycinków wystarczą.
+## Baseline repo
+- `config.json` w root repo jest częścią tej fazy i musi wrócić do używalnego stanu testowego.
+- Baseline powinien zawierać:
+  - `company_data.name = "Super Dach Bis Jerzy Zimnoch"`
+  - materiał `PD510`
+  - `project_state` zgodny z aktualnym loaderem
+  - taką liczbę startowych połaci, by kontrakt startowy `MainWindow` i testy działały po świeżym starcie
 
-### 4. Cache formularzy
-- Dla `prostokąt`, `trójkąt`, `trapez` zapisywać tylko dane zgodne z obecnym legacy formatem `config["ksztalty"]`.
-- Dla `trójkąt` zachować pola `typ`, `podstawa`, `wysokość`, `ramię`, `ramie_enabled`.
-- Dla `trapez` zachować pola `typ`, `podstawa_dolna`, `podstawa_górna`, `wysokość`.
-- Nie dokładać do `config["ksztalty"]` nowych kluczy wizard-only.
-
-## Testy
-- Dodać nowy plik testów dialogu, np. `tests/test_add_polac_dialog.py`.
-- Pokryć:
-  - zmianę wybranego kafla i odbudowę formularza,
-  - niezależność `Flip H` i `Flip V`,
-  - przejście z kroku 1 do kroku 2,
-  - payload z `get_result()`,
-  - anulowanie bez wyniku.
-- Rozszerzyć `tests/test_mainwindow_ui_contract.py` o:
-  - obecność akcji `Kreator połaci...` w menu `Kształt`,
-  - ustawienie geometrii aktywnej pustej połaci bez tworzenia dodatkowej zakładki,
-  - utworzenie pierwszej połaci, jeśli żadna nie istnieje,
-  - dodanie prostokątnego wycinka,
-  - jeden wpis undo/redo dla całej operacji,
-  - brak regresji starych `_dlg_prostokat`, `_dlg_trojkat`, `_dlg_trapez`.
-
-## Kryteria akceptacji
-- Menu `Kształt` zawiera nową akcję `Kreator połaci...`, a stare akcje nadal działają.
-- Kreator potrafi ustawić obrys aktywnej połaci dla trzech shape-flow legacy.
-- Kreator potrafi opcjonalnie dodać prostokątny wycinek w tej samej operacji zapisu.
-- Cofnięcie jednej komendy usuwa jednocześnie obrys i dodany przez kreator wycinek.
-- `uv run pytest` przechodzi po wdrożeniu.
+## Testy akceptacyjne
+- Nowy plik `tests/test_add_polac_dialog.py` pokrywa:
+  - wybór kafla i odbudowę formularza
+  - mapowanie legacy pól dla trójkąta i trapezu
+  - niezależność `Flip H` i `Flip V`
+  - przejście krok 1 → krok 2
+  - `get_result()` dla `none` i `rectangle`
+  - anulowanie bez wyniku
+- `tests/test_mainwindow_ui_contract.py` pokrywa:
+  - obecność `Kreator połaci...` w menu `Kształt`
+  - brak regresji starych `Prostokąt...`, `Trójkąt...`, `Trapez...`, `Dowolny` i menu `Wycinki`
+  - ustawienie geometrii aktywnej pustej połaci bez tworzenia nowej zakładki
+  - utworzenie nowej połaci, gdy aktywnej nie ma
+  - zapis obrys + wycinek jako jeden wpis undo/redo
+- Zielony baseline tej fazy:
+  - `uv run pytest tests/test_add_polac_dialog.py -q`
+  - `uv run pytest tests/test_mainwindow_ui_contract.py -q`
+  - `uv run pytest tests/test_models_and_state.py -q`
+  - `uv run pytest`
 
 ## Poza zakresem fazy 1
-- Pełna galeria `9` kształtów.
-- Pełna galeria `3` typów wycinka.
-- Nowy top-level cache wizarda w `config.json`.
-- Usuwanie starych akcji `Prostokąt...`, `Trójkąt...`, `Trapez...`.
+- `9` kształtów połaci z planu `v2`
+- `3` typy wycinków z planu `v2`
+- nowe typy publiczne w domenie
+- nowy top-level cache wizarda
+- zmiana semantyki toolbaru, `Plik > Nowa połać`, `Dowolny` albo ręcznych wycinków

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -50,11 +51,19 @@ def test_mainwindow_exposes_expected_ui_contract(qtbot):
 
     actions = window.menuBar().actions()
     menu_titles = [action.text() for action in actions]
+    shape_menu = actions[1].menu()
+    cutout_menu = actions[2].menu()
     sheets_menu = actions[4].menu()  # "Arkusze" is at index 4, "Ustawienia" is at index 5
+    assert isinstance(shape_menu, QMenu)
+    assert isinstance(cutout_menu, QMenu)
     assert isinstance(sheets_menu, QMenu)
+    shape_actions = [action.text() for action in shape_menu.actions() if not action.isSeparator()]
+    cutout_actions = [action.text() for action in cutout_menu.actions() if not action.isSeparator()]
     sheets_actions = [action.text() for action in sheets_menu.actions() if not action.isSeparator()]
 
     assert menu_titles == ["Plik", "Kształt", "Wycinki", "Katalog", "Arkusze", "Ustawienia"]
+    assert shape_actions == ["Kreator połaci...", "Dowolny"]
+    assert cutout_actions == ["Dodaj prostokątny wycinek...", "Rysuj wycinek"]
     assert window.workspace_tabs.count() >= 2
     assert window.variant_combo.count() >= 1
     assert window.variant_combo.currentText() == "PD510"
@@ -312,6 +321,154 @@ def test_mainwindow_creates_rectangle_geometry_in_active_tab(qtbot, monkeypatch)
     assert window.primary_canvas.roof_plane is plane
     assert window.primary_canvas.roof_plane.outline is not None
     assert window.workspace_tabs.tabText(window.workspace_tabs.currentIndex()) == f"{plane.name} *"
+
+
+def test_mainwindow_wizard_updates_active_empty_plane_without_creating_new_tab(qtbot, monkeypatch):
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.project_state = ProjectState(materials=window.project_state.materials)
+    window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
+    empty_plane = window.project_state.add_empty_roof_plane(selected_material_id="PD510")
+    window._refresh_canvas_from_state()
+
+    class FakeWizardDialog:
+        def __init__(self, config_data, parent=None) -> None:
+            self._result = SimpleNamespace(
+                shape_key="trapez_prl",
+                shape_values={"A": 400, "B": 220, "C": 260},
+                cutout_kind="none",
+                cutout_values={},
+                flip_h=False,
+                flip_v=False,
+            )
+
+        def exec(self) -> int:
+            return QDialog.DialogCode.Accepted
+
+        def get_result(self):
+            return self._result
+
+    monkeypatch.setattr("ui.main_window.AddPolacDialog", FakeWizardDialog)
+
+    window._dlg_add_polac()
+
+    plane = window.project_state.active_roof_plane()
+    expected_outline = Polygon2D(
+        [
+            Point2D(140, 0),
+            Point2D(400, 0),
+            Point2D(400, 220),
+            Point2D(0, 220),
+        ]
+    )
+    assert plane is not None
+    assert plane.id == empty_plane.id
+    assert len(window.project_state.roof_planes) == 1
+    assert plane.outline is not None
+    assert plane.outline.points == expected_outline.points
+    assert window.workspace_tabs.count() == 1
+    assert window._workspace.plane_id_for_tab_index(window.workspace_tabs.currentIndex()) == empty_plane.id
+
+
+def test_mainwindow_wizard_creates_new_plane_when_none_exists(qtbot, monkeypatch):
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.project_state = ProjectState(materials=window.project_state.materials)
+    window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
+    window._refresh_canvas_from_state()
+
+    class FakeWizardDialog:
+        def __init__(self, config_data, parent=None) -> None:
+            self._result = SimpleNamespace(
+                shape_key="prostokat",
+                shape_values={"A": 420, "B": 260},
+                cutout_kind="none",
+                cutout_values={},
+                flip_h=False,
+                flip_v=False,
+            )
+
+        def exec(self) -> int:
+            return QDialog.DialogCode.Accepted
+
+        def get_result(self):
+            return self._result
+
+    monkeypatch.setattr("ui.main_window.AddPolacDialog", FakeWizardDialog)
+
+    window._dlg_add_polac()
+
+    plane = window.project_state.active_roof_plane()
+    assert plane is not None
+    assert len(window.project_state.roof_planes) == 1
+    assert plane.outline is not None
+    assert plane.outline.points == build_rectangle_outline(420, 260).points
+    assert window._workspace.plane_id_for_tab_index(window.workspace_tabs.currentIndex()) == plane.id
+
+
+def test_mainwindow_wizard_commits_outline_and_cutout_as_single_undo_entry(qtbot, monkeypatch):
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.project_state = ProjectState(materials=window.project_state.materials)
+    window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
+    plane = window.project_state.add_empty_roof_plane(selected_material_id="PD510")
+    window._refresh_canvas_from_state()
+
+    class FakeWizardDialog:
+        def __init__(self, config_data, parent=None) -> None:
+            self._result = SimpleNamespace(
+                shape_key="prostokat",
+                shape_values={"A": 500, "B": 300},
+                cutout_kind="lukarna3",
+                cutout_values={"A": 140, "H1": 50, "H": 90},
+                flip_h=False,
+                flip_v=False,
+            )
+
+        def exec(self) -> int:
+            return QDialog.DialogCode.Accepted
+
+        def get_result(self):
+            return self._result
+
+    monkeypatch.setattr("ui.main_window.AddPolacDialog", FakeWizardDialog)
+
+    window._dlg_add_polac()
+
+    updated_plane = window.project_state.roof_plane_by_id(plane.id)
+    expected_hole = Polygon2D(
+        [
+            Point2D(250, 105),
+            Point2D(320, 155),
+            Point2D(320, 195),
+            Point2D(180, 195),
+            Point2D(180, 155),
+        ]
+    )
+
+    assert updated_plane is not None
+    assert updated_plane.outline is not None
+    assert updated_plane.outline.points == build_rectangle_outline(500, 300).points
+    assert updated_plane.holes == [expected_hole]
+    assert len(window._undo_stack) == 1
+
+    window._undo()
+    reverted_plane = window.project_state.roof_plane_by_id(plane.id)
+
+    assert reverted_plane is not None
+    assert reverted_plane.outline is None
+    assert reverted_plane.holes == []
+
+    window._redo()
+    redone_plane = window.project_state.roof_plane_by_id(plane.id)
+
+    assert redone_plane is not None
+    assert redone_plane.outline is not None
+    assert redone_plane.outline.points == build_rectangle_outline(500, 300).points
+    assert redone_plane.holes == [expected_hole]
 
 
 def test_mainwindow_keeps_generated_shapes_separate_per_tab_and_persists_geometry(qtbot, monkeypatch):

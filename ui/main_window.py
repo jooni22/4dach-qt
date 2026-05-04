@@ -6,6 +6,7 @@ import json
 import tempfile
 import warnings
 from collections import deque
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -25,13 +26,21 @@ from PySide6.QtWidgets import (
 )
 
 from app_icons import build_icon
-from core.rounding import ceil_cm
-from core.geometry import make_rectangle, make_trapezoid, make_triangle
+from core.geometry import (
+    build_add_polac_cutout,
+    build_add_polac_outline,
+    flip_polygon_in_bounds,
+    make_rectangle,
+    make_trapezoid,
+    make_triangle,
+)
 from core.models import Point2D, Polygon2D, SheetPlacement
 from core.project_state import ProjectState
 from core.reporting import build_project_report, build_project_report_html
+from core.rounding import ceil_cm
 from persistence import load_config, save_config
 from ui.dialogs import (
+    AddPolacDialog,
     BlachyDialog,
     DaneFirmyDialog,
     ProstokatDialog,
@@ -39,7 +48,11 @@ from ui.dialogs import (
     TrojkatDialog,
 )
 from ui.drawing_canvas import CommittedOutlineEdit, DrawingCanvas
-from ui.main_window_dialogs import build_centered_hole, dialog_accepted, remember_shape_config
+from ui.main_window_dialogs import (
+    build_centered_hole,
+    dialog_accepted,
+    remember_shape_config,
+)
 from ui.main_window_refresh import (
     PostStateChangeRefresh,
     apply_post_state_change_refresh,
@@ -167,9 +180,7 @@ class MainWindow(QMainWindow):
         plik.addAction(act("Zakończ", "Ctrl+Q", self.close))
 
         ksztalt = mb.addMenu("Kształt")
-        ksztalt.addAction(act("Prostokąt...", None, self._dlg_prostokat))
-        ksztalt.addAction(act("Trójkąt...", None, self._dlg_trojkat))
-        ksztalt.addAction(act("Trapez...", None, self._dlg_trapez))
+        ksztalt.addAction(act("Kreator połaci...", None, self._dlg_add_polac))
         ksztalt.addAction(act("Dowolny", None, self._start_draw_outline))
 
         wyc = mb.addMenu("Wycinki")
@@ -412,9 +423,7 @@ class MainWindow(QMainWindow):
         )
         if answer == QMessageBox.StandardButton.Save:
             return self._save_project()
-        if answer == QMessageBox.StandardButton.Discard:
-            return True
-        return False
+        return answer == QMessageBox.StandardButton.Discard
 
     def _load_project_payload(self, payload: dict, *, project_file_path: Path | None, reset_history: bool) -> None:
         if reset_history:
@@ -495,10 +504,8 @@ class MainWindow(QMainWindow):
         for plane in self.project_state.roof_planes:
             # Fix #7: Skip auto-regeneration for manual_override to preserve user intent
             if plane.layout_dirty_reason and plane.layout_dirty_reason != "manual_override":
-                try:
+                with suppress(Exception):
                     self.project_state.generate_layout_for_plane(plane.id)
-                except Exception:
-                    pass
 
         after_snapshot = self._serialize_current_config()
         self._push_history(label, before_snapshot, after_snapshot)
@@ -547,11 +554,11 @@ class MainWindow(QMainWindow):
         if not plane:
             self._status_label.setText("")
             return
-            
+
         label = f"Połać {plane.name}"
         if plane.selected_material_id:
             label += f" | Blacha: {plane.selected_material_id}"
-            
+
         if plane.generation_settings.layout_origin == "right":
             label += " | Układ: <--- od prawej"
         else:
@@ -604,10 +611,8 @@ class MainWindow(QMainWindow):
         return plane
 
     def _connect_canvas_signal(self, signal, slot) -> None:
-        try:
+        with suppress(TypeError):
             signal.connect(slot, Qt.ConnectionType.UniqueConnection)
-        except TypeError:
-            pass
 
     def _connect_canvas_signals(self, canvas: DrawingCanvas) -> None:
         self._connect_canvas_signal(canvas.outline_edit_committed, self._on_outline_edit_committed)
@@ -1069,14 +1074,10 @@ class MainWindow(QMainWindow):
             return
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", RuntimeWarning)
-            try:
+            with suppress(RuntimeError, TypeError):
                 canvas.polygon_closed.disconnect(self._on_polygon_closed)
-            except (RuntimeError, TypeError):
-                pass
-            try:
+            with suppress(RuntimeError, TypeError):
                 canvas.cutout_closed.disconnect(self._on_cutout_closed)
-            except (RuntimeError, TypeError):
-                pass
 
     def _on_polygon_closed(self, pixel_points: list) -> None:
         canvas = self._workspace.primary_canvas
@@ -1188,6 +1189,47 @@ class MainWindow(QMainWindow):
 
     # ------------------------------------------------------------------
     # Shape dialogs
+    def _dlg_add_polac(self) -> None:
+        dlg = AddPolacDialog(self._config, self)
+        if not dialog_accepted(dlg):
+            return
+        result = dlg.get_result()
+        if result is None:
+            return
+
+        try:
+            outline = build_add_polac_outline(result.shape_key, result.shape_values)
+            outline = flip_polygon_in_bounds(
+                outline,
+                horizontal=result.flip_h,
+                vertical=result.flip_v,
+            )
+            cutout = build_add_polac_cutout(result.cutout_kind, result.cutout_values, outline)
+        except ValueError as exc:
+            QMessageBox.warning(self, "Błąd edycji", str(exc))
+            return
+
+        holes = [] if cutout is None else [cutout]
+        plane = self.project_state.active_roof_plane()
+        selected_material_id = self._tb_ctrl.variant_combo.currentText() or None
+
+        def _apply_wizard_geometry() -> None:
+            if plane is None:
+                created_plane = self.project_state.add_roof_plane(
+                    outline,
+                    selected_material_id=selected_material_id,
+                )
+                self.project_state.set_roof_plane_geometry(outline, holes, created_plane.id)
+                return
+            self.project_state.set_roof_plane_geometry(outline, holes, plane.id)
+
+        if self._edit(
+            _apply_wizard_geometry,
+            "Ustawiono geometrię połaci z kreatora",
+            label="Kreator połaci",
+        ):
+            self._focus_active_plane_tab()
+
     def _dlg_prostokat(self) -> None:
         dlg = ProstokatDialog(self._config, self)
         if not dialog_accepted(dlg):
