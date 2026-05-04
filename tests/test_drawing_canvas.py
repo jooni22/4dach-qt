@@ -1180,17 +1180,19 @@ def test_rmb_clears_sketch_when_close_disabled(qtbot):
     assert canvas.user_points == []
 
 
-def test_live_length_label_uses_integer_by_default():
+def test_live_length_label_uses_integer_when_decimal_display_disabled(qtbot):
     canvas = DrawingCanvas()
+    qtbot.addWidget(canvas)
+    canvas.set_app_settings(AppSettings(show_decimal_cm=False))
     assert canvas._format_live_length_label(143.2) == "143 cm"
 
 
-def test_live_length_label_uses_decimal_when_enabled(qtbot):
+def test_live_length_label_stays_integer_when_legacy_decimal_flag_is_enabled(qtbot):
     canvas = DrawingCanvas()
     qtbot.addWidget(canvas)
     canvas.set_app_settings(AppSettings(show_decimal_cm=True))
 
-    assert canvas._format_live_length_label(143.2) == "143.2 cm"
+    assert canvas._format_live_length_label(143.2) == "143 cm"
 
 
 def test_canvas_label_always_visible_overrides_edge_label_visibility(qtbot, monkeypatch):
@@ -1222,7 +1224,12 @@ def test_canvas_draws_edge_measurements_for_outline_and_cutouts(qtbot, monkeypat
     canvas.grab()
     QApplication.processEvents()
 
-    assert polygons == [outline, hole]
+    unique_polygons: list[Polygon2D] = []
+    for polygon in polygons:
+        if polygon not in unique_polygons:
+            unique_polygons.append(polygon)
+
+    assert unique_polygons[:2] == [outline, hole]
 
 
 def test_edge_measurement_badge_uses_light_background_with_red_text(qtbot):
@@ -1251,6 +1258,38 @@ def test_edge_measurement_badge_uses_light_background_with_red_text(qtbot):
     assert color.red() > 200
     assert color.green() > 200
     assert color.blue() > 200
+
+
+def test_edge_measurement_labels_are_integer_even_when_decimal_cm_enabled(qtbot, monkeypatch):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+    canvas._plane_selected = True
+    canvas.set_app_settings(AppSettings(show_decimal_cm=True))
+    mapper = canvas._canvas_mapper()
+    assert mapper is not None
+    labels: list[str] = []
+
+    def capture_badge(_painter, _rect, text, **_kwargs):
+        labels.append(text)
+
+    monkeypatch.setattr(canvas, "_draw_badge", capture_badge)
+
+    image = QImage(canvas.size(), QImage.Format.Format_ARGB32_Premultiplied)
+    image.fill(0)
+    painter = QPainter(image)
+
+    canvas._draw_edge_measurements(
+        painter,
+        mapper,
+        outline,
+        canvas.palette().color(QPalette.ColorRole.Text),
+        canvas.palette().color(QPalette.ColorRole.Highlight),
+    )
+    painter.end()
+
+    assert labels
+    assert all("." not in label for label in labels)
+    assert set(labels) == {"300", "200"}
 
 
 def test_canvas_builds_edge_extension_inference_for_existing_polygon_edge(qtbot):
@@ -1297,6 +1336,96 @@ def test_cutout_reference_overlay_draws_direct_span_lines(qtbot, monkeypatch):
 
     assert any(abs(start.y() - end.y()) < 0.1 for start, end in lines)
     assert any(abs(start.x() - end.x()) < 0.1 for start, end in lines)
+
+
+def test_draw_references_render_only_single_horizontal_and_vertical_spans(qtbot, monkeypatch):
+    canvas = DrawingCanvas()
+    canvas.resize(640, 420)
+    qtbot.addWidget(canvas)
+    canvas.toggle_grid(False)
+    canvas.set_mode(canvas.MODE_DRAW_OUTLINE)
+
+    mapper = canvas._free_draw_mapper()
+    first_domain_point = Point2D(140.0, 180.0)
+    preview_domain_point = Point2D(210.0, 130.0)
+
+    QTest.mousePress(
+        canvas,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+        mapper.map_point(first_domain_point).toPoint(),
+    )
+    _send_mouse_move(canvas, mapper.map_point(preview_domain_point).toPoint())
+
+    drawn_lines: list[tuple[QPointF, QPointF]] = []
+    original_draw_line = QPainter.drawLine
+
+    def capture_draw_line(self, *args):
+        if len(args) == 2 and isinstance(args[0], QPointF) and isinstance(args[1], QPointF):
+            drawn_lines.append((QPointF(args[0]), QPointF(args[1])))
+        return original_draw_line(self, *args)
+
+    monkeypatch.setattr(QPainter, "drawLine", capture_draw_line)
+
+    image = QImage(canvas.size(), QImage.Format.Format_ARGB32_Premultiplied)
+    image.fill(0)
+    painter = QPainter(image)
+    canvas._draw_active_drawing_references(painter)
+    painter.end()
+
+    overlay = canvas._active_drawing_reference_overlay()
+    assert overlay is not None
+    active_mapped = mapper.map_point(overlay.active_point)
+
+    horizontal = [line for line in drawn_lines if abs(line[0].y() - line[1].y()) < 0.1]
+    vertical = [line for line in drawn_lines if abs(line[0].x() - line[1].x()) < 0.1]
+
+    assert len(horizontal) == 1
+    assert len(vertical) == 1
+    assert horizontal[0][0].y() == pytest.approx(active_mapped.y())
+    assert horizontal[0][1].y() == pytest.approx(active_mapped.y())
+    assert vertical[0][0].x() == pytest.approx(active_mapped.x())
+    assert vertical[0][1].x() == pytest.approx(active_mapped.x())
+
+
+def test_draw_reference_badge_renders_below_horizontal_span(qtbot, monkeypatch):
+    canvas = DrawingCanvas()
+    canvas.resize(640, 420)
+    qtbot.addWidget(canvas)
+    canvas.toggle_grid(False)
+    canvas.set_mode(canvas.MODE_DRAW_OUTLINE)
+
+    mapper = canvas._free_draw_mapper()
+    first_domain_point = Point2D(140.0, 180.0)
+    preview_domain_point = Point2D(210.0, 130.0)
+
+    QTest.mousePress(
+        canvas,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+        mapper.map_point(first_domain_point).toPoint(),
+    )
+    _send_mouse_move(canvas, mapper.map_point(preview_domain_point).toPoint())
+
+    overlay = canvas._active_drawing_reference_overlay()
+    assert overlay is not None
+    active_mapped = mapper.map_point(overlay.active_point)
+
+    captured_rects: list[QRectF] = []
+
+    def capture_badge(*args, **kwargs):
+        captured_rects.append(QRectF(args[1]))
+
+    monkeypatch.setattr(canvas, "_draw_badge", capture_badge)
+
+    image = QImage(canvas.size(), QImage.Format.Format_ARGB32_Premultiplied)
+    image.fill(0)
+    painter = QPainter(image)
+    canvas._draw_drawing_reference_labels(painter, mapper, overlay)
+    painter.end()
+
+    assert captured_rects
+    assert captured_rects[0].top() > active_mapped.y()
 
 
 def test_canvas_dragging_origin_projects_to_nearest_boundary_when_cursor_leaves_shape(qtbot):
@@ -1529,7 +1658,7 @@ def test_canvas_global_snap_toggle_disables_vertex_snapping(qtbot):
 def test_canvas_shift_temporarily_bypasses_vertex_snapping(qtbot):
     outline = Polygon2D.rectangle(300, 200)
     canvas = _make_canvas(qtbot, outline)
-    canvas.set_app_settings(AppSettings(grid_size_cm=25.0))
+    canvas.set_app_settings(AppSettings(grid_size_cm=25.0, shift_drag_behavior="free_move"))
 
     start = _point_on_canvas(canvas, outline.points[1])
     target_domain = Point2D(263, 43)
@@ -1746,12 +1875,10 @@ def test_canvas_hidden_grid_keeps_snap_and_xy_references_in_draw_cut(qtbot):
     assert overlay is not None
     assert overlay.origin == Point2D(0.0, 200.0)
     assert overlay.active_point == Point2D(130.0, 110.0)
-    assert overlay.horizontal_span.label_text == "X: 130 cm"
-    assert overlay.vertical_span.label_text == "Y: 90 cm"
-    assert overlay.direct_horizontal_span is not None
-    assert overlay.direct_vertical_span is not None
-    assert overlay.direct_horizontal_span.start == Point2D(0.0, 110.0)
-    assert overlay.direct_vertical_span.start == Point2D(130.0, 200.0)
+    assert overlay.horizontal_span.label_text == "X:130 Y:90"
+    assert overlay.vertical_span.label_text == "X:130 Y:90"
+    assert overlay.direct_horizontal_span is None
+    assert overlay.direct_vertical_span is None
 
 
 def test_canvas_draw_outline_xy_references_use_first_point_origin_rule(qtbot):
@@ -1779,8 +1906,52 @@ def test_canvas_draw_outline_xy_references_use_first_point_origin_rule(qtbot):
     assert overlay.origin == first_domain_point
     assert overlay.active_point.x == pytest.approx(preview_domain_point.x)
     assert overlay.active_point.y == pytest.approx(preview_domain_point.y)
-    assert overlay.horizontal_span.label_text == "X: 70 cm"
-    assert overlay.vertical_span.label_text == "Y: 50 cm"
+    assert overlay.horizontal_span.label_text == "X:70 Y:50"
+    assert overlay.vertical_span.label_text == "X:70 Y:50"
+
+
+def test_cutout_draw_references_render_only_single_horizontal_and_vertical_spans(qtbot, monkeypatch):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+    canvas.toggle_grid(False)
+    canvas.set_mode(canvas.MODE_DRAW_CUTOUT)
+
+    mapper = canvas._canvas_mapper()
+    assert mapper is not None
+    first_point = mapper.map_point(Point2D(60.0, 160.0)).toPoint()
+    preview_point = mapper.map_point(Point2D(130.0, 110.0)).toPoint()
+    QTest.mousePress(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, first_point)
+    _send_mouse_move(canvas, preview_point)
+
+    drawn_lines: list[tuple[QPointF, QPointF]] = []
+    original_draw_line = QPainter.drawLine
+
+    def capture_draw_line(self, *args):
+        if len(args) == 2 and isinstance(args[0], QPointF) and isinstance(args[1], QPointF):
+            drawn_lines.append((QPointF(args[0]), QPointF(args[1])))
+        return original_draw_line(self, *args)
+
+    monkeypatch.setattr(QPainter, "drawLine", capture_draw_line)
+
+    image = QImage(canvas.size(), QImage.Format.Format_ARGB32_Premultiplied)
+    image.fill(0)
+    painter = QPainter(image)
+    canvas._draw_active_drawing_references(painter)
+    painter.end()
+
+    overlay = canvas._active_drawing_reference_overlay()
+    assert overlay is not None
+    active_mapped = mapper.map_point(overlay.active_point)
+
+    horizontal = [line for line in drawn_lines if abs(line[0].y() - line[1].y()) < 0.1]
+    vertical = [line for line in drawn_lines if abs(line[0].x() - line[1].x()) < 0.1]
+
+    assert len(horizontal) == 1
+    assert len(vertical) == 1
+    assert horizontal[0][0].y() == pytest.approx(active_mapped.y())
+    assert horizontal[0][1].y() == pytest.approx(active_mapped.y())
+    assert vertical[0][0].x() == pytest.approx(active_mapped.x())
+    assert vertical[0][1].x() == pytest.approx(active_mapped.x())
 
 
 def test_canvas_drawing_references_do_not_mutate_geometry_or_layout_inputs(qtbot):

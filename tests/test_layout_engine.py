@@ -135,10 +135,11 @@ def test_layout_engine_uses_single_cross_section_for_skewed_band_lengths():
     result = generate_layout(plane, _material(max_sheet_length_cm=100, min_sheet_length_cm=0))
 
     expected_lengths = [100.0, 8.333333333333334, 100.0, 8.33333333333334, 100.0, 3.3333333333333286]
+    expected_final_lengths = [100.0, 9.0, 100.0, 9.0, 100.0, 4.0]
     assert len(result.placements) == len(expected_lengths)
-    for p, exp in zip(result.placements, expected_lengths):
-        assert almost_equal(p.raw_length_cm, exp)
-        assert almost_equal(p.final_length_cm, exp)
+    for p, raw_exp, final_exp in zip(result.placements, expected_lengths, expected_final_lengths):
+        assert almost_equal(p.raw_length_cm, raw_exp)
+        assert almost_equal(p.final_length_cm, final_exp)
     assert result.requires_transverse_split is False
 
 
@@ -437,7 +438,7 @@ def test_layout_engine_uses_displayed_partial_top_length_in_rejection_reason():
     ]
     assert len(result.rejected_segments) == 1
     assert result.rejected_segments[0].raw_length_cm == 10.0
-    assert "Arkusz za krótki: 14.0 cm (min. 15.0 cm)" in result.rejected_segments[0].reason
+    assert "Arkusz za krótki: 14 cm (min. 15 cm)" in result.rejected_segments[0].reason
 
 
 def test_layout_engine_rejects_short_standard_tail_after_full_rows():
@@ -455,7 +456,7 @@ def test_layout_engine_rejects_short_standard_tail_after_full_rows():
     assert [(segment.y_top_cm, segment.y_bottom_cm, segment.raw_length_cm) for segment in result.rejected_segments] == [
         (0.0, 10.0, 10.0),
     ]
-    assert "Arkusz za krótki: 10.0 cm (min. 20.0 cm)" in result.rejected_segments[0].reason
+    assert "Arkusz za krótki: 10 cm (min. 20 cm)" in result.rejected_segments[0].reason
 
 
 def test_layout_engine_warns_when_max_sheet_length_is_not_positive():

@@ -4,6 +4,7 @@ import logging
 from dataclasses import dataclass, field
 
 from core.app_settings import AppSettings
+from core.rounding import ceil_cm
 from core.geometry import (
     canonicalize_polygon,
     polygon_edges,
@@ -326,7 +327,7 @@ def _append_phase_rows(
             max_length_cm,
             is_terminal_row=is_terminal_row,
         )
-        final_length_cm = row.raw_length_cm + extra_cm
+        final_length_cm = float(ceil_cm(row.raw_length_cm + extra_cm))
         split_reason = phase.terminal_split_reason if is_terminal_row else None
         placement_id = _record_sheet_outcome(
             result,
@@ -429,7 +430,7 @@ def _append_rejected_segment(
             y_top_cm=row.y_top_cm,
             y_bottom_cm=row.y_bottom_cm,
             raw_length_cm=row.raw_length_cm,
-            reason=f"Arkusz za krótki: {displayed_length_cm:.1f} cm (min. {min_length_cm:.1f} cm)",
+            reason=f"Arkusz za krótki: {ceil_cm(displayed_length_cm)} cm (min. {ceil_cm(min_length_cm)} cm)",
         )
     )
 

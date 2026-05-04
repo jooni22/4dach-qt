@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from core.rounding import ceil_cm
+
 SHIFT_DRAG_BEHAVIOR_FREE_MOVE = "free_move"
 SHIFT_DRAG_BEHAVIOR_ORTHOGONAL_LOCK = "orthogonal_lock"
 _VALID_SHIFT_DRAG_BEHAVIORS = {
@@ -47,8 +49,8 @@ class AppSettings:
             movement to one axis using 1 cm increments.
     """
 
-    partial_cutout_top_extra_cm: float = 15.0
-    grid_size_cm: float = 10.0
+    partial_cutout_top_extra_cm: int = 15
+    grid_size_cm: int = 10
     shift_drag_behavior: str = SHIFT_DRAG_BEHAVIOR_ORTHOGONAL_LOCK
     show_grid: bool = True
     show_axis_overlay: bool = True
@@ -57,7 +59,7 @@ class AppSettings:
     show_crosshair: bool = True
     show_xy_references_during_draw: bool = True
     live_angle_mode: str = LIVE_ANGLE_MODE_ABSOLUTE
-    show_decimal_cm: bool = True
+    show_decimal_cm: bool = False
     show_angle_arc: bool = True
     show_guide_lines: bool = True
     ui_element_scale: float = 1.0
@@ -80,12 +82,12 @@ class AppSettings:
     @classmethod
     def from_dict(cls, data: dict | None) -> AppSettings:
         d = data or {}
-        raw = d.get("partial_cutout_top_extra_cm", 15.0)
+        raw = d.get("partial_cutout_top_extra_cm", 15)
         try:
             value = float(raw)
         except (TypeError, ValueError):
             value = 15.0
-        raw_grid = d.get("grid_size_cm", 10.0)
+        raw_grid = d.get("grid_size_cm", 10)
         try:
             grid_size = float(raw_grid)
         except (TypeError, ValueError):
@@ -148,8 +150,8 @@ class AppSettings:
         if undo_stack_depth <= 0:
             undo_stack_depth = 20
         return cls(
-            partial_cutout_top_extra_cm=max(0.0, value),
-            grid_size_cm=grid_size,
+            partial_cutout_top_extra_cm=ceil_cm(value),
+            grid_size_cm=ceil_cm(grid_size),
             shift_drag_behavior=shift_drag_behavior,
             show_grid=show_grid,
             show_axis_overlay=show_axis_overlay,
@@ -158,7 +160,7 @@ class AppSettings:
             show_crosshair=show_crosshair,
             show_xy_references_during_draw=show_xy_references_during_draw,
             live_angle_mode=live_angle_mode,
-            show_decimal_cm=True,
+            show_decimal_cm=False,
             show_angle_arc=True,
             show_guide_lines=bool(d.get("show_guide_lines", True)),
             ui_element_scale=ui_element_scale,

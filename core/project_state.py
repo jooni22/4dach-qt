@@ -25,6 +25,7 @@ from core.models import (
     RoofPlane,
     SheetPlacement,
 )
+from core.rounding import ceil_cm
 
 
 log = logging.getLogger(__name__)
@@ -486,15 +487,21 @@ class ProjectState:
         if placement.raw_length_cm <= 0 or placement.final_length_cm <= 0:
             raise ValueError("Długość arkusza musi być dodatnia")
 
+        normalized_raw_length_cm = ceil_cm(placement.raw_length_cm)
+        normalized_final_length_cm = ceil_cm(placement.final_length_cm)
+        normalized_length_cm = max(normalized_raw_length_cm, normalized_final_length_cm)
+        normalized_top_y_cm = float(placement.y_top_cm)
+        normalized_bottom_y_cm = normalized_top_y_cm + normalized_length_cm
+
         manual_placement = SheetPlacement(
             id=placement.id,
             band_index=placement.band_index,
             x_left_cm=placement.x_left_cm,
             x_right_cm=placement.x_right_cm,
-            y_top_cm=placement.y_top_cm,
-            y_bottom_cm=placement.y_bottom_cm,
-            raw_length_cm=placement.raw_length_cm,
-            final_length_cm=placement.final_length_cm,
+            y_top_cm=normalized_top_y_cm,
+            y_bottom_cm=normalized_bottom_y_cm,
+            raw_length_cm=normalized_length_cm,
+            final_length_cm=normalized_length_cm,
             source="manual",
             split_reason=placement.split_reason,
         )
@@ -854,9 +861,9 @@ def _deserialize_placements(payload: object, *, source: str) -> list[SheetPlacem
                     x_left_cm=float(entry[1]),
                     x_right_cm=float(entry[2]),
                     y_top_cm=float(entry[3]),
-                    y_bottom_cm=float(entry[4]),
-                    raw_length_cm=float(entry[5]),
-                    final_length_cm=float(entry[6]),
+                    y_bottom_cm=float(entry[3]) + max(ceil_cm(float(entry[5])), ceil_cm(float(entry[6]))),
+                    raw_length_cm=max(ceil_cm(float(entry[5])), ceil_cm(float(entry[6]))),
+                    final_length_cm=max(ceil_cm(float(entry[5])), ceil_cm(float(entry[6]))),
                     source=source,
                     split_reason=entry[7] if len(entry) > 7 else None,
                 )

@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 )
 
 from app_icons import build_icon
+from core.rounding import ceil_cm
 from core.geometry import make_rectangle, make_trapezoid, make_triangle
 from core.models import Point2D, Polygon2D, SheetPlacement
 from core.project_state import ProjectState
@@ -657,20 +658,20 @@ class MainWindow(QMainWindow):
                 return False
         return True
 
-    def _manual_sheet_values(self) -> tuple[int, float, float, float, float] | None:
+    def _manual_sheet_values(self) -> tuple[int, int, int, int, int] | None:
         band, ok = QInputDialog.getInt(self, "Dodaj arkusz", "Numer pasa:", 0, 0, 999)
         if not ok:
             return None
-        left_x, ok = QInputDialog.getDouble(self, "Dodaj arkusz", "Lewy X [cm]:", 0.0)
+        left_x, ok = QInputDialog.getInt(self, "Dodaj arkusz", "Lewy X [cm]:", 0)
         if not ok:
             return None
-        width_cm, ok = QInputDialog.getDouble(self, "Dodaj arkusz", "Szerokość [cm]:", 50.0, 0.01)
+        width_cm, ok = QInputDialog.getInt(self, "Dodaj arkusz", "Szerokość [cm]:", 50, 1)
         if not ok:
             return None
-        top_y, ok = QInputDialog.getDouble(self, "Dodaj arkusz", "Górny Y [cm]:", 0.0)
+        top_y, ok = QInputDialog.getInt(self, "Dodaj arkusz", "Górny Y [cm]:", 0)
         if not ok:
             return None
-        length_cm, ok = QInputDialog.getDouble(self, "Dodaj arkusz", "Długość końcowa [cm]:", 100.0, 0.01)
+        length_cm, ok = QInputDialog.getInt(self, "Dodaj arkusz", "Długość końcowa [cm]:", 100, 1)
         if not ok:
             return None
         return band, left_x, width_cm, top_y, length_cm
@@ -714,7 +715,7 @@ class MainWindow(QMainWindow):
 
     def _sheet_preview_text(self, sheets: list[SheetPlacement]) -> str:
         return "\n".join(
-            f"{index}. {sheet.id} | pas {sheet.band_index} | {round(sheet.final_length_cm):.0f} cm"
+            f"{index}. {sheet.id} | pas {sheet.band_index} | {ceil_cm(sheet.final_length_cm)} cm"
             for index, sheet in enumerate(sheets)
         ) or "Brak"
 
@@ -1261,10 +1262,10 @@ class MainWindow(QMainWindow):
         idx = self._select_index("Przesuń wycinek", len(plane.holes) - 1)
         if idx is None:
             return
-        dx, ok = QInputDialog.getDouble(self, "Przesuń wycinek", "Przesunięcie X [cm]:")
+        dx, ok = QInputDialog.getInt(self, "Przesuń wycinek", "Przesunięcie X [cm]:", 0)
         if not ok:
             return
-        dy, ok = QInputDialog.getDouble(self, "Przesuń wycinek", "Przesunięcie Y [cm]:")
+        dy, ok = QInputDialog.getInt(self, "Przesuń wycinek", "Przesunięcie Y [cm]:", 0)
         if ok:
             self._edit(lambda: self.project_state.move_hole_in_plane(idx, dx, dy, plane.id), f"Przesunięto wycinek {idx}")
 

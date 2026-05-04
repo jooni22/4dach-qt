@@ -58,6 +58,7 @@ from core.geometry import (
     validate_polygon,
 )
 from core.models import Bounds2D, Point2D, Polygon2D
+from core.rounding import ceil_cm
 from ui.canvas import sheet_geometry, snap_helpers
 from ui.canvas.sheet_geometry import SheetRenderItem as _SheetRenderItem
 from ui.canvas.snap_helpers import DrawSnapState as _DrawSnapState, InferenceLine as _InferenceLine
@@ -775,14 +776,13 @@ class _DrawingCanvasInteractionMixin:
             return
         start, end = edges[edge_index]
         current_len = segment_length(start, end)
-        new_len, ok = QInputDialog.getDouble(
+        new_len, ok = QInputDialog.getInt(
             self,
             "Zmień długość krawędzi",
             "Nowa długość (cm):",
-            current_len,
-            0.1,
-            10000.0,
+            ceil_cm(current_len),
             1,
+            10000,
         )
         if ok and new_len > 0 and abs(new_len - current_len) > 0.1:
             scale = new_len / current_len
@@ -2235,36 +2235,17 @@ class _DrawingCanvasPaintingMixin:
         if overlay is None or mapper is None:
             return
 
-        viewport = self.rect().adjusted(6, 6, -6, -6)
-        leader_color = QColor(166, 226, 240, 86)
         span_color = QColor(0, 120, 220, 180)
-        leader_pen = QPen(leader_color, 0.8, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
         span_pen = QPen(span_color, 1.2, Qt.PenStyle.CustomDashLine, Qt.PenCapStyle.RoundCap)
         span_pen.setDashPattern([segment * self._ui_scale() for segment in DRAW_REFERENCE_DASH_PATTERN])
 
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        spans = [overlay.horizontal_span, overlay.vertical_span]
-        if overlay.direct_horizontal_span is not None:
-            spans.append(overlay.direct_horizontal_span)
-        if overlay.direct_vertical_span is not None:
-            spans.append(overlay.direct_vertical_span)
-        for span in spans:
+        for span in (overlay.horizontal_span, overlay.vertical_span):
             raw_start = mapper.map_point(span.start)
             raw_end = mapper.map_point(span.end)
             painter.setPen(span_pen)
             painter.drawLine(raw_start, raw_end)
-            display_start, display_end = self._drawing_reference_display_points(
-                raw_start,
-                raw_end,
-                axis=span.axis,
-                viewport=viewport,
-            )
-            painter.setPen(leader_pen)
-            painter.drawLine(raw_start, display_start)
-            painter.drawLine(raw_end, display_end)
-            painter.setPen(span_pen)
-            painter.drawLine(display_start, display_end)
 
         active_point = mapper.map_point(overlay.active_point)
         marker_pen = QPen(QColor(196, 235, 244, 170), 1.0)
@@ -2318,65 +2299,51 @@ class _DrawingCanvasPaintingMixin:
         label_text_color = QColor(225, 241, 245, 190)
         label_background = QColor(10, 18, 24, 136)
 
-        spans = [overlay.horizontal_span, overlay.vertical_span]
-        if overlay.direct_horizontal_span is not None:
-            spans.append(overlay.direct_horizontal_span)
-        if overlay.direct_vertical_span is not None:
-            spans.append(overlay.direct_vertical_span)
-        for span in spans:
-            raw_start = mapper.map_point(span.start)
-            raw_end = mapper.map_point(span.end)
-            start_point, end_point = self._drawing_reference_display_points(
-                raw_start,
-                raw_end,
-                axis=span.axis,
-                viewport=viewport,
-            )
-            dx = end_point.x() - start_point.x()
-            dy = end_point.y() - start_point.y()
-            span_length_px = max(1.0, hypot(dx, dy))
-            offset_px = min(
-                DRAW_REFERENCE_LABEL_MAX_OFFSET_PX,
-                max(DRAW_REFERENCE_LABEL_MIN_OFFSET_PX, span_length_px * 0.28),
-            )
-            anchor_point = QPointF(
-                end_point.x() - (dx / span_length_px) * offset_px,
-                end_point.y() - (dy / span_length_px) * offset_px,
-            )
-            label_rect = QRectF(
-                0.0,
-                0.0,
-                metrics.horizontalAdvance(span.label_text) + 12.0,
-                metrics.height() + 6.0,
-            )
-            if span.axis == "x":
-                label_rect.moveCenter(
-                    QPointF(anchor_point.x(), anchor_point.y() - DRAW_REFERENCE_LABEL_VERTICAL_GAP_PX)
-                )
-                if label_rect.top() < viewport.top():
-                    label_rect.moveTop(anchor_point.y() + DRAW_REFERENCE_LABEL_HORIZONTAL_GAP_PX)
-            else:
-                label_rect.moveCenter(
-                    QPointF(
-                        anchor_point.x() + label_rect.width() / 2.0 + DRAW_REFERENCE_LABEL_HORIZONTAL_GAP_PX,
-                        anchor_point.y(),
-                    )
-                )
-            if label_rect.right() > viewport.right():
-                label_rect.moveRight(viewport.right())
-            if label_rect.left() < viewport.left():
-                label_rect.moveLeft(viewport.left())
-            if label_rect.top() < viewport.top():
-                label_rect.moveTop(viewport.top())
-            if label_rect.bottom() > viewport.bottom():
-                label_rect.moveBottom(viewport.bottom())
-            self._draw_badge(
-                painter,
-                label_rect,
-                span.label_text,
-                text_color=QColor(label_text_color),
-                font_point_size=self._scaled_font_point_size(7, minimum=9),
-            )
+        span = overlay.horizontal_span
+        raw_start = mapper.map_point(span.start)
+        raw_end = mapper.map_point(span.end)
+        start_point, end_point = self._drawing_reference_display_points(
+            raw_start,
+            raw_end,
+            axis=span.axis,
+            viewport=viewport,
+        )
+        dx = end_point.x() - start_point.x()
+        dy = end_point.y() - start_point.y()
+        span_length_px = max(1.0, hypot(dx, dy))
+        offset_px = min(
+            DRAW_REFERENCE_LABEL_MAX_OFFSET_PX,
+            max(DRAW_REFERENCE_LABEL_MIN_OFFSET_PX, span_length_px * 0.28),
+        )
+        anchor_point = QPointF(
+            end_point.x() - (dx / span_length_px) * offset_px,
+            end_point.y() - (dy / span_length_px) * offset_px,
+        )
+        label_rect = QRectF(
+            0.0,
+            0.0,
+            metrics.horizontalAdvance(span.label_text) + 12.0,
+            metrics.height() + 6.0,
+        )
+        label_rect.moveTop(anchor_point.y() + DRAW_REFERENCE_LABEL_VERTICAL_GAP_PX + 2.0)
+        label_rect.moveCenter(QPointF(anchor_point.x(), label_rect.center().y()))
+        if label_rect.bottom() > viewport.bottom():
+            label_rect.moveBottom(anchor_point.y() - DRAW_REFERENCE_LABEL_HORIZONTAL_GAP_PX)
+        if label_rect.right() > viewport.right():
+            label_rect.moveRight(viewport.right())
+        if label_rect.left() < viewport.left():
+            label_rect.moveLeft(viewport.left())
+        if label_rect.top() < viewport.top():
+            label_rect.moveTop(viewport.top())
+        if label_rect.bottom() > viewport.bottom():
+            label_rect.moveBottom(viewport.bottom())
+        self._draw_badge(
+            painter,
+            label_rect,
+            span.label_text,
+            text_color=QColor(label_text_color),
+            font_point_size=self._scaled_font_point_size(7, minimum=9),
+        )
 
         painter.restore()
 
@@ -2668,7 +2635,7 @@ class _DrawingCanvasPaintingMixin:
             self._draw_badge(
                 painter,
                 label_rect,
-                self._format_length(length_cm),
+                self._format_edge_length(length_cm),
                 text_color=QColor(200, 45, 45) if is_light else text_color,
                 background_color=QColor(255, 255, 255, 235),
                 border_color=QColor(200, 45, 45, 140),
@@ -3468,8 +3435,8 @@ class DrawingCanvas(
             return self._snap_origin_point(mapper)
         return self._origin_point()
 
-    def _format_reference_distance_label(self, axis: str, value_cm: float) -> str:
-        return f"{axis}: {int(round(value_cm))} cm"
+    def _format_reference_distance_label(self, x_value_cm: float, y_value_cm: float) -> str:
+        return f"X:{int(round(x_value_cm))} Y:{int(round(y_value_cm))}"
 
     def _active_drawing_reference_overlay(self) -> _DrawingReferenceOverlay | None:
         if self._mode not in {self.MODE_DRAW_OUTLINE, self.MODE_DRAW_CUTOUT}:
@@ -3485,41 +3452,26 @@ class DrawingCanvas(
         if active_point is None:
             return None
         origin = self._drawing_reference_origin(mapper)
-        direct_horizontal_span = None
-        direct_vertical_span = None
-        if self._mode == self.MODE_DRAW_CUTOUT and self.display_outline() is not None:
-            outline_bounds = self.display_outline().bounds()
-            direct_horizontal_span = _DrawingReferenceSpan(
-                axis="x",
-                start=Point2D(outline_bounds.min_x, active_point.y),
-                end=active_point,
-                label_text=self._format_reference_distance_label("X", active_point.x - outline_bounds.min_x),
-            )
-            direct_vertical_span = _DrawingReferenceSpan(
-                axis="y",
-                start=Point2D(active_point.x, outline_bounds.max_y),
-                end=active_point,
-                label_text=self._format_reference_distance_label("Y", outline_bounds.max_y - active_point.y),
-            )
+        x_value_cm = active_point.x - origin.x
+        y_value_cm = origin.y - active_point.y
+        combined_label = self._format_reference_distance_label(x_value_cm, y_value_cm)
         horizontal_span = _DrawingReferenceSpan(
             axis="x",
             start=Point2D(origin.x, active_point.y),
             end=active_point,
-            label_text=self._format_reference_distance_label("X", active_point.x - origin.x),
+            label_text=combined_label,
         )
         vertical_span = _DrawingReferenceSpan(
             axis="y",
             start=Point2D(active_point.x, origin.y),
             end=active_point,
-            label_text=self._format_reference_distance_label("Y", origin.y - active_point.y),
+            label_text=combined_label,
         )
         return _DrawingReferenceOverlay(
             origin=origin,
             active_point=active_point,
             horizontal_span=horizontal_span,
             vertical_span=vertical_span,
-            direct_horizontal_span=direct_horizontal_span,
-            direct_vertical_span=direct_vertical_span,
         )
 
     def _grid_step_cm(self) -> float:
@@ -3814,8 +3766,10 @@ class DrawingCanvas(
         return hypot(left.x() - right.x(), left.y() - right.y())
 
     def _format_length(self, length_cm: float) -> str:
-        if self._app_settings.show_decimal_cm:
-            return f"{length_cm:.1f}"
+        return f"{int(round(length_cm))}"
+
+    @staticmethod
+    def _format_edge_length(length_cm: float) -> str:
         return f"{int(round(length_cm))}"
 
     @staticmethod

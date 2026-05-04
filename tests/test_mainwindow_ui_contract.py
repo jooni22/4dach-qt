@@ -128,7 +128,7 @@ def test_settings_dialog_build_settings_keeps_fixed_defaults(qtbot):
     assert settings.shift_drag_behavior == "orthogonal_lock"
     assert settings.show_axis_overlay is True
     assert settings.show_xy_references_during_draw is True
-    assert settings.show_decimal_cm is True
+    assert settings.show_decimal_cm is False
     assert settings.show_angle_arc is True
     assert settings.close_on_rmb is True
     assert settings.ui_element_scale == pytest.approx(1.0)
@@ -574,7 +574,7 @@ def test_mainwindow_settings_dialog_updates_grid_size_on_project_state_and_canva
                 grid_minor_cm=5,
                 show_crosshair=False,
                 live_angle_mode="relative_to_prev",
-                show_decimal_cm=True,
+                show_decimal_cm=False,
                 show_angle_arc=True,
                 show_guide_lines=False,
                 close_on_rmb=True,
@@ -602,7 +602,7 @@ def test_mainwindow_settings_dialog_updates_grid_size_on_project_state_and_canva
     assert window.project_state.app_settings.show_crosshair is False
     assert window.project_state.app_settings.show_xy_references_during_draw is True
     assert window.project_state.app_settings.live_angle_mode == "relative_to_prev"
-    assert window.project_state.app_settings.show_decimal_cm is True
+    assert window.project_state.app_settings.show_decimal_cm is False
     assert window.project_state.app_settings.show_angle_arc is True
     assert window.project_state.app_settings.show_guide_lines is False
     assert window.project_state.app_settings.close_on_rmb is True
@@ -627,6 +627,18 @@ def test_mainwindow_settings_dialog_updates_grid_size_on_project_state_and_canva
     assert canvas._app_settings.show_xy_references_during_draw is True
     assert canvas.snap_to_grid_enabled() is False
     assert window._tb_ctrl.action_grid.isChecked() is False
+
+
+def test_mainwindow_uses_code_defaults_when_config_payload_is_empty(qtbot, monkeypatch):
+    monkeypatch.setattr("ui.main_window.load_config", lambda: {})
+
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    settings = window.project_state.app_settings
+    assert settings.partial_cutout_top_extra_cm == 15
+    assert settings.grid_size_cm == 10
+    assert settings.show_decimal_cm is False
 
 
 def test_mainwindow_toolbar_grid_toggle_updates_canvas_grid_visibility_only(qtbot):

@@ -100,9 +100,9 @@ class BlachyDialog(QDialog):
             material = self._materials[index]
             self.id_label.setText(material.id)
             self.nazwa_label.setText(material.display_name)
-            self.szerokosc_efektywna_label.setText(f"{material.effective_width_cm:g} cm")
-            self.min_dlugosc_label.setText(f"{material.min_sheet_length_cm:g} cm")
-            self.max_dlugosc_label.setText(f"{material.max_sheet_length_cm:g} cm")
+            self.szerokosc_efektywna_label.setText(f"{int(material.effective_width_cm)} cm")
+            self.min_dlugosc_label.setText(f"{int(material.min_sheet_length_cm)} cm")
+            self.max_dlugosc_label.setText(f"{int(material.max_sheet_length_cm)} cm")
         else:
             self._clear_details()
 

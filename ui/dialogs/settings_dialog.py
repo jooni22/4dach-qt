@@ -7,7 +7,6 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
-    QDoubleSpinBox,
     QFormLayout,
     QGroupBox,
     QLabel,
@@ -54,10 +53,9 @@ class SettingsDialog(QDialog):
         form = QFormLayout(grp_cutouts)
         form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
 
-        self._spin_top_extra = QDoubleSpinBox()
-        self._spin_top_extra.setRange(0.0, 200.0)
-        self._spin_top_extra.setSingleStep(0.5)
-        self._spin_top_extra.setDecimals(1)
+        self._spin_top_extra = QSpinBox()
+        self._spin_top_extra.setRange(0, 200)
+        self._spin_top_extra.setSingleStep(1)
         self._spin_top_extra.setSuffix(" cm")
         self._spin_top_extra.setToolTip(
             "Dodatkowy zapas materiału dodawany do górnego odcinka arkusza,\n"
@@ -74,10 +72,9 @@ class SettingsDialog(QDialog):
         grid_form = QFormLayout(grp_grid)
         grid_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
 
-        self._spin_grid_size = QDoubleSpinBox()
-        self._spin_grid_size.setRange(1.0, 1000.0)
-        self._spin_grid_size.setSingleStep(1.0)
-        self._spin_grid_size.setDecimals(1)
+        self._spin_grid_size = QSpinBox()
+        self._spin_grid_size.setRange(1, 1000)
+        self._spin_grid_size.setSingleStep(1)
         self._spin_grid_size.setSuffix(" cm")
         self._spin_grid_size.setToolTip(
             "Rozmiar oczka siatki używanego do rysowania siatki roboczej\n"

@@ -7,6 +7,7 @@ from html import escape
 from core.layout_engine import LayoutResult
 from core.models import SheetPlacement, cm2_to_m2
 from core.project_state import ProjectState
+from core.rounding import ceil_cm
 
 
 @dataclass(slots=True)
@@ -78,7 +79,7 @@ class ProjectReport:
     company_name: str
     company_address_lines: list[str]
     company_website: str
-    sheet_length_precision: int = 1
+    sheet_length_precision: int = 0
     plane_sections: list[RoofPlaneSection] = field(default_factory=list)
     aggregated_bom_rows: list[BomRow] = field(default_factory=list)
     totals: ProjectTotals = field(
@@ -94,14 +95,11 @@ class ProjectReport:
 
 
 def _sheet_length_precision(project_state: ProjectState | None) -> int:
-    settings = getattr(project_state, "app_settings", None)
-    if getattr(settings, "round_sheet_length_to_int", False):
-        return 0
-    return 1
+    return 0
 
 
 def _format_sheet_length_cm(value_cm: float, *, precision: int) -> str:
-    return f"{value_cm:.{precision}f}"
+    return str(ceil_cm(value_cm))
 
 
 def _format_area_m2(value_m2: float) -> str:
@@ -109,11 +107,15 @@ def _format_area_m2(value_m2: float) -> str:
 
 
 def _format_percent(value_percent: float) -> str:
-    return f"{value_percent:.1f}"
+    return f"{int(round(value_percent))}"
 
 
 def _format_cost(value_cost: float) -> str:
     return f"{value_cost:.2f}"
+
+
+def _sheet_length_key(value_cm: float) -> int:
+    return ceil_cm(value_cm)
 
 
 def build_report(
@@ -191,13 +193,13 @@ def build_project_report(project_state: ProjectState) -> ProjectReport:
         total_sheet_count += sum(row.quantity for row in section.sheet_rows)
 
         for row in section.sheet_rows:
-            key = (row.material_id, round(row.sheet_length_cm, 6))
+            key = (row.material_id, _sheet_length_key(row.sheet_length_cm))
             existing = aggregated_rows.get(key)
             if existing is None:
                 aggregated_rows[key] = BomRow(
                     material_id=row.material_id,
                     material_name=row.material_name,
-                    sheet_length_cm=row.sheet_length_cm,
+                    sheet_length_cm=float(_sheet_length_key(row.sheet_length_cm)),
                     quantity=row.quantity,
                     total_area_m2=row.total_area_m2,
                 )
@@ -365,7 +367,6 @@ def build_project_report_html(
             f"<tr><th>Łączny odpad [m2]</th><td>{_format_area_m2(report.totals.total_waste_area_m2)}</td></tr>",
             f"<tr><th>Łączny odpad [%]</th><td>{_format_percent(report.totals.total_waste_percent)}</td></tr>",
             f"<tr><th>Łączna liczba arkuszy</th><td>{report.totals.total_sheet_count}</td></tr>",
-            f"<tr><th>Łączny koszt [zł]</th><td>{_format_cost(report.totals.total_cost)}</td></tr>",
             "</table>",
             "</div>",
             "</header>",
@@ -425,7 +426,7 @@ def _group_sheet_rows(
     area_by_length_cm: dict[float, float] = {}
     quantity_by_length_cm: Counter[float] = Counter()
     for placement in placements:
-        length_key = round(placement.final_length_cm, 6)
+        length_key = _sheet_length_key(placement.final_length_cm)
         quantity_by_length_cm[length_key] += 1
         area_by_length_cm[length_key] = area_by_length_cm.get(length_key, 0.0) + placement.area_cm2
 
@@ -553,7 +554,6 @@ def _render_plane_section_html(
             f"<tr><th>Zużycie materiału [m2]</th><td>{_format_area_m2(section.material_usage_area_m2)}</td></tr>",
             f"<tr><th>Odpad [m2]</th><td>{_format_area_m2(section.waste_area_m2)}</td></tr>",
             f"<tr><th>Odpad [%]</th><td>{_format_percent(section.waste_percent)}</td></tr>",
-            f"<tr><th>Koszt [zł]</th><td>{_format_cost(section.total_cost)}</td></tr>",
             "</table>",
             "</section>",
             '<section class="plane-subsection">',

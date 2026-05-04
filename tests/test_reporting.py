@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from core.layout_engine import generate_layout
-from core.models import Material, Polygon2D, almost_equal
+from core.models import Material, Polygon2D, SheetPlacement, almost_equal
 from core.project_state import ProjectState
 from core.reporting import (
     build_project_report,
@@ -144,7 +144,7 @@ def test_build_report_html_uses_supplied_report_when_project_state_has_no_saved_
     assert "Powierzchnia efektywna [m2]</th><td>1.50" in html
     assert "Zużycie materiału [m2]</th><td>1.50" in html
     assert "Długość arkusza [cm]" in html
-    assert "<td>Material 1</td><td>MAT1</td><td>150.0</td><td>2</td><td>1.50</td>" in html
+    assert "<td>Material 1</td><td>MAT1</td><td>150</td><td>2</td><td>1.50</td>" in html
 
 
 def test_build_report_html_formats_summary_and_bom_values():
@@ -182,12 +182,12 @@ def test_build_report_html_formats_summary_and_bom_values():
     assert "Łączna powierzchnia efektywna [m2]</th><td>104.83" in html
     assert "Łączne zużycie materiału [m2]</th><td>109.61" in html
     assert "Łączny odpad [m2]</th><td>4.78" in html
-    assert "Łączny odpad [%]</th><td>4.4" in html
-    assert "Łączny koszt [zł]</th><td>1096.11" in html
-    assert "<td>Material 1</td><td>MAT1</td><td>8.7</td><td>2</td><td>34.16</td>" in html
+    assert "Łączny odpad [%]</th><td>4</td>" in html
+    assert "Łączny koszt [zł]" not in html
+    assert "<td>Material 1</td><td>MAT1</td><td>9</td><td>2</td><td>34.16</td>" in html
 
 
-def test_build_report_html_rounds_sheet_lengths_to_int_when_setting_enabled():
+def test_build_report_html_always_rounds_sheet_lengths_up_to_full_centimeters():
     material = Material(
         id="MAT1",
         nazwa="Material 1",
@@ -200,7 +200,6 @@ def test_build_report_html_rounds_sheet_lengths_to_int_when_setting_enabled():
         max_sheet_length_cm=500,
     )
     state = ProjectState(materials=[material])
-    setattr(state.app_settings, "round_sheet_length_to_int", True)
     plane = state.add_roof_plane(Polygon2D.rectangle(100, 150), selected_material_id=material.id)
     report = build_report(
         state,
@@ -213,6 +212,51 @@ def test_build_report_html_rounds_sheet_lengths_to_int_when_setting_enabled():
     html = build_report_html(state, report, material.id, plane.id)
 
     assert "<td>Material 1</td><td>MAT1</td><td>9</td><td>2</td><td>1.50</td>" in html
+
+
+def test_build_project_report_groups_sheet_lengths_using_ceil_cm():
+    material = Material(
+        id="MAT",
+        nazwa="Panel Dachowy",
+        type="trapezowa",
+        effective_width_cm=50,
+        module_length_cm=0,
+        bottom_margin_cm=0,
+        top_margin_cm=0,
+        min_sheet_length_cm=1,
+        max_sheet_length_cm=500,
+    )
+    state = ProjectState(materials=[material])
+    plane = state.add_roof_plane(Polygon2D.rectangle(120, 250), selected_material_id=material.id)
+    plane.manual_sheet_placements = [
+        SheetPlacement(
+            id="manual-1",
+            band_index=0,
+            x_left_cm=0.0,
+            x_right_cm=50.0,
+            y_top_cm=0.0,
+            y_bottom_cm=100.3,
+            raw_length_cm=100.3,
+            final_length_cm=100.3,
+            source="manual",
+        ),
+        SheetPlacement(
+            id="manual-2",
+            band_index=1,
+            x_left_cm=50.0,
+            x_right_cm=100.0,
+            y_top_cm=0.0,
+            y_bottom_cm=100.5,
+            raw_length_cm=100.5,
+            final_length_cm=100.5,
+            source="manual",
+        ),
+    ]
+
+    report = build_project_report(state)
+
+    assert [(row.sheet_length_cm, row.quantity) for row in report.plane_sections[0].sheet_rows] == [(101, 2)]
+    assert [(row.material_id, row.sheet_length_cm, row.quantity) for row in report.aggregated_bom_rows] == [("MAT", 101, 2)]
 
 
 def test_build_project_report_aggregates_multiple_roof_planes_and_groups_lengths():
@@ -278,7 +322,7 @@ def test_build_project_report_html_contains_all_plane_sections_and_global_summar
     assert "Blacha testowa" in html
     assert html.count("<svg") == 2
     assert "Łączna powierzchnia efektywna [m2]" in html
-    assert "Łączny koszt [zł]" in html
+    assert "Łączny koszt [zł]" not in html
 
 
 def test_build_project_report_html_escapes_user_entered_text():

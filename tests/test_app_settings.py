@@ -9,8 +9,8 @@ from core.app_settings import (
 
 def test_default_value():
     s = AppSettings()
-    assert s.partial_cutout_top_extra_cm == 15.0
-    assert s.grid_size_cm == 10.0
+    assert s.partial_cutout_top_extra_cm == 15
+    assert s.grid_size_cm == 10
     assert s.shift_drag_behavior == "orthogonal_lock"
     assert s.show_grid is True
     assert s.show_axis_overlay is True
@@ -19,7 +19,7 @@ def test_default_value():
     assert s.show_crosshair is True
     assert s.show_xy_references_during_draw is True
     assert s.live_angle_mode == "absolute"
-    assert s.show_decimal_cm is True
+    assert s.show_decimal_cm is False
     assert s.show_angle_arc is True
     assert s.show_guide_lines is True
     assert s.ui_element_scale == 1.0
@@ -41,7 +41,7 @@ def test_round_trip():
         grid_minor_cm=5,
         show_crosshair=False,
         live_angle_mode=LIVE_ANGLE_MODE_RELATIVE_TO_PREV,
-        show_decimal_cm=True,
+        show_decimal_cm=False,
         show_angle_arc=True,
         show_guide_lines=False,
         ui_element_scale=1.0,
@@ -62,8 +62,8 @@ def test_round_trip():
         undo_stack_depth=20,
     )
     s2 = AppSettings.from_dict(s.to_dict())
-    assert s2.partial_cutout_top_extra_cm == 22.5
-    assert s2.grid_size_cm == 25.0
+    assert s2.partial_cutout_top_extra_cm == 23
+    assert s2.grid_size_cm == 25
     assert s2.shift_drag_behavior == "orthogonal_lock"
     assert s2.show_grid is False
     assert s2.show_axis_overlay is True
@@ -72,7 +72,7 @@ def test_round_trip():
     assert s2.show_crosshair is False
     assert s2.show_xy_references_during_draw is True
     assert s2.live_angle_mode == LIVE_ANGLE_MODE_RELATIVE_TO_PREV
-    assert s2.show_decimal_cm is True
+    assert s2.show_decimal_cm is False
     assert s2.show_angle_arc is True
     assert s2.show_guide_lines is False
     assert s2.ui_element_scale == 1.0
@@ -95,7 +95,13 @@ def test_round_trip():
 
 def test_negative_clamped_to_zero():
     s = AppSettings.from_dict({"partial_cutout_top_extra_cm": -5.0})
-    assert s.partial_cutout_top_extra_cm == 0.0
+    assert s.partial_cutout_top_extra_cm == 0
+
+
+def test_cm_settings_are_rounded_up_to_full_centimeters():
+    s = AppSettings.from_dict({"partial_cutout_top_extra_cm": 22.5, "grid_size_cm": 25.1})
+    assert s.partial_cutout_top_extra_cm == 23
+    assert s.grid_size_cm == 26
 
 
 def test_invalid_type_uses_default():
@@ -110,8 +116,8 @@ def test_invalid_type_uses_default():
             "snap_radius_px": "abc",
         }
     )
-    assert s.partial_cutout_top_extra_cm == 15.0
-    assert s.grid_size_cm == 10.0
+    assert s.partial_cutout_top_extra_cm == 15
+    assert s.grid_size_cm == 10
     assert s.grid_major_cm == 100
     assert s.grid_minor_cm == 10
     assert s.snap_axis_threshold_deg == 3.0
@@ -121,8 +127,8 @@ def test_invalid_type_uses_default():
 
 def test_missing_key_uses_default():
     s = AppSettings.from_dict({})
-    assert s.partial_cutout_top_extra_cm == 15.0
-    assert s.grid_size_cm == 10.0
+    assert s.partial_cutout_top_extra_cm == 15
+    assert s.grid_size_cm == 10
     assert s.show_grid is True
     assert s.show_axis_overlay is True
     assert s.grid_major_cm == 100
@@ -130,7 +136,7 @@ def test_missing_key_uses_default():
     assert s.show_crosshair is True
     assert s.show_xy_references_during_draw is True
     assert s.live_angle_mode == "absolute"
-    assert s.show_decimal_cm is True
+    assert s.show_decimal_cm is False
     assert s.show_angle_arc is True
     assert s.show_guide_lines is True
     assert s.ui_element_scale == 1.0
@@ -144,7 +150,7 @@ def test_missing_key_uses_default():
 
 def test_nonpositive_grid_size_uses_default():
     s = AppSettings.from_dict({"grid_size_cm": 0, "grid_major_cm": 0, "grid_minor_cm": -1})
-    assert s.grid_size_cm == 10.0
+    assert s.grid_size_cm == 10
     assert s.grid_major_cm == 100
     assert s.grid_minor_cm == 10
 
