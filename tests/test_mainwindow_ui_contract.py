@@ -380,8 +380,8 @@ def test_mainwindow_wizard_updates_active_empty_plane_without_creating_new_tab(q
     plane = window.project_state.active_roof_plane()
     expected_outline = Polygon2D(
         [
-            Point2D(140, 0),
-            Point2D(400, 0),
+            Point2D(260, 0),
+            Point2D(660, 0),
             Point2D(400, 220),
             Point2D(0, 220),
         ]
@@ -1155,9 +1155,10 @@ def test_mainwindow_freehand_outline_keeps_global_canvas_position_instead_of_bbo
 def test_mainwindow_freehand_outline_uses_same_grid_snap_as_canvas(qtbot):
     window = MainWindow()
     qtbot.addWidget(window)
+    window.project_state = ProjectState(materials=window.project_state.materials)
+    window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
     window.project_state.app_settings.grid_size_cm = 25.0
     window.project_state.app_settings.snap_to_grid = True
-    window.project_state.delete_roof_plane(window.project_state.active_roof_plane().id)
     window._refresh_canvas_from_state()
     canvas = window._workspace.primary_canvas
     canvas.resize(640, 420)
@@ -1185,7 +1186,8 @@ def test_mainwindow_freehand_outline_uses_same_grid_snap_as_canvas(qtbot):
 def test_mainwindow_freehand_outline_does_not_resnap_with_different_origin(qtbot):
     window = MainWindow()
     qtbot.addWidget(window)
-    window.project_state.delete_roof_plane(window.project_state.active_roof_plane().id)
+    window.project_state = ProjectState(materials=window.project_state.materials)
+    window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
     window.project_state.app_settings.grid_size_cm = 25.0
     window.project_state.app_settings.snap_to_grid = True
     window._refresh_canvas_from_state()

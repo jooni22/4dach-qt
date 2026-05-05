@@ -4,11 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from PySide6.QtCore import QPointF, Qt
+from PySide6.QtCore import QEvent, QPointF, QRectF, QSize, Qt
 from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap, QPolygonF
 from PySide6.QtWidgets import (
     QButtonGroup,
-    QCheckBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -16,7 +15,9 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QScrollArea,
     QSizePolicy,
+    QSlider,
     QSpinBox,
     QStackedWidget,
     QToolButton,
@@ -25,12 +26,13 @@ from PySide6.QtWidgets import (
 )
 
 from core.geometry import build_add_polac_cutout, build_add_polac_outline, flip_polygon_in_bounds
-from core.models import Polygon2D
+from core.models import Point2D, Polygon2D
 from ui.dialogs.add_polac_catalog import (
     CUTOUT_CATALOG,
     CUTOUT_CATALOG_BY_KEY,
     SHAPE_CATALOG,
     SHAPE_CATALOG_BY_KEY,
+    default_shape_values,
     merge_add_polac_dialog_cache,
     seed_add_polac_dialog_cache,
 )
@@ -52,6 +54,8 @@ class _PolygonPreviewWidget(QWidget):
         self._outline: Polygon2D | None = None
         self._holes: list[Polygon2D] = []
         self._placeholder = "Podgląd"
+        self._dimension_labels: tuple[str, ...] = ()
+        self._highlight_dimension: str | None = None
         self.setMinimumHeight(180)
 
     def set_polygons(
@@ -60,10 +64,14 @@ class _PolygonPreviewWidget(QWidget):
         holes: list[Polygon2D] | None = None,
         *,
         placeholder: str = "Podgląd",
+        dimension_labels: tuple[str, ...] = (),
+        highlight_dimension: str | None = None,
     ) -> None:
         self._outline = outline
         self._holes = list(holes or [])
         self._placeholder = placeholder
+        self._dimension_labels = dimension_labels
+        self._highlight_dimension = highlight_dimension
         self.update()
 
     def paintEvent(self, _event) -> None:
@@ -87,7 +95,7 @@ class _PolygonPreviewWidget(QWidget):
         max_y = max(point.y for point in all_points)
         width = max(max_x - min_x, 1.0)
         height = max(max_y - min_y, 1.0)
-        margin = 20.0
+        margin = 32.0
         scale = min((self.width() - 2 * margin) / width, (self.height() - 2 * margin) / height)
         offset_x = (self.width() - width * scale) / 2.0
         offset_y = (self.height() - height * scale) / 2.0
@@ -117,23 +125,151 @@ class _PolygonPreviewWidget(QWidget):
         for hole in self._holes:
             painter.drawPolygon(_to_polygon(hole))
 
+        self._draw_dimensions(painter, min_x, min_y, max_x, max_y, scale, offset_x, offset_y)
 
-def _make_tile_icon(points: tuple[tuple[float, float], ...], *, size: int = 64) -> QIcon:
+    def _draw_dimensions(
+        self,
+        painter: QPainter,
+        min_x: float,
+        min_y: float,
+        max_x: float,
+        max_y: float,
+        scale: float,
+        offset_x: float,
+        offset_y: float,
+    ) -> None:
+        if not self._dimension_labels:
+            return
+
+        def to_point(x: float, y: float) -> QPointF:
+            return QPointF(offset_x + (x - min_x) * scale, offset_y + (y - min_y) * scale)
+
+        def draw_labelled_line(
+            label: str, start: QPointF, end: QPointF, text_offset: QPointF
+        ) -> None:
+            active = label == self._highlight_dimension
+            color = QColor("#1d4ed8" if active else "#64748b")
+            painter.setPen(QPen(color, 2 if active else 1))
+            painter.drawLine(start, end)
+            painter.setPen(color)
+            mid = QPointF((start.x() + end.x()) / 2.0, (start.y() + end.y()) / 2.0)
+            text_rect = QRectF(
+                mid.x() + text_offset.x() - 10, mid.y() + text_offset.y() - 9, 20, 18
+            )
+            painter.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, label)
+
+        top_y = offset_y - 10
+        bottom_y = offset_y + (max_y - min_y) * scale + 12
+        left_x = offset_x - 12
+        top_start = to_point(min_x, min_y)
+        top_end = to_point(max_x, min_y)
+        bottom_start = to_point(min_x, max_y)
+        bottom_end = to_point(max_x, max_y)
+        left_top = to_point(min_x, min_y)
+        left_bottom = to_point(min_x, max_y)
+
+        if "A" in self._dimension_labels:
+            draw_labelled_line(
+                "A",
+                QPointF(bottom_start.x(), bottom_y),
+                QPointF(bottom_end.x(), bottom_y),
+                QPointF(0, 12),
+            )
+        if "B" in self._dimension_labels:
+            draw_labelled_line(
+                "B",
+                QPointF(top_start.x(), top_y),
+                QPointF(top_end.x(), top_y),
+                QPointF(0, -10),
+            )
+        if "H" in self._dimension_labels:
+            draw_labelled_line(
+                "H",
+                QPointF(left_x, left_top.y()),
+                QPointF(left_x, left_bottom.y()),
+                QPointF(-12, 0),
+            )
+        if (
+            "E" in self._dimension_labels
+            and self._outline is not None
+            and len(self._outline.points) >= 4
+        ):
+            top_left = self._outline.points[0]
+            bottom_left = self._outline.points[-1]
+            start = to_point(min(top_left.x, bottom_left.x), min_y)
+            end = to_point(max(top_left.x, bottom_left.x), min_y)
+            if abs(end.x() - start.x()) > 1:
+                draw_labelled_line(
+                    "E",
+                    QPointF(start.x(), top_y - 16),
+                    QPointF(end.x(), top_y - 16),
+                    QPointF(0, -10),
+                )
+
+
+def _make_tile_icon(polygon: Polygon2D | None, *, size: int = 64) -> QIcon:
     pixmap = QPixmap(size, size)
     pixmap.fill(Qt.GlobalColor.transparent)
-    if not points:
+    if polygon is None or not polygon.points:
         return QIcon(pixmap)
 
+    bounds = polygon.bounds()
+    width = max(bounds.width, 1.0)
+    height = max(bounds.height, 1.0)
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     margin = 8.0
-    span = size - 2 * margin
+    scale = min((size - 2 * margin) / width, (size - 2 * margin) / height)
+    offset_x = (size - width * scale) / 2.0
+    offset_y = (size - height * scale) / 2.0
     painter.setPen(QPen(QColor("#475569"), 2))
     painter.setBrush(Qt.BrushStyle.NoBrush)
-    polygon = QPolygonF([QPointF(margin + x * span, margin + y * span) for x, y in points])
-    painter.drawPolygon(polygon)
+    points = QPolygonF(
+        [
+            QPointF(
+                offset_x + (point.x - bounds.min_x) * scale,
+                offset_y + (point.y - bounds.min_y) * scale,
+            )
+            for point in polygon.points
+        ]
+    )
+    painter.drawPolygon(points)
     painter.end()
     return QIcon(pixmap)
+
+
+def _shape_tile_icon(shape_key: str) -> QIcon:
+    return _make_tile_icon(
+        build_add_polac_outline(shape_key, default_shape_values(shape_key)),
+        size=78,
+    )
+
+
+def _cutout_tile_icon(points: tuple[tuple[float, float], ...]) -> QIcon:
+    if not points:
+        return _make_tile_icon(None)
+    return _make_tile_icon(Polygon2D([Point2D(x, y) for x, y in points]))
+
+
+def _tile_button_stylesheet() -> str:
+    return """
+        QToolButton {
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            background: #ffffff;
+            padding: 6px;
+            color: #0f172a;
+        }
+        QToolButton:checked {
+            border: 2px solid #2563eb;
+            background: #eff6ff;
+            color: #1d4ed8;
+        }
+    """
+
+
+def _dimension_label_for_field(field_label: str) -> str:
+    return field_label.split(" ", 1)[0]
 
 
 class AddPolacDialog(QDialog):
@@ -153,12 +289,14 @@ class AddPolacDialog(QDialog):
         self.cutout_buttons: dict[str, QToolButton] = {}
         self.shape_form_fields: dict[str, QSpinBox] = {}
         self.cutout_form_fields: dict[str, QSpinBox] = {}
+        self.cutout_position_sliders: dict[str, QSlider] = {}
+        self._focused_shape_field_key: str | None = None
 
         self._build_ui()
         self._rebuild_shape_form(self.selected_shape_key)
         self._rebuild_cutout_form(self.selected_cutout_kind)
-        self.flip_h_checkbox.setChecked(bool(self._cache["flip_h"]))
-        self.flip_v_checkbox.setChecked(bool(self._cache["flip_v"]))
+        self.flip_h_button.setChecked(bool(self._cache["flip_h"]))
+        self.flip_v_button.setChecked(bool(self._cache["flip_v"]))
         self._refresh_step_actions()
         self._refresh_shape_preview()
         self._refresh_cutout_preview()
@@ -176,8 +314,12 @@ class AddPolacDialog(QDialog):
         self.button_box = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Ok
         )
-        self.back_button = self.button_box.addButton("Wstecz", QDialogButtonBox.ButtonRole.ActionRole)
-        self.next_button = self.button_box.addButton("Dalej", QDialogButtonBox.ButtonRole.ActionRole)
+        self.back_button = self.button_box.addButton(
+            "Wstecz", QDialogButtonBox.ButtonRole.ActionRole
+        )
+        self.next_button = self.button_box.addButton(
+            "Dalej", QDialogButtonBox.ButtonRole.ActionRole
+        )
         self.button_box.rejected.connect(self.reject)
         self.button_box.accepted.connect(self.accept)
         self.back_button.clicked.connect(self._go_to_shape_step)
@@ -186,10 +328,14 @@ class AddPolacDialog(QDialog):
 
     def _build_shape_step(self) -> QWidget:
         page = QWidget(self)
-        layout = QVBoxLayout(page)
+        layout = QHBoxLayout(page)
 
-        gallery_group = QGroupBox("Krok 1. Wybierz kształt połaci", page)
-        gallery_layout = QGridLayout(gallery_group)
+        gallery_group = QGroupBox("Krok 1. Biblioteka połaci", page)
+        gallery_group.setMinimumWidth(300)
+        gallery_group_layout = QVBoxLayout(gallery_group)
+        gallery_widget = QWidget(gallery_group)
+        gallery_layout = QGridLayout(gallery_widget)
+        gallery_layout.setContentsMargins(10, 10, 18, 10)
         gallery_layout.setHorizontalSpacing(8)
         gallery_layout.setVerticalSpacing(8)
         group = QButtonGroup(self)
@@ -199,48 +345,70 @@ class AddPolacDialog(QDialog):
             button.setText(shape.label)
             button.setCheckable(True)
             button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
-            button.setIcon(_make_tile_icon(shape.preview_points))
-            button.setIconSize(button.icon().actualSize(button.sizeHint()))
-            button.setMinimumSize(110, 100)
-            button.clicked.connect(lambda checked, key=shape.key: self._on_shape_selected(key, checked))
+            button.setIcon(_shape_tile_icon(shape.key))
+            button.setIconSize(QSize(78, 78))
+            button.setMinimumSize(124, 112)
+            button.setStyleSheet(_tile_button_stylesheet())
+            button.clicked.connect(
+                lambda checked, key=shape.key: self._on_shape_selected(key, checked)
+            )
             if shape.key == self.selected_shape_key:
                 button.setChecked(True)
             group.addButton(button)
-            gallery_layout.addWidget(button, index // 3, index % 3)
+            gallery_layout.addWidget(button, index // 2, index % 2)
             self.shape_buttons[shape.key] = button
-        layout.addWidget(gallery_group)
+        gallery_layout.setRowStretch((len(SHAPE_CATALOG) + 1) // 2, 1)
+        self.shape_library_scroll = QScrollArea(gallery_group)
+        self.shape_library_scroll.setWidgetResizable(True)
+        self.shape_library_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self.shape_library_scroll.setWidget(gallery_widget)
+        gallery_group_layout.addWidget(self.shape_library_scroll)
+        layout.addWidget(gallery_group, 0)
 
-        content_layout = QHBoxLayout()
+        workspace_layout = QVBoxLayout()
         preview_column = QVBoxLayout()
         preview_column.addWidget(QLabel("Podgląd obrysu:", page))
         self.shape_preview = _PolygonPreviewWidget(page)
-        preview_column.addWidget(self.shape_preview)
+        self.shape_preview.setMinimumSize(320, 320)
+        preview_column.addWidget(self.shape_preview, 1)
+        workspace_layout.addLayout(preview_column, 1)
 
-        flip_row = QHBoxLayout()
-        self.flip_h_checkbox = QCheckBox("Flip H", page)
-        self.flip_v_checkbox = QCheckBox("Flip V", page)
-        self.flip_h_checkbox.toggled.connect(self._refresh_shape_preview)
-        self.flip_v_checkbox.toggled.connect(self._refresh_shape_preview)
-        flip_row.addWidget(self.flip_h_checkbox)
-        flip_row.addWidget(self.flip_v_checkbox)
-        flip_row.addStretch(1)
-        preview_column.addLayout(flip_row)
-        content_layout.addLayout(preview_column, 1)
-
-        self.shape_form_host = QWidget(page)
-        self.shape_form_host.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
+        self.shape_parameters_panel = QGroupBox("Parametry", page)
+        parameters_layout = QVBoxLayout(self.shape_parameters_panel)
+        self.shape_form_host = QWidget(self.shape_parameters_panel)
+        self.shape_form_host.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
         self.shape_form_host_layout = QVBoxLayout(self.shape_form_host)
         self.shape_form_host_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.addWidget(self.shape_form_host, 1)
-        layout.addLayout(content_layout)
+        parameters_layout.addWidget(self.shape_form_host, 1)
+
+        tools_group = QGroupBox("Narzędzia", self.shape_parameters_panel)
+        tools_layout = QHBoxLayout(tools_group)
+        self.flip_h_button = self._build_flip_button("Odbij poziomo", tools_group)
+        self.flip_v_button = self._build_flip_button("Odbij pionowo", tools_group)
+        self.flip_h_button.toggled.connect(self._refresh_shape_preview)
+        self.flip_v_button.toggled.connect(self._refresh_shape_preview)
+        tools_layout.addWidget(self.flip_h_button)
+        tools_layout.addWidget(self.flip_v_button)
+        tools_layout.addStretch(1)
+        parameters_layout.addWidget(tools_group, 0)
+        workspace_layout.addWidget(self.shape_parameters_panel, 0)
+        layout.addLayout(workspace_layout, 1)
         return page
 
     def _build_cutout_step(self) -> QWidget:
         page = QWidget(self)
-        layout = QVBoxLayout(page)
+        layout = QHBoxLayout(page)
 
-        gallery_group = QGroupBox("Krok 2. Wybierz wycinek", page)
-        gallery_layout = QGridLayout(gallery_group)
+        gallery_group = QGroupBox("Krok 2. Biblioteka wycinków", page)
+        gallery_group.setMinimumWidth(260)
+        gallery_group_layout = QVBoxLayout(gallery_group)
+        gallery_widget = QWidget(gallery_group)
+        gallery_layout = QGridLayout(gallery_widget)
+        gallery_layout.setContentsMargins(10, 10, 18, 10)
         gallery_layout.setHorizontalSpacing(8)
         gallery_layout.setVerticalSpacing(8)
         group = QButtonGroup(self)
@@ -250,31 +418,72 @@ class AddPolacDialog(QDialog):
             button.setText(cutout.label)
             button.setCheckable(True)
             button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
-            button.setIcon(_make_tile_icon(cutout.preview_points))
+            button.setIcon(_cutout_tile_icon(cutout.preview_points))
             button.setIconSize(button.icon().actualSize(button.sizeHint()))
             button.setMinimumSize(110, 100)
-            button.clicked.connect(lambda checked, key=cutout.key: self._on_cutout_selected(key, checked))
+            button.setStyleSheet(_tile_button_stylesheet())
+            button.clicked.connect(
+                lambda checked, key=cutout.key: self._on_cutout_selected(key, checked)
+            )
             if cutout.key == self.selected_cutout_kind:
                 button.setChecked(True)
             group.addButton(button)
             gallery_layout.addWidget(button, index // 2, index % 2)
             self.cutout_buttons[cutout.key] = button
-        layout.addWidget(gallery_group)
+        gallery_layout.setRowStretch((len(CUTOUT_CATALOG) + 1) // 2, 1)
+        self.cutout_library_scroll = QScrollArea(gallery_group)
+        self.cutout_library_scroll.setWidgetResizable(True)
+        self.cutout_library_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self.cutout_library_scroll.setWidget(gallery_widget)
+        gallery_group_layout.addWidget(self.cutout_library_scroll)
+        layout.addWidget(gallery_group, 0)
 
-        content_layout = QHBoxLayout()
-        self.cutout_form_host = QWidget(page)
-        self.cutout_form_host.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
-        self.cutout_form_host_layout = QVBoxLayout(self.cutout_form_host)
-        self.cutout_form_host_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.addWidget(self.cutout_form_host, 1)
-
+        workspace_layout = QVBoxLayout()
         preview_column = QVBoxLayout()
         preview_column.addWidget(QLabel("Podgląd połaci z wycinkiem:", page))
         self.cutout_preview = _PolygonPreviewWidget(page)
-        preview_column.addWidget(self.cutout_preview)
-        content_layout.addLayout(preview_column, 1)
-        layout.addLayout(content_layout)
+        self.cutout_preview.setMinimumSize(340, 320)
+        preview_column.addWidget(self.cutout_preview, 1)
+        workspace_layout.addLayout(preview_column, 1)
+
+        self.cutout_parameters_panel = QGroupBox("Parametry", page)
+        parameters_layout = QVBoxLayout(self.cutout_parameters_panel)
+        self.cutout_form_host = QWidget(self.cutout_parameters_panel)
+        self.cutout_form_host.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
+        self.cutout_form_host_layout = QVBoxLayout(self.cutout_form_host)
+        self.cutout_form_host_layout.setContentsMargins(0, 0, 0, 0)
+        parameters_layout.addWidget(self.cutout_form_host, 1)
+        workspace_layout.addWidget(self.cutout_parameters_panel, 0)
+        layout.addLayout(workspace_layout, 1)
         return page
+
+    def _build_flip_button(self, text: str, parent: QWidget) -> QToolButton:
+        button = QToolButton(parent)
+        button.setText(text)
+        button.setCheckable(True)
+        button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        button.setMinimumHeight(32)
+        button.setStyleSheet(
+            """
+            QToolButton {
+                border: 1px solid #cbd5e1;
+                border-radius: 6px;
+                background: #ffffff;
+                padding: 6px 10px;
+                color: #0f172a;
+            }
+            QToolButton:checked {
+                border-color: #2563eb;
+                background: #dbeafe;
+                color: #1d4ed8;
+            }
+            """
+        )
+        return button
 
     def _on_shape_selected(self, shape_key: str, checked: bool) -> None:
         if not checked or shape_key == self.selected_shape_key:
@@ -294,6 +503,7 @@ class AddPolacDialog(QDialog):
 
     def _rebuild_shape_form(self, shape_key: str) -> None:
         self.shape_form_fields = {}
+        self._focused_shape_field_key = None
         self._clear_layout(self.shape_form_host_layout)
 
         shape = SHAPE_CATALOG_BY_KEY[shape_key]
@@ -310,11 +520,14 @@ class AddPolacDialog(QDialog):
 
     def _rebuild_cutout_form(self, cutout_key: str) -> None:
         self.cutout_form_fields = {}
+        self.cutout_position_sliders = {}
         self._clear_layout(self.cutout_form_host_layout)
 
         cutout = CUTOUT_CATALOG_BY_KEY[cutout_key]
         if cutout.key == "none":
-            self.cutout_form_host_layout.addWidget(QLabel("Bez wycinka - brak dodatkowych parametrów.", self.cutout_form_host))
+            self.cutout_form_host_layout.addWidget(
+                QLabel("Bez wycinka - brak dodatkowych parametrów.", self.cutout_form_host)
+            )
             self.cutout_form_host_layout.addStretch(1)
             return
 
@@ -326,6 +539,11 @@ class AddPolacDialog(QDialog):
             spin.valueChanged.connect(self._on_cutout_value_changed)
             self.cutout_form_fields[field.key] = spin
             form_layout.addRow(field.label, spin)
+        for key in ("X", "Y"):
+            slider = self._build_position_slider(form_group, values.get(key, 50))
+            slider.valueChanged.connect(self._on_cutout_value_changed)
+            self.cutout_position_sliders[key] = slider
+            form_layout.addRow(f"{key}:", slider)
         self.cutout_form_host_layout.addWidget(form_group)
         self.cutout_form_host_layout.addStretch(1)
 
@@ -334,7 +552,28 @@ class AddPolacDialog(QDialog):
         spin.setRange(1, max_value)
         spin.setSuffix(" cm")
         spin.setValue(value)
+        spin.installEventFilter(self)
         return spin
+
+    def _build_position_slider(self, parent: QWidget, value: int) -> QSlider:
+        slider = QSlider(Qt.Orientation.Horizontal, parent)
+        slider.setRange(0, 100)
+        slider.setSingleStep(1)
+        slider.setPageStep(5)
+        slider.setValue(max(0, min(100, int(value))))
+        return slider
+
+    def eventFilter(self, watched, event) -> bool:
+        if event.type() in (QEvent.Type.FocusIn, QEvent.Type.FocusOut):
+            shape_field_key = self._shape_field_key_for_widget(watched)
+            if shape_field_key is not None:
+                self._focused_shape_field_key = (
+                    shape_field_key if event.type() == QEvent.Type.FocusIn else None
+                )
+                self._refresh_shape_preview()
+            elif watched in self.cutout_form_fields.values():
+                self._refresh_cutout_preview()
+        return super().eventFilter(watched, event)
 
     def _on_shape_value_changed(self) -> None:
         self._refresh_shape_preview()
@@ -353,23 +592,21 @@ class AddPolacDialog(QDialog):
         self._cutout_values[self.selected_cutout_kind] = self._current_cutout_values()
 
     def _current_shape_values(self) -> dict:
-        return {
-            key: field.value()
-            for key, field in self.shape_form_fields.items()
-        }
+        return {key: field.value() for key, field in self.shape_form_fields.items()}
 
     def _current_cutout_values(self) -> dict:
-        return {
-            key: field.value()
-            for key, field in self.cutout_form_fields.items()
-        }
+        values = {key: field.value() for key, field in self.cutout_form_fields.items()}
+        values.update(
+            {key: slider.value() for key, slider in self.cutout_position_sliders.items()}
+        )
+        return values
 
     def _current_outline(self) -> Polygon2D:
         outline = build_add_polac_outline(self.selected_shape_key, self._current_shape_values())
         return flip_polygon_in_bounds(
             outline,
-            horizontal=self.flip_h_checkbox.isChecked(),
-            vertical=self.flip_v_checkbox.isChecked(),
+            horizontal=self.flip_h_button.isChecked(),
+            vertical=self.flip_v_button.isChecked(),
         )
 
     def _current_cutout(self) -> Polygon2D | None:
@@ -383,14 +620,47 @@ class AddPolacDialog(QDialog):
         )
 
     def _refresh_shape_preview(self) -> None:
-        self.shape_preview.set_polygons(self._current_outline(), placeholder="Uzupełnij parametry połaci")
+        self.shape_preview.set_polygons(
+            self._current_outline(),
+            placeholder="Uzupełnij parametry połaci",
+            dimension_labels=self._shape_dimension_labels(),
+            highlight_dimension=self._focused_shape_dimension(),
+        )
         self._refresh_cutout_preview()
 
     def _refresh_cutout_preview(self) -> None:
         outline = self._current_outline()
         cutout = self._current_cutout()
         holes = [] if cutout is None else [cutout]
-        self.cutout_preview.set_polygons(outline, holes, placeholder="Najpierw zdefiniuj obrys połaci")
+        self.cutout_preview.set_polygons(
+            outline,
+            holes,
+            placeholder="Najpierw zdefiniuj obrys połaci",
+            dimension_labels=self._shape_dimension_labels(),
+            highlight_dimension=self._focused_shape_dimension(),
+        )
+
+    def _shape_dimension_labels(self) -> tuple[str, ...]:
+        labels: list[str] = []
+        for field in SHAPE_CATALOG_BY_KEY[self.selected_shape_key].fields:
+            label = _dimension_label_for_field(field.label)
+            if label not in labels:
+                labels.append(label)
+        return tuple(labels)
+
+    def _focused_shape_dimension(self) -> str | None:
+        if self._focused_shape_field_key is None:
+            return None
+        for field in SHAPE_CATALOG_BY_KEY[self.selected_shape_key].fields:
+            if field.key == self._focused_shape_field_key:
+                return _dimension_label_for_field(field.label)
+        return None
+
+    def _shape_field_key_for_widget(self, widget) -> str | None:
+        for key, field in self.shape_form_fields.items():
+            if field is widget:
+                return key
+        return None
 
     def _go_to_shape_step(self) -> None:
         self.step_stack.setCurrentWidget(self.shape_step)
@@ -415,8 +685,8 @@ class AddPolacDialog(QDialog):
             {
                 "last_shape": self.selected_shape_key,
                 "last_cutout": self.selected_cutout_kind,
-                "flip_h": self.flip_h_checkbox.isChecked(),
-                "flip_v": self.flip_v_checkbox.isChecked(),
+                "flip_h": self.flip_h_button.isChecked(),
+                "flip_v": self.flip_v_button.isChecked(),
                 "shapes": self._shape_values,
                 "cutouts": self._cutout_values,
             }
@@ -436,8 +706,8 @@ class AddPolacDialog(QDialog):
             shape_values=dict(self._shape_values[self.selected_shape_key]),
             cutout_kind=self.selected_cutout_kind,
             cutout_values=cutout_values,
-            flip_h=self.flip_h_checkbox.isChecked(),
-            flip_v=self.flip_v_checkbox.isChecked(),
+            flip_h=self.flip_h_button.isChecked(),
+            flip_v=self.flip_v_button.isChecked(),
         )
 
     def _clear_layout(self, layout: QVBoxLayout) -> None:

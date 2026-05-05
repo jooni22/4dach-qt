@@ -15,11 +15,13 @@ calculations in layout_engine.py without any visible crash or warning.
 DO NOT delete or weaken these tests.  If they fail after a refactor it means
 the containment check was removed from validate_hole_polygon() — restore it.
 """
+
 from __future__ import annotations
 
 import pytest
 
 from core.geometry import (
+    build_add_polac_outline,
     canonicalize_polygon,
     point_on_polygon_boundary,
     polygon_is_inside_polygon,
@@ -29,7 +31,6 @@ from core.geometry import (
     validate_polygon,
 )
 from core.models import Point2D, Polygon2D
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -241,3 +242,57 @@ class TestCanonicalizePolygon:
         ])
         with pytest.raises(ValueError):
             canonicalize_polygon(poly)
+
+
+class TestAddPolacWizardOutlines:
+    def test_polac_4_is_right_leaning_parallelogram(self) -> None:
+        polygon = build_add_polac_outline("trapez_prl", {"A": 800, "B": 300, "C": 120})
+
+        assert polygon.points == [
+            Point2D(120, 0),
+            Point2D(920, 0),
+            Point2D(800, 300),
+            Point2D(0, 300),
+        ]
+
+    def test_polac_5_is_left_leaning_parallelogram(self) -> None:
+        polygon = build_add_polac_outline("trapez_l", {"A": 800, "B": 300, "C": 120})
+
+        assert polygon.points == [
+            Point2D(0, 0),
+            Point2D(800, 0),
+            Point2D(920, 300),
+            Point2D(120, 300),
+        ]
+
+    def test_polac_6_has_vertical_right_side(self) -> None:
+        polygon = build_add_polac_outline("trapez6", {"A": 800, "B": 300, "C": 500})
+
+        assert polygon.points == [
+            Point2D(300, 0),
+            Point2D(800, 0),
+            Point2D(800, 300),
+            Point2D(0, 300),
+        ]
+
+    def test_polac_7_has_vertical_left_side(self) -> None:
+        polygon = build_add_polac_outline("trapez7", {"A": 800, "B": 300, "C": 500})
+
+        assert polygon.points == [
+            Point2D(0, 0),
+            Point2D(500, 0),
+            Point2D(800, 300),
+            Point2D(0, 300),
+        ]
+
+    def test_polac_9_has_six_points_with_clipped_top_corners(self) -> None:
+        polygon = build_add_polac_outline("pieciokat2", {"A": 800, "B": 300})
+
+        assert polygon.points == [
+            Point2D(160, 0),
+            Point2D(640, 0),
+            Point2D(800, 120),
+            Point2D(800, 300),
+            Point2D(0, 300),
+            Point2D(0, 120),
+        ]

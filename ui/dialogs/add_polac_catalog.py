@@ -16,7 +16,6 @@ class FieldSpec:
 class ShapeSpec:
     key: str
     label: str
-    preview_points: tuple[tuple[float, float], ...]
     fields: tuple[FieldSpec, ...]
 
 
@@ -31,77 +30,68 @@ class CutoutSpec:
 SHAPE_CATALOG: tuple[ShapeSpec, ...] = (
     ShapeSpec(
         key="prostokat",
-        label="Połać 1",
-        preview_points=((0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)),
-        fields=(FieldSpec("A", "A - szerokość:", 800), FieldSpec("B", "B - wysokość:", 300)),
+        label="Prostokąt",
+        fields=(FieldSpec("A", "A - szerokość:", 800), FieldSpec("B", "H - wysokość:", 300)),
     ),
     ShapeSpec(
         key="trojkat",
-        label="Połać 2",
-        preview_points=((0.5, 0.0), (1.0, 1.0), (0.0, 1.0)),
-        fields=(FieldSpec("A", "A - podstawa:", 800), FieldSpec("B", "B - wysokość:", 300)),
+        label="Trójkąt",
+        fields=(FieldSpec("A", "A - podstawa:", 800), FieldSpec("B", "H - wysokość:", 300)),
     ),
     ShapeSpec(
         key="trapez_row",
-        label="Połać 3",
-        preview_points=((0.2, 0.0), (0.8, 0.0), (1.0, 1.0), (0.0, 1.0)),
+        label="Trapez\nrównoram.",
         fields=(
             FieldSpec("A", "A - podstawa dolna:", 800),
-            FieldSpec("C", "C - podstawa górna:", 500),
-            FieldSpec("B", "B - wysokość:", 300),
+            FieldSpec("C", "B - podstawa górna:", 500),
+            FieldSpec("B", "H - wysokość:", 300),
         ),
     ),
     ShapeSpec(
         key="trapez_prl",
-        label="Połać 4",
-        preview_points=((0.25, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)),
+        label="Równoległobok\nprawy",
         fields=(
-            FieldSpec("A", "A - podstawa dolna:", 800),
-            FieldSpec("C", "C - podstawa górna:", 500),
-            FieldSpec("B", "B - wysokość:", 300),
+            FieldSpec("A", "A - podstawa:", 800),
+            FieldSpec("C", "E - przesunięcie:", 500),
+            FieldSpec("B", "H - wysokość:", 300),
         ),
     ),
     ShapeSpec(
         key="trapez_l",
-        label="Połać 5",
-        preview_points=((0.0, 0.0), (0.75, 0.0), (1.0, 1.0), (0.0, 1.0)),
+        label="Równoległobok\nlewy",
         fields=(
-            FieldSpec("A", "A - podstawa dolna:", 800),
-            FieldSpec("C", "C - podstawa górna:", 500),
-            FieldSpec("B", "B - wysokość:", 300),
+            FieldSpec("A", "A - podstawa:", 800),
+            FieldSpec("C", "E - przesunięcie:", 500),
+            FieldSpec("B", "H - wysokość:", 300),
         ),
     ),
     ShapeSpec(
         key="trapez6",
-        label="Połać 6",
-        preview_points=((0.0, 0.0), (0.75, 0.0), (1.0, 1.0), (0.2, 1.0)),
+        label="Trapez\nprawy",
         fields=(
             FieldSpec("A", "A - podstawa dolna:", 800),
-            FieldSpec("C", "C - podstawa górna:", 500),
-            FieldSpec("B", "B - wysokość:", 300),
+            FieldSpec("C", "B - podstawa górna:", 500),
+            FieldSpec("B", "H - wysokość:", 300),
         ),
     ),
     ShapeSpec(
         key="trapez7",
-        label="Połać 7",
-        preview_points=((0.2, 0.0), (0.8, 0.0), (1.0, 1.0), (0.0, 1.0)),
+        label="Trapez\nlewy",
         fields=(
             FieldSpec("A", "A - podstawa dolna:", 800),
-            FieldSpec("C", "C - podstawa górna:", 500),
-            FieldSpec("B", "B - wysokość:", 300),
+            FieldSpec("C", "B - podstawa górna:", 500),
+            FieldSpec("B", "H - wysokość:", 300),
         ),
     ),
     ShapeSpec(
         key="pieciokat",
-        label="Połać 8",
-        preview_points=((0.5, 0.0), (1.0, 0.4), (1.0, 1.0), (0.0, 1.0), (0.0, 0.4)),
-        fields=(FieldSpec("A", "A - szerokość:", 800), FieldSpec("B", "B - wysokość:", 300)),
+        label="Pięciokąt",
+        fields=(FieldSpec("A", "A - szerokość:", 800), FieldSpec("B", "H - wysokość:", 300)),
     ),
     ShapeSpec(
         key="pieciokat2",
-        label="Połać 9",
-        preview_points=((0.5, 0.0), (1.0, 0.4), (0.85, 1.0), (0.15, 1.0), (0.0, 0.4)),
-        fields=(FieldSpec("A", "A - szerokość:", 800), FieldSpec("B", "B - wysokość:", 300)),
+        label="Sześciokąt",
+        fields=(FieldSpec("A", "A - szerokość:", 800), FieldSpec("B", "H - wysokość:", 300)),
     ),
 )
 
@@ -139,7 +129,10 @@ def default_shape_values(shape_key: str) -> dict[str, int]:
 
 
 def default_cutout_values(cutout_key: str) -> dict[str, int]:
-    return {field.key: field.default for field in CUTOUT_CATALOG_BY_KEY[cutout_key].fields}
+    values = {field.key: field.default for field in CUTOUT_CATALOG_BY_KEY[cutout_key].fields}
+    if cutout_key != "none":
+        values.update({"X": 50, "Y": 50})
+    return values
 
 
 def default_add_polac_dialog_cache() -> dict[str, Any]:
@@ -149,7 +142,11 @@ def default_add_polac_dialog_cache() -> dict[str, Any]:
         "flip_h": False,
         "flip_v": False,
         "shapes": {shape_key: default_shape_values(shape_key) for shape_key in SHAPE_ORDER},
-        "cutouts": {cutout_key: default_cutout_values(cutout_key) for cutout_key in CUTOUT_ORDER if cutout_key != "none"},
+        "cutouts": {
+            cutout_key: default_cutout_values(cutout_key)
+            for cutout_key in CUTOUT_ORDER
+            if cutout_key != "none"
+        },
     }
 
 

@@ -96,3 +96,4 @@ __pycache__/
 docs/tmp
 reports/cleanup-preview/20260429T061052Z/*
 projekty
+config.json

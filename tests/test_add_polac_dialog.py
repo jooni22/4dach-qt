@@ -8,7 +8,9 @@ pytest.importorskip("PySide6")
 pytest.importorskip("pytestqt")
 
 from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QScrollArea, QSlider, QToolButton
 
+from ui.dialogs.add_polac_catalog import SHAPE_CATALOG, SHAPE_ORDER
 from ui.dialogs.add_polac_dialog import AddPolacDialog
 
 
@@ -65,7 +67,7 @@ def test_add_polac_dialog_exposes_full_catalog_and_legacy_seed(qtbot):
     dialog = AddPolacDialog(_legacy_shape_config())
     qtbot.addWidget(dialog)
 
-    assert set(dialog.shape_buttons) == {
+    assert tuple(dialog.shape_buttons) == (
         "prostokat",
         "trojkat",
         "trapez_row",
@@ -75,7 +77,19 @@ def test_add_polac_dialog_exposes_full_catalog_and_legacy_seed(qtbot):
         "trapez7",
         "pieciokat",
         "pieciokat2",
-    }
+    )
+    assert [button.text() for button in dialog.shape_buttons.values()] == [
+        "Prostokąt",
+        "Trójkąt",
+        "Trapez\nrównoram.",
+        "Równoległobok\nprawy",
+        "Równoległobok\nlewy",
+        "Trapez\nprawy",
+        "Trapez\nlewy",
+        "Pięciokąt",
+        "Sześciokąt",
+    ]
+    assert "Połać 10" not in {button.text() for button in dialog.shape_buttons.values()}
     assert dialog.selected_shape_key == "prostokat"
     assert set(dialog.shape_form_fields) == {"A", "B"}
     assert dialog.shape_form_fields["A"].value() == 410
@@ -94,6 +108,64 @@ def test_add_polac_dialog_exposes_full_catalog_and_legacy_seed(qtbot):
     qtbot.mouseClick(dialog.next_button, Qt.MouseButton.LeftButton)
     assert dialog.step_stack.currentWidget() is dialog.cutout_step
     assert set(dialog.cutout_buttons) == {"none", "lukarna1", "lukarna2", "lukarna3"}
+
+
+def test_add_polac_catalog_uses_user_dimension_labels_without_extra_shapes():
+    assert SHAPE_ORDER == (
+        "prostokat",
+        "trojkat",
+        "trapez_row",
+        "trapez_prl",
+        "trapez_l",
+        "trapez6",
+        "trapez7",
+        "pieciokat",
+        "pieciokat2",
+    )
+    assert [shape.label for shape in SHAPE_CATALOG] == [
+        "Prostokąt",
+        "Trójkąt",
+        "Trapez\nrównoram.",
+        "Równoległobok\nprawy",
+        "Równoległobok\nlewy",
+        "Trapez\nprawy",
+        "Trapez\nlewy",
+        "Pięciokąt",
+        "Sześciokąt",
+    ]
+
+    labels_by_key = {
+        shape.key: tuple(field.label for field in shape.fields) for shape in SHAPE_CATALOG
+    }
+    assert labels_by_key["prostokat"] == ("A - szerokość:", "H - wysokość:")
+    assert labels_by_key["trojkat"] == ("A - podstawa:", "H - wysokość:")
+    assert labels_by_key["trapez_row"] == (
+        "A - podstawa dolna:",
+        "B - podstawa górna:",
+        "H - wysokość:",
+    )
+    assert labels_by_key["trapez_prl"] == (
+        "A - podstawa:",
+        "E - przesunięcie:",
+        "H - wysokość:",
+    )
+    assert labels_by_key["trapez_l"] == (
+        "A - podstawa:",
+        "E - przesunięcie:",
+        "H - wysokość:",
+    )
+    assert labels_by_key["trapez6"] == (
+        "A - podstawa dolna:",
+        "B - podstawa górna:",
+        "H - wysokość:",
+    )
+    assert labels_by_key["trapez7"] == (
+        "A - podstawa dolna:",
+        "B - podstawa górna:",
+        "H - wysokość:",
+    )
+    assert labels_by_key["pieciokat"] == ("A - szerokość:", "H - wysokość:")
+    assert labels_by_key["pieciokat2"] == ("A - szerokość:", "H - wysokość:")
 
 
 def test_add_polac_dialog_rebuilds_representative_shape_and_cutout_forms(qtbot):
@@ -126,13 +198,58 @@ def test_add_polac_dialog_rebuilds_representative_shape_and_cutout_forms(qtbot):
     assert dialog.cutout_form_fields["H"].value() == 60
 
 
+def test_add_polac_dialog_uses_left_scroll_library_and_right_parameters(qtbot):
+    dialog = AddPolacDialog(_legacy_shape_config())
+    qtbot.addWidget(dialog)
+
+    assert isinstance(dialog.shape_library_scroll, QScrollArea)
+    assert dialog.shape_library_scroll.widgetResizable() is True
+    assert dialog.shape_form_host.parent() is dialog.shape_parameters_panel
+
+    qtbot.mouseClick(dialog.next_button, Qt.MouseButton.LeftButton)
+
+    assert isinstance(dialog.cutout_library_scroll, QScrollArea)
+    assert dialog.cutout_library_scroll.widgetResizable() is True
+    assert dialog.cutout_form_host.parent() is dialog.cutout_parameters_panel
+
+
+def test_add_polac_dialog_cutout_position_sliders_update_preview_geometry(qtbot):
+    dialog = AddPolacDialog(_legacy_shape_config())
+    qtbot.addWidget(dialog)
+
+    qtbot.mouseClick(dialog.next_button, Qt.MouseButton.LeftButton)
+    qtbot.mouseClick(dialog.cutout_buttons["lukarna1"], Qt.MouseButton.LeftButton)
+
+    assert set(dialog.cutout_form_fields) == {"A", "H1"}
+    assert set(dialog.cutout_position_sliders) == {"X", "Y"}
+    assert isinstance(dialog.cutout_position_sliders["X"], QSlider)
+    assert isinstance(dialog.cutout_position_sliders["Y"], QSlider)
+    assert dialog.cutout_position_sliders["X"].value() == 50
+    assert dialog.cutout_position_sliders["Y"].value() == 50
+
+    dialog.cutout_position_sliders["X"].setValue(25)
+    dialog.cutout_position_sliders["Y"].setValue(75)
+
+    cutout = dialog._current_cutout()
+
+    assert cutout is not None
+    assert cutout.points[0].x == pytest.approx(82.5)
+    assert cutout.points[0].y == pytest.approx(112.5)
+
+
 def test_add_polac_dialog_hydrates_from_add_polac_dialog_cache(qtbot):
     dialog = AddPolacDialog(_dialog_cache_config())
     qtbot.addWidget(dialog)
 
     assert dialog.selected_shape_key == "trapez_prl"
-    assert dialog.flip_h_checkbox.isChecked() is True
-    assert dialog.flip_v_checkbox.isChecked() is False
+    assert isinstance(dialog.flip_h_button, QToolButton)
+    assert isinstance(dialog.flip_v_button, QToolButton)
+    assert dialog.flip_h_button.isCheckable() is True
+    assert dialog.flip_v_button.isCheckable() is True
+    assert dialog.flip_h_button.text() == "Odbij poziomo"
+    assert dialog.flip_v_button.text() == "Odbij pionowo"
+    assert dialog.flip_h_button.isChecked() is True
+    assert dialog.flip_v_button.isChecked() is False
     assert dialog.shape_form_fields["A"].value() == 640
     assert dialog.shape_form_fields["B"].value() == 280
     assert dialog.shape_form_fields["C"].value() == 260
@@ -153,8 +270,8 @@ def test_add_polac_dialog_accept_updates_cache_and_result(qtbot):
     qtbot.mouseClick(dialog.shape_buttons["pieciokat2"], Qt.MouseButton.LeftButton)
     dialog.shape_form_fields["A"].setValue(640)
     dialog.shape_form_fields["B"].setValue(280)
-    dialog.flip_h_checkbox.setChecked(True)
-    dialog.flip_v_checkbox.setChecked(True)
+    dialog.flip_h_button.setChecked(True)
+    dialog.flip_v_button.setChecked(True)
 
     qtbot.mouseClick(dialog.next_button, Qt.MouseButton.LeftButton)
     qtbot.mouseClick(dialog.cutout_buttons["lukarna3"], Qt.MouseButton.LeftButton)
@@ -169,7 +286,7 @@ def test_add_polac_dialog_accept_updates_cache_and_result(qtbot):
     assert result.shape_key == "pieciokat2"
     assert result.shape_values == {"A": 640, "B": 280}
     assert result.cutout_kind == "lukarna3"
-    assert result.cutout_values == {"A": 140, "H1": 50, "H": 90}
+    assert result.cutout_values == {"A": 140, "H1": 50, "H": 90, "X": 50, "Y": 50}
     assert result.flip_h is True
     assert result.flip_v is True
 
@@ -190,9 +307,9 @@ def test_add_polac_dialog_accept_updates_cache_and_result(qtbot):
             "pieciokat2": {"A": 640, "B": 280},
         },
         "cutouts": {
-            "lukarna1": {"A": 80, "H1": 60},
-            "lukarna2": {"A": 80, "H": 60},
-            "lukarna3": {"A": 140, "H1": 50, "H": 90},
+            "lukarna1": {"A": 80, "H1": 60, "X": 50, "Y": 50},
+            "lukarna2": {"A": 80, "H": 60, "X": 50, "Y": 50},
+            "lukarna3": {"A": 140, "H1": 50, "H": 90, "X": 50, "Y": 50},
         },
     }
     assert config["ksztalty"] == _legacy_shape_config()["ksztalty"]

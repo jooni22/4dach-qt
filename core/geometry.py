@@ -8,17 +8,16 @@ EPSILON = 1e-9
 _NORMALIZED_WIZARD_OUTLINES = {
     "trojkat": ((0.5, 0.0), (1.0, 1.0), (0.0, 1.0)),
     "pieciokat": ((0.5, 0.0), (1.0, 0.4), (1.0, 1.0), (0.0, 1.0), (0.0, 0.4)),
-    "pieciokat2": ((0.5, 0.0), (1.0, 0.4), (0.85, 1.0), (0.15, 1.0), (0.0, 0.4)),
+    "pieciokat2": (
+        (0.2, 0.0),
+        (0.8, 0.0),
+        (1.0, 0.4),
+        (1.0, 1.0),
+        (0.0, 1.0),
+        (0.0, 0.4),
+    ),
 }
-_WIZARD_TRAPEZOID_ANCHORS = {
-    "trapez_row": "center",
-    "trapez_prl": "right",
-    "trapez_l": "left",
-    # The source plan is inconsistent here; keep the left-anchored variant for now.
-    "trapez6": "left",
-    # The source plan explicitly keeps trapez_row and trapez7 geometrically identical for now.
-    "trapez7": "center",
-}
+_WIZARD_TRAPEZOID_ANCHORS = {"trapez_row": "center", "trapez6": "right", "trapez7": "left"}
 
 
 def _require_positive(value: float, label: str) -> None:
@@ -117,6 +116,22 @@ def build_add_polac_outline(shape_key: str, values: dict) -> Polygon2D:
     if shape_key in _NORMALIZED_WIZARD_OUTLINES:
         return _scale_normalized_outline(_NORMALIZED_WIZARD_OUTLINES[shape_key], values["A"], values["B"])
 
+    if shape_key == "trapez_prl":
+        return _build_wizard_parallelogram(
+            "right",
+            base_cm=values["A"],
+            offset_cm=values["C"],
+            height_cm=values["B"],
+        )
+
+    if shape_key == "trapez_l":
+        return _build_wizard_parallelogram(
+            "left",
+            base_cm=values["A"],
+            offset_cm=values["C"],
+            height_cm=values["B"],
+        )
+
     if shape_key in _WIZARD_TRAPEZOID_ANCHORS:
         return _build_wizard_trapezoid(
             _WIZARD_TRAPEZOID_ANCHORS[shape_key],
@@ -132,36 +147,34 @@ def build_add_polac_cutout(cutout_kind: str, values: dict, outline: Polygon2D) -
     if cutout_kind == "none":
         return None
 
-    bounds = outline.bounds()
-    center_x = bounds.min_x + bounds.width / 2.0
-    center_y = bounds.min_y + bounds.height / 2.0
-
     if cutout_kind == "lukarna1":
         width_cm = values["A"]
         height_cm = values["H1"]
+        origin_x, origin_y = _cutout_origin(values, outline, width_cm, height_cm)
         return Polygon2D.rectangle(
             width_cm,
             height_cm,
-            origin_x=center_x - width_cm / 2.0,
-            origin_y=center_y - height_cm / 2.0,
+            origin_x=origin_x,
+            origin_y=origin_y,
         )
 
     if cutout_kind == "lukarna2":
+        origin_x, origin_y = _cutout_origin(values, outline, values["A"], values["H"])
         return _scale_normalized_outline(
             ((0.5, 0.0), (1.0, 1.0), (0.0, 1.0)),
             values["A"],
             values["H"],
-            origin_x=center_x - values["A"] / 2.0,
-            origin_y=center_y - values["H"] / 2.0,
+            origin_x=origin_x,
+            origin_y=origin_y,
         )
 
     if cutout_kind == "lukarna3":
         width_cm = values["A"]
         height_cm = values["H"]
-        top_y = center_y - height_cm / 2.0
+        left_x, top_y = _cutout_origin(values, outline, width_cm, height_cm)
         bottom_y = top_y + height_cm
-        left_x = center_x - width_cm / 2.0
-        right_x = center_x + width_cm / 2.0
+        center_x = left_x + width_cm / 2.0
+        right_x = left_x + width_cm
         break_y = top_y + values["H1"]
         return Polygon2D(
             [
@@ -174,6 +187,23 @@ def build_add_polac_cutout(cutout_kind: str, values: dict, outline: Polygon2D) -
         )
 
     raise ValueError(f"Nieobsługiwany wycinek połaci: {cutout_kind}")
+
+
+def _cutout_origin(
+    values: dict,
+    outline: Polygon2D,
+    width_cm: float,
+    height_cm: float,
+) -> tuple[float, float]:
+    bounds = outline.bounds()
+    x_ratio = min(100.0, max(0.0, float(values.get("X", 50)))) / 100.0
+    y_ratio = min(100.0, max(0.0, float(values.get("Y", 50)))) / 100.0
+    available_width = max(bounds.width - width_cm, 0.0)
+    available_height = max(bounds.height - height_cm, 0.0)
+    return (
+        bounds.min_x + available_width * x_ratio,
+        bounds.min_y + available_height * y_ratio,
+    )
 
 
 def flip_polygon_in_bounds(
@@ -241,6 +271,40 @@ def _build_wizard_trapezoid(
             Point2D(0.0, height_cm),
         ]
     )
+
+
+def _build_wizard_parallelogram(
+    lean: str,
+    *,
+    base_cm: float,
+    offset_cm: float,
+    height_cm: float,
+) -> Polygon2D:
+    _require_positive(base_cm, "Podstawa")
+    _require_positive(offset_cm, "Przesunięcie")
+    _require_positive(height_cm, "Wysokość")
+
+    if lean == "right":
+        return Polygon2D(
+            [
+                Point2D(offset_cm, 0.0),
+                Point2D(offset_cm + base_cm, 0.0),
+                Point2D(base_cm, height_cm),
+                Point2D(0.0, height_cm),
+            ]
+        )
+
+    if lean == "left":
+        return Polygon2D(
+            [
+                Point2D(0.0, 0.0),
+                Point2D(base_cm, 0.0),
+                Point2D(base_cm + offset_cm, height_cm),
+                Point2D(offset_cm, height_cm),
+            ]
+        )
+
+    raise ValueError(f"Nieobsługiwane pochylenie równoległoboku: {lean}")
 
 
 def segment_length(start: Point2D, end: Point2D) -> float:
