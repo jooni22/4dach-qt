@@ -7,8 +7,11 @@ import pytest
 pytest.importorskip("PySide6")
 pytest.importorskip("pytestqt")
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPoint, Qt
+from PySide6.QtWidgets import QToolButton
 
+from core.geometry import validate_hole_polygon
+from core.models import Point2D
 from ui.dialogs.add_polac_dialog import AddPolacDialog
 
 
@@ -57,6 +60,11 @@ def _dialog_cache_config() -> dict:
                 "lukarna2": {"A": 120, "H": 70},
                 "lukarna3": {"A": 160, "H1": 45, "H": 110},
             },
+            "cutout_positions": {
+                "lukarna1": {"x": 0.5, "y": 0.5},
+                "lukarna2": {"x": 0.62, "y": 0.38},
+                "lukarna3": {"x": 0.32, "y": 0.43},
+            },
         },
     }
 
@@ -64,6 +72,14 @@ def _dialog_cache_config() -> dict:
 def test_add_polac_dialog_exposes_full_catalog_and_legacy_seed(qtbot):
     dialog = AddPolacDialog(_legacy_shape_config())
     qtbot.addWidget(dialog)
+
+    assert dialog.shape_buttons["prostokat"].text() == "Prostokąt"
+    assert dialog.shape_buttons["trapez_prl"].text() == "Trapez prawy"
+    assert dialog.shape_preview.minimumHeight() >= 300
+    assert isinstance(dialog.flip_h_button, QToolButton)
+    assert dialog.flip_h_button.isCheckable() is True
+    assert isinstance(dialog.flip_v_button, QToolButton)
+    assert dialog.flip_v_button.isCheckable() is True
 
     assert set(dialog.shape_buttons) == {
         "prostokat",
@@ -99,6 +115,7 @@ def test_add_polac_dialog_exposes_full_catalog_and_legacy_seed(qtbot):
 def test_add_polac_dialog_rebuilds_representative_shape_and_cutout_forms(qtbot):
     dialog = AddPolacDialog(_legacy_shape_config())
     qtbot.addWidget(dialog)
+    dialog.show()
 
     qtbot.mouseClick(dialog.shape_buttons["trapez_prl"], Qt.MouseButton.LeftButton)
     assert set(dialog.shape_form_fields) == {"A", "B", "C"}
@@ -122,7 +139,7 @@ def test_add_polac_dialog_rebuilds_representative_shape_and_cutout_forms(qtbot):
     assert dialog.selected_cutout_kind == "lukarna3"
     assert set(dialog.cutout_form_fields) == {"A", "H1", "H"}
     assert dialog.cutout_form_fields["A"].value() == 80
-    assert dialog.cutout_form_fields["H1"].value() == 60
+    assert dialog.cutout_form_fields["H1"].value() < dialog.cutout_form_fields["H"].value()
     assert dialog.cutout_form_fields["H"].value() == 60
 
 
@@ -131,8 +148,8 @@ def test_add_polac_dialog_hydrates_from_add_polac_dialog_cache(qtbot):
     qtbot.addWidget(dialog)
 
     assert dialog.selected_shape_key == "trapez_prl"
-    assert dialog.flip_h_checkbox.isChecked() is True
-    assert dialog.flip_v_checkbox.isChecked() is False
+    assert dialog.flip_h_button.isChecked() is True
+    assert dialog.flip_v_button.isChecked() is False
     assert dialog.shape_form_fields["A"].value() == 640
     assert dialog.shape_form_fields["B"].value() == 280
     assert dialog.shape_form_fields["C"].value() == 260
@@ -143,6 +160,56 @@ def test_add_polac_dialog_hydrates_from_add_polac_dialog_cache(qtbot):
     assert dialog.cutout_form_fields["A"].value() == 160
     assert dialog.cutout_form_fields["H1"].value() == 45
     assert dialog.cutout_form_fields["H"].value() == 110
+    assert dialog._cutout_positions["lukarna3"] == {"x": pytest.approx(0.32), "y": pytest.approx(0.43)}
+
+
+def test_add_polac_dialog_links_field_focus_to_preview_badge_and_blocks_invalid_shape_values(qtbot):
+    dialog = AddPolacDialog(_legacy_shape_config())
+    qtbot.addWidget(dialog)
+    dialog.show()
+
+    qtbot.mouseClick(dialog.shape_buttons["trapez_row"], Qt.MouseButton.LeftButton)
+    qtbot.mouseClick(dialog.shape_form_fields["C"], Qt.MouseButton.LeftButton)
+    qtbot.waitUntil(lambda: dialog.shape_preview.active_dimension_key == "C")
+
+    previous_points = [(point.x, point.y) for point in dialog.shape_preview.outline_polygon.points]
+    dialog.shape_form_fields["A"].setValue(300)
+
+    assert dialog.shape_form_fields["A"].value() == 300
+    assert "Podstawa górna" in dialog.shape_validation_label.text()
+    assert dialog.next_button.isEnabled() is False
+    assert [(point.x, point.y) for point in dialog.shape_preview.outline_polygon.points] == previous_points
+
+
+def test_add_polac_dialog_dragging_cutout_clamps_and_persists_position(qtbot):
+    dialog = AddPolacDialog(_legacy_shape_config())
+    qtbot.addWidget(dialog)
+    dialog.show()
+
+    dialog.shape_form_fields["A"].setValue(420)
+    dialog.shape_form_fields["B"].setValue(260)
+    qtbot.mouseClick(dialog.next_button, Qt.MouseButton.LeftButton)
+    qtbot.mouseClick(dialog.cutout_buttons["lukarna1"], Qt.MouseButton.LeftButton)
+
+    cutout = dialog._current_cutout()
+    assert cutout is not None
+    center = cutout.bounds()
+    start = dialog.cutout_preview.domain_to_view(
+        Point2D(center.min_x + center.width / 2.0, center.min_y + center.height / 2.0)
+    ).toPoint()
+    target = QPoint(dialog.cutout_preview.width() - 12, dialog.cutout_preview.height() - 12)
+
+    qtbot.mousePress(dialog.cutout_preview, Qt.MouseButton.LeftButton, pos=start)
+    qtbot.mouseMove(dialog.cutout_preview, target)
+    qtbot.mouseRelease(dialog.cutout_preview, Qt.MouseButton.LeftButton, pos=target)
+
+    position = dialog._cutout_positions["lukarna1"]
+    preview_cutout = dialog.cutout_preview.cutout_polygon
+
+    assert position["x"] > 0.5
+    assert position["y"] > 0.5
+    assert preview_cutout is not None
+    assert validate_hole_polygon(dialog.cutout_preview.outline_polygon, preview_cutout) == []
 
 
 def test_add_polac_dialog_accept_updates_cache_and_result(qtbot):
@@ -153,14 +220,16 @@ def test_add_polac_dialog_accept_updates_cache_and_result(qtbot):
     qtbot.mouseClick(dialog.shape_buttons["pieciokat2"], Qt.MouseButton.LeftButton)
     dialog.shape_form_fields["A"].setValue(640)
     dialog.shape_form_fields["B"].setValue(280)
-    dialog.flip_h_checkbox.setChecked(True)
-    dialog.flip_v_checkbox.setChecked(True)
+    dialog.flip_h_button.setChecked(True)
+    dialog.flip_v_button.setChecked(True)
 
     qtbot.mouseClick(dialog.next_button, Qt.MouseButton.LeftButton)
     qtbot.mouseClick(dialog.cutout_buttons["lukarna3"], Qt.MouseButton.LeftButton)
     dialog.cutout_form_fields["A"].setValue(140)
     dialog.cutout_form_fields["H1"].setValue(50)
     dialog.cutout_form_fields["H"].setValue(90)
+    dialog._cutout_positions["lukarna3"] = {"x": 0.73, "y": 0.41}
+    dialog._refresh_cutout_preview()
     dialog.accept()
 
     result = dialog.get_result()
@@ -172,6 +241,7 @@ def test_add_polac_dialog_accept_updates_cache_and_result(qtbot):
     assert result.cutout_values == {"A": 140, "H1": 50, "H": 90}
     assert result.flip_h is True
     assert result.flip_v is True
+    assert result.cutout_position == {"x": pytest.approx(0.73), "y": pytest.approx(0.41)}
 
     assert config["add_polac_dialog"] == {
         "last_shape": "pieciokat2",
@@ -193,6 +263,11 @@ def test_add_polac_dialog_accept_updates_cache_and_result(qtbot):
             "lukarna1": {"A": 80, "H1": 60},
             "lukarna2": {"A": 80, "H": 60},
             "lukarna3": {"A": 140, "H1": 50, "H": 90},
+        },
+        "cutout_positions": {
+            "lukarna1": {"x": 0.5, "y": 0.5},
+            "lukarna2": {"x": 0.5, "y": 0.5},
+            "lukarna3": {"x": 0.73, "y": 0.41},
         },
     }
     assert config["ksztalty"] == _legacy_shape_config()["ksztalty"]

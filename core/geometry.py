@@ -128,13 +128,16 @@ def build_add_polac_outline(shape_key: str, values: dict) -> Polygon2D:
     raise ValueError(f"Nieobsługiwany kształt połaci: {shape_key}")
 
 
-def build_add_polac_cutout(cutout_kind: str, values: dict, outline: Polygon2D) -> Polygon2D | None:
+def build_add_polac_cutout(
+    cutout_kind: str,
+    values: dict,
+    outline: Polygon2D,
+    position: dict[str, float] | None = None,
+) -> Polygon2D | None:
     if cutout_kind == "none":
         return None
 
-    bounds = outline.bounds()
-    center_x = bounds.min_x + bounds.width / 2.0
-    center_y = bounds.min_y + bounds.height / 2.0
+    center_x, center_y = add_polac_cutout_center(outline, position)
 
     if cutout_kind == "lukarna1":
         width_cm = values["A"]
@@ -174,6 +177,129 @@ def build_add_polac_cutout(cutout_kind: str, values: dict, outline: Polygon2D) -
         )
 
     raise ValueError(f"Nieobsługiwany wycinek połaci: {cutout_kind}")
+
+
+def add_polac_cutout_center(
+    outline: Polygon2D,
+    position: dict[str, float] | None = None,
+) -> tuple[float, float]:
+    normalized = normalize_add_polac_cutout_position(position)
+    bounds = outline.bounds()
+    return (
+        bounds.min_x + bounds.width * normalized["x"],
+        bounds.min_y + bounds.height * normalized["y"],
+    )
+
+
+def normalize_add_polac_cutout_position(
+    position: dict[str, float] | None,
+) -> dict[str, float]:
+    if not isinstance(position, dict):
+        return {"x": 0.5, "y": 0.5}
+
+    try:
+        raw_x = float(position.get("x", 0.5))
+        raw_y = float(position.get("y", 0.5))
+    except (TypeError, ValueError):
+        return {"x": 0.5, "y": 0.5}
+
+    return {"x": min(1.0, max(0.0, raw_x)), "y": min(1.0, max(0.0, raw_y))}
+
+
+def clamp_add_polac_cutout_position(
+    cutout_kind: str,
+    values: dict,
+    outline: Polygon2D,
+    current_position: dict[str, float] | None,
+    desired_position: dict[str, float] | None,
+) -> dict[str, float] | None:
+    if cutout_kind == "none":
+        return {"x": 0.5, "y": 0.5}
+
+    start = find_valid_add_polac_cutout_position(cutout_kind, values, outline, current_position)
+    if start is None:
+        return None
+
+    target = normalize_add_polac_cutout_position(desired_position)
+    if _cutout_position_is_valid(cutout_kind, values, outline, target):
+        return target
+
+    low = dict(start)
+    high = dict(target)
+    for _ in range(24):
+        midpoint = {
+            "x": (low["x"] + high["x"]) / 2.0,
+            "y": (low["y"] + high["y"]) / 2.0,
+        }
+        if _cutout_position_is_valid(cutout_kind, values, outline, midpoint):
+            low = midpoint
+        else:
+            high = midpoint
+    return low
+
+
+def find_valid_add_polac_cutout_position(
+    cutout_kind: str,
+    values: dict,
+    outline: Polygon2D,
+    preferred_position: dict[str, float] | None = None,
+) -> dict[str, float] | None:
+    if cutout_kind == "none":
+        return {"x": 0.5, "y": 0.5}
+
+    preferred = normalize_add_polac_cutout_position(preferred_position)
+    fallbacks = [preferred, {"x": 0.5, "y": 0.5}]
+    for candidate in fallbacks:
+        if _cutout_position_is_valid(cutout_kind, values, outline, candidate):
+            return candidate
+
+    best_candidate = None
+    best_distance = None
+    for step_count in (20, 40):
+        for x_index in range(step_count + 1):
+            for y_index in range(step_count + 1):
+                candidate = {"x": x_index / step_count, "y": y_index / step_count}
+                if not _cutout_position_is_valid(cutout_kind, values, outline, candidate):
+                    continue
+                distance = (candidate["x"] - preferred["x"]) ** 2 + (candidate["y"] - preferred["y"]) ** 2
+                if best_distance is None or distance < best_distance:
+                    best_candidate = candidate
+                    best_distance = distance
+
+    if best_candidate is None:
+        return None
+
+    radius = 1.0 / 20.0
+    best = dict(best_candidate)
+    while radius >= 1.0 / 160.0:
+        improved = False
+        for offset_x in (-radius, 0.0, radius):
+            for offset_y in (-radius, 0.0, radius):
+                candidate = normalize_add_polac_cutout_position(
+                    {"x": best["x"] + offset_x, "y": best["y"] + offset_y}
+                )
+                if not _cutout_position_is_valid(cutout_kind, values, outline, candidate):
+                    continue
+                distance = (candidate["x"] - preferred["x"]) ** 2 + (candidate["y"] - preferred["y"]) ** 2
+                if best_distance is None or distance < best_distance - EPSILON:
+                    best = candidate
+                    best_distance = distance
+                    improved = True
+        if not improved:
+            radius /= 2.0
+    return best
+
+
+def _cutout_position_is_valid(
+    cutout_kind: str,
+    values: dict,
+    outline: Polygon2D,
+    position: dict[str, float] | None,
+) -> bool:
+    cutout = build_add_polac_cutout(cutout_kind, values, outline, position)
+    if cutout is None:
+        return True
+    return not validate_hole_polygon(outline, cutout)
 
 
 def flip_polygon_in_bounds(

@@ -124,6 +124,11 @@ def test_project_state_round_trip_preserves_add_polac_dialog_cache(tmp_path):
                 "lukarna2": {"A": 80, "H": 60},
                 "lukarna3": {"A": 140, "H1": 50, "H": 90},
             },
+            "cutout_positions": {
+                "lukarna1": {"x": 0.5, "y": 0.5},
+                "lukarna2": {"x": 0.65, "y": 0.4},
+                "lukarna3": {"x": 0.72, "y": 0.62},
+            },
         },
         "materials": {
             "order": ["PD510"],
@@ -177,6 +182,11 @@ def test_project_state_round_trip_preserves_add_polac_dialog_cache(tmp_path):
             "lukarna1": {"A": 80, "H1": 60},
             "lukarna2": {"A": 80, "H": 60},
             "lukarna3": {"A": 140, "H1": 50, "H": 90},
+        },
+        "cutout_positions": {
+            "lukarna1": {"x": 0.5, "y": 0.5},
+            "lukarna2": {"x": 0.65, "y": 0.4},
+            "lukarna3": {"x": 0.72, "y": 0.62},
         },
     }
 

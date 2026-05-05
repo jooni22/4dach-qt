@@ -1217,7 +1217,12 @@ class MainWindow(QMainWindow):
                 horizontal=result.flip_h,
                 vertical=result.flip_v,
             )
-            cutout = build_add_polac_cutout(result.cutout_kind, result.cutout_values, outline)
+            cutout = build_add_polac_cutout(
+                result.cutout_kind,
+                result.cutout_values,
+                outline,
+                getattr(result, "cutout_position", None),
+            )
         except ValueError as exc:
             QMessageBox.warning(self, "Błąd edycji", str(exc))
             return

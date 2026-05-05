@@ -363,6 +363,7 @@ def test_mainwindow_wizard_updates_active_empty_plane_without_creating_new_tab(q
                 shape_values={"A": 400, "B": 220, "C": 260},
                 cutout_kind="none",
                 cutout_values={},
+                cutout_position={"x": 0.5, "y": 0.5},
                 flip_h=False,
                 flip_v=False,
             )
@@ -410,6 +411,7 @@ def test_mainwindow_wizard_creates_new_plane_when_none_exists(qtbot, monkeypatch
                 shape_values={"A": 420, "B": 260},
                 cutout_kind="none",
                 cutout_values={},
+                cutout_position={"x": 0.5, "y": 0.5},
                 flip_h=False,
                 flip_v=False,
             )
@@ -448,6 +450,7 @@ def test_mainwindow_wizard_commits_outline_and_cutout_as_single_undo_entry(qtbot
                 shape_values={"A": 500, "B": 300},
                 cutout_kind="lukarna3",
                 cutout_values={"A": 140, "H1": 50, "H": 90},
+                cutout_position={"x": 0.72, "y": 0.62},
                 flip_h=False,
                 flip_v=False,
             )
@@ -465,11 +468,11 @@ def test_mainwindow_wizard_commits_outline_and_cutout_as_single_undo_entry(qtbot
     updated_plane = window.project_state.roof_plane_by_id(plane.id)
     expected_hole = Polygon2D(
         [
-            Point2D(250, 105),
-            Point2D(320, 155),
-            Point2D(320, 195),
-            Point2D(180, 195),
-            Point2D(180, 155),
+            Point2D(360, 141),
+            Point2D(430, 191),
+            Point2D(430, 231),
+            Point2D(290, 231),
+            Point2D(290, 191),
         ]
     )
 
