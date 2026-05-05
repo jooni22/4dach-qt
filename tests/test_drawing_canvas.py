@@ -1041,7 +1041,7 @@ def test_canvas_multi_step_freehand_draw_keeps_intermediate_points_until_close(q
 
     closed_points = [mapper.unmap_point(point) for point in blocker.args[0]]
     assert len(closed_points) == 3
-    for actual, expected in zip(closed_points, expected_points):
+    for actual, expected in zip(closed_points, expected_points, strict=False):
         assert actual.x == pytest.approx(expected.x, abs=1.0)
         assert actual.y == pytest.approx(expected.y, abs=1.0)
     assert canvas.user_points == []
@@ -1662,7 +1662,7 @@ def test_canvas_draws_vertex_axis_projections_before_outline(qtbot, monkeypatch)
     monkeypatch.setattr(canvas, "_draw_axis_indicator", lambda *args, **kwargs: None)
     monkeypatch.setattr(canvas, "_draw_edit_overlay", lambda *args, **kwargs: None)
 
-    original_draw_polygon = getattr(DrawingCanvas, "_draw_roof_plane")
+    original_draw_polygon = DrawingCanvas._draw_roof_plane
 
     def wrapped_draw_roof_plane(painter):
         calls.append("roof_start")
@@ -2272,7 +2272,12 @@ def test_canvas_partial_cutout_render_items_stay_rectangular_under_cutout_overla
     lower_item = next(
         item
         for item in canvas._sheet_render_items()
-        if item.band_index == top_item.band_index and item.placement_id != top_item.placement_id
+        if item.band_index == top_item.band_index and item.placement_id != top_item.placement_id and item.polygons[0].bounds().max_x == pytest.approx(300.0)
+    )
+    right_item = next(
+        item
+        for item in canvas._sheet_render_items()
+        if item.band_index == top_item.band_index and item.polygons[0].bounds().min_x == pytest.approx(300.0)
     )
 
     assert any(point_in_polygon(Point2D(100, 150), polygon) for polygon in top_item.polygons)
@@ -2280,14 +2285,17 @@ def test_canvas_partial_cutout_render_items_stay_rectangular_under_cutout_overla
 
     assert any(point_in_polygon(Point2D(100, 700), polygon) for polygon in lower_item.polygons)
     assert not any(point_in_polygon(Point2D(100, 150), polygon) for polygon in lower_item.polygons)
-    assert any(point_in_polygon(Point2D(100, 450), polygon) for polygon in lower_item.polygons)
+    assert not any(point_in_polygon(Point2D(100, 450), polygon) for polygon in lower_item.polygons)
+    assert any(point_in_polygon(Point2D(400, 450), polygon) for polygon in right_item.polygons)
 
     top_point = canvas._canvas_mapper().map_point(Point2D(100, 150))
     lower_point = canvas._canvas_mapper().map_point(Point2D(100, 700))
     hole_point = canvas._canvas_mapper().map_point(Point2D(100, 450))
+    right_point = canvas._canvas_mapper().map_point(Point2D(400, 450))
     assert canvas._hit_test_sheet(QPointF(top_point)) == top_item.placement_id
     assert canvas._hit_test_sheet(QPointF(lower_point)) == lower_item.placement_id
-    assert canvas._hit_test_sheet(QPointF(hole_point)) == lower_item.placement_id
+    assert canvas._hit_test_sheet(QPointF(hole_point)) is None
+    assert canvas._hit_test_sheet(QPointF(right_point)) == right_item.placement_id
 
 
 def test_canvas_sheet_rendering_keeps_rectangular_fill_above_sloped_outline(qtbot):

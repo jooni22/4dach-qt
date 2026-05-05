@@ -4,7 +4,6 @@ import logging
 from dataclasses import dataclass, field
 
 from core.app_settings import AppSettings
-from core.rounding import ceil_cm
 from core.geometry import (
     canonicalize_polygon,
     polygon_edges,
@@ -14,6 +13,7 @@ from core.geometry import (
     vertical_segments_for_band,
 )
 from core.models import Material, Point2D, Polygon2D, RoofPlane, SheetPlacement
+from core.rounding import ceil_cm
 
 EPSILON = 1e-6
 logger = logging.getLogger(__name__)
@@ -153,6 +153,22 @@ class _RowPhase:
     terminal_extra_cm: float = 0.0
 
 
+@dataclass(frozen=True, slots=True)
+class _CutoutSignature:
+    interaction: str | None
+    partial_cut_line_y_cm: float | None
+
+
+@dataclass(slots=True)
+class _PieceTrack:
+    pieces: list[_BandPiece]
+    signature: _CutoutSignature
+
+    @property
+    def last_piece(self) -> _BandPiece:
+        return self.pieces[-1]
+
+
 class _UnionFind:
     def __init__(self, size: int) -> None:
         self._parent = list(range(size))
@@ -200,11 +216,8 @@ def generate_layout(
         return result
 
     for band_index, (x_left, x_right) in enumerate(_iter_band_ranges(layout_plane, width)):
-        band_segments = _build_band_segments(layout_plane, band_index, x_left, x_right)
+        band_segments = _build_band_segments(layout_plane, band_index, x_left, x_right, _settings)
         layout_band = LayoutBand(band_index=band_index, x_left_cm=x_left, x_right_cm=x_right)
-
-        for band_segment in band_segments:
-            _detect_cutout_interaction(layout_plane, band_segment, _settings)
 
         for segment_index, band_segment in enumerate(band_segments):
             max_len = material.max_sheet_length_cm
@@ -579,60 +592,112 @@ def _iter_band_ranges(plane: RoofPlane, band_width_cm: float) -> list[tuple[floa
     return bands
 
 
-def _build_band_segments(plane: RoofPlane, band_index: int, x_left: float, x_right: float) -> list[LayoutBandSegment]:
+def _build_band_segments(
+    plane: RoofPlane,
+    band_index: int,
+    x_left: float,
+    x_right: float,
+    settings,
+) -> list[LayoutBandSegment]:
     pieces = _band_pieces_for_range(plane, x_left, x_right)
     if not pieces:
         return []
 
-    union_find = _UnionFind(len(pieces))
     pieces_by_slab: dict[int, list[_BandPiece]] = {}
     for piece in pieces:
         pieces_by_slab.setdefault(piece.slab_index, []).append(piece)
 
-    for slab_index in sorted(pieces_by_slab):
-        current_pieces = pieces_by_slab[slab_index]
-        next_pieces = pieces_by_slab.get(slab_index + 1)
-        if not next_pieces:
+    piece_signatures = {
+        piece.piece_index: _annotated_segment_signature(
+            plane,
+            _segment_from_pieces([piece]),
+            settings,
+            context_x_left=x_left,
+            context_x_right=x_right,
+        )
+        for piece in pieces
+    }
+    slab_indices = sorted(pieces_by_slab)
+    active_tracks = [
+        _PieceTrack(pieces=[piece], signature=piece_signatures[piece.piece_index])
+        for piece in _sorted_pieces(pieces_by_slab[slab_indices[0]])
+    ]
+    completed_tracks: list[_PieceTrack] = []
+    previous_slab_index = slab_indices[0]
+
+    for slab_index in slab_indices[1:]:
+        current_pieces = _sorted_pieces(pieces_by_slab[slab_index])
+        if slab_index != previous_slab_index + 1:
+            completed_tracks.extend(active_tracks)
+            active_tracks = [
+                _PieceTrack(pieces=[piece], signature=piece_signatures[piece.piece_index])
+                for piece in current_pieces
+            ]
+            previous_slab_index = slab_index
             continue
-        for current_piece in current_pieces:
-            for next_piece in next_pieces:
-                if _intervals_touch_or_overlap(current_piece.right_interval, next_piece.left_interval):
-                    union_find.union(current_piece.piece_index, next_piece.piece_index)
 
-    groups: dict[int, list[_BandPiece]] = {}
-    for piece in pieces:
-        groups.setdefault(union_find.find(piece.piece_index), []).append(piece)
+        track_to_piece_ids: dict[int, list[int]] = {index: [] for index in range(len(active_tracks))}
+        piece_to_track_ids: dict[int, list[int]] = {piece.piece_index: [] for piece in current_pieces}
 
-    band_segments: list[LayoutBandSegment] = []
-    for segment_index, component in enumerate(
-        sorted(
-            groups.values(),
-            key=lambda group: (
-                min(piece.x_left_cm for piece in group),
-                min(piece.y_top_cm for piece in group),
-                max(piece.y_bottom_cm for piece in group),
-            ),
+        for track_index, track in enumerate(active_tracks):
+            for piece in current_pieces:
+                if not _track_can_extend_with_piece(
+                    plane,
+                    track,
+                    piece,
+                    piece_signatures[piece.piece_index],
+                    settings,
+                    context_x_left=x_left,
+                    context_x_right=x_right,
+                ):
+                    continue
+                track_to_piece_ids[track_index].append(piece.piece_index)
+                piece_to_track_ids[piece.piece_index].append(track_index)
+
+        piece_by_id = {piece.piece_index: piece for piece in current_pieces}
+        matched_track_ids: set[int] = set()
+        matched_piece_ids: set[int] = set()
+        next_tracks: list[_PieceTrack] = []
+
+        for track_index, track in enumerate(active_tracks):
+            candidate_piece_ids = track_to_piece_ids[track_index]
+            if len(candidate_piece_ids) != 1:
+                continue
+            piece_id = candidate_piece_ids[0]
+            if len(piece_to_track_ids[piece_id]) != 1:
+                continue
+            matched_track_ids.add(track_index)
+            matched_piece_ids.add(piece_id)
+            next_tracks.append(_PieceTrack(pieces=[*track.pieces, piece_by_id[piece_id]], signature=track.signature))
+
+        for track_index, track in enumerate(active_tracks):
+            if track_index not in matched_track_ids:
+                completed_tracks.append(track)
+
+        for piece in current_pieces:
+            if piece.piece_index in matched_piece_ids:
+                continue
+            next_tracks.append(_PieceTrack(pieces=[piece], signature=piece_signatures[piece.piece_index]))
+
+        active_tracks = sorted(next_tracks, key=_track_sort_key)
+        previous_slab_index = slab_index
+
+    completed_tracks.extend(active_tracks)
+
+    band_segments = [
+        _segment_from_pieces(track.pieces)
+        for track in sorted(completed_tracks, key=_track_sort_key)
+    ]
+    for segment_index, segment in enumerate(sorted(band_segments, key=_segment_sort_key)):
+        segment.segment_index = segment_index
+        _annotated_segment_signature(
+            plane,
+            segment,
+            settings,
+            context_x_left=x_left,
+            context_x_right=x_right,
         )
-    ):
-        coverage_polygons = [
-            piece.polygon
-            for piece in sorted(component, key=lambda item: (item.x_left_cm, item.y_top_cm, item.piece_index))
-        ]
-        y_top_cm = min(piece.y_top_cm for piece in component)
-        y_bottom_cm = max(piece.y_bottom_cm for piece in component)
-        band_segments.append(
-            LayoutBandSegment(
-                segment_index=segment_index,
-                x_left_cm=min(piece.x_left_cm for piece in component),
-                x_right_cm=max(piece.x_right_cm for piece in component),
-                y_top_cm=y_top_cm,
-                y_bottom_cm=y_bottom_cm,
-                raw_length_cm=y_bottom_cm - y_top_cm,
-                coverage_polygons=coverage_polygons,
-            )
-        )
-
-    return band_segments
+    return sorted(band_segments, key=_segment_sort_key)
 
 
 def _band_pieces_for_range(plane: RoofPlane, x_left: float, x_right: float) -> list[_BandPiece]:
@@ -640,7 +705,7 @@ def _band_pieces_for_range(plane: RoofPlane, x_left: float, x_right: float) -> l
     pieces: list[_BandPiece] = []
     piece_index = 0
 
-    for slab_index, (slab_left, slab_right) in enumerate(zip(x_positions, x_positions[1:])):
+    for slab_index, (slab_left, slab_right) in enumerate(zip(x_positions, x_positions[1:], strict=False)):
         slab_width = slab_right - slab_left
         if slab_width <= EPSILON:
             continue
@@ -716,15 +781,115 @@ def _intervals_touch_or_overlap(left: tuple[float, float], right: tuple[float, f
     return min(left_bottom, right_bottom) >= max(left_top, right_top) - EPSILON
 
 
+def _sorted_pieces(pieces: list[_BandPiece]) -> list[_BandPiece]:
+    return sorted(pieces, key=lambda piece: (piece.x_left_cm, piece.y_top_cm, piece.piece_index))
+
+
+def _segment_sort_key(segment: LayoutBandSegment) -> tuple[float, float, float]:
+    return (
+        segment.x_left_cm,
+        segment.y_top_cm,
+        segment.y_bottom_cm,
+    )
+
+
+def _track_sort_key(track: _PieceTrack) -> tuple[float, float, float, int]:
+    first_piece = track.pieces[0]
+    last_piece = track.last_piece
+    return (
+        first_piece.x_left_cm,
+        first_piece.y_top_cm,
+        last_piece.y_top_cm,
+        first_piece.piece_index,
+    )
+
+
+def _segment_from_pieces(pieces: list[_BandPiece]) -> LayoutBandSegment:
+    ordered = _sorted_pieces(pieces)
+    y_top_cm = min(piece.y_top_cm for piece in ordered)
+    y_bottom_cm = max(piece.y_bottom_cm for piece in ordered)
+    return LayoutBandSegment(
+        segment_index=0,
+        x_left_cm=min(piece.x_left_cm for piece in ordered),
+        x_right_cm=max(piece.x_right_cm for piece in ordered),
+        y_top_cm=y_top_cm,
+        y_bottom_cm=y_bottom_cm,
+        raw_length_cm=y_bottom_cm - y_top_cm,
+        coverage_polygons=[piece.polygon for piece in ordered],
+    )
+
+
+def _annotated_segment_signature(
+    plane: RoofPlane,
+    segment: LayoutBandSegment,
+    settings,
+    *,
+    context_x_left: float | None = None,
+    context_x_right: float | None = None,
+) -> _CutoutSignature:
+    _detect_cutout_interaction(
+        plane,
+        segment,
+        settings,
+        context_x_left=context_x_left,
+        context_x_right=context_x_right,
+    )
+    return _CutoutSignature(
+        interaction=segment.cutout_interaction,
+        partial_cut_line_y_cm=segment.partial_cut_line_y_cm,
+    )
+
+
+def _cutout_signatures_match(left: _CutoutSignature, right: _CutoutSignature) -> bool:
+    if left.interaction != right.interaction:
+        return False
+    if left.partial_cut_line_y_cm is None or right.partial_cut_line_y_cm is None:
+        return left.partial_cut_line_y_cm is None and right.partial_cut_line_y_cm is None
+    return abs(left.partial_cut_line_y_cm - right.partial_cut_line_y_cm) <= EPSILON
+
+
+def _track_can_extend_with_piece(
+    plane: RoofPlane,
+    track: _PieceTrack,
+    piece: _BandPiece,
+    piece_signature: _CutoutSignature,
+    settings,
+    *,
+    context_x_left: float,
+    context_x_right: float,
+) -> bool:
+    if not _intervals_touch_or_overlap(track.last_piece.right_interval, piece.left_interval):
+        return False
+    if not _cutout_signatures_match(track.signature, piece_signature):
+        return False
+
+    merged_signature = _annotated_segment_signature(
+        plane,
+        _segment_from_pieces([*track.pieces, piece]),
+        settings,
+        context_x_left=context_x_left,
+        context_x_right=context_x_right,
+    )
+    return _cutout_signatures_match(track.signature, merged_signature)
+
+
 def _detect_cutout_interaction(
     plane: RoofPlane,
     segment: LayoutBandSegment,
     settings,
+    *,
+    context_x_left: float | None = None,
+    context_x_right: float | None = None,
 ) -> None:
     """Inspect holes of *plane* against the segment x/y range and annotate
     *segment* in-place with ``cutout_interaction``, ``partial_cut_line_y_cm``,
     and ``top_extra_cm``.
     """
+    segment.cutout_interaction = None
+    segment.partial_cut_line_y_cm = None
+    segment.top_extra_cm = 0.0
+    band_x_left = segment.x_left_cm if context_x_left is None else context_x_left
+    band_x_right = segment.x_right_cm if context_x_right is None else context_x_right
     full_overlap_detected = False
     partial_cut_line_y_cm: float | None = None
 
@@ -732,21 +897,25 @@ def _detect_cutout_interaction(
         bounds = hole.bounds()
 
         # Skip holes that don't touch this segment's y-range
-        if bounds.max_y <= segment.y_top_cm or bounds.min_y >= segment.y_bottom_cm:
+        if bounds.max_y <= segment.y_top_cm + EPSILON or bounds.min_y > segment.y_bottom_cm + EPSILON:
             continue
 
         # Skip holes that don't touch this segment's x-range
-        if bounds.max_x <= segment.x_left_cm or bounds.min_x >= segment.x_right_cm:
+        if bounds.max_x <= segment.x_left_cm + EPSILON or bounds.min_x >= segment.x_right_cm - EPSILON:
             continue
 
-        # FULL: hole covers the entire band width
-        if bounds.min_x <= segment.x_left_cm and bounds.max_x >= segment.x_right_cm:
+        hole_covers_band_width = bounds.min_x <= band_x_left + EPSILON and bounds.max_x >= band_x_right - EPSILON
+        if hole_covers_band_width:
             full_overlap_detected = True
-            continue  # keep inspecting — another hole might be partial
 
-        # PARTIAL: hole partially overlaps this segment in x
         cut_y = _highest_cutout_edge_y_in_range(hole, segment.x_left_cm, segment.x_right_cm)
         if cut_y is None:
+            continue
+        if cut_y <= segment.y_top_cm + EPSILON:
+            continue
+        if cut_y > segment.y_bottom_cm + EPSILON:
+            continue
+        if cut_y >= segment.y_bottom_cm - EPSILON and hole_covers_band_width:
             continue
         if partial_cut_line_y_cm is None or cut_y < partial_cut_line_y_cm:
             partial_cut_line_y_cm = cut_y

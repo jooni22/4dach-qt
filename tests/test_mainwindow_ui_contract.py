@@ -1157,7 +1157,8 @@ def test_mainwindow_freehand_outline_uses_same_grid_snap_as_canvas(qtbot):
     qtbot.addWidget(window)
     window.project_state.app_settings.grid_size_cm = 25.0
     window.project_state.app_settings.snap_to_grid = True
-    window.project_state.delete_roof_plane(window.project_state.active_roof_plane().id)
+    for plane in list(window.project_state.roof_planes):
+        window.project_state.delete_roof_plane(plane.id)
     window._refresh_canvas_from_state()
     canvas = window._workspace.primary_canvas
     canvas.resize(640, 420)
@@ -1185,7 +1186,8 @@ def test_mainwindow_freehand_outline_uses_same_grid_snap_as_canvas(qtbot):
 def test_mainwindow_freehand_outline_does_not_resnap_with_different_origin(qtbot):
     window = MainWindow()
     qtbot.addWidget(window)
-    window.project_state.delete_roof_plane(window.project_state.active_roof_plane().id)
+    for plane in list(window.project_state.roof_planes):
+        window.project_state.delete_roof_plane(plane.id)
     window.project_state.app_settings.grid_size_cm = 25.0
     window.project_state.app_settings.snap_to_grid = True
     window._refresh_canvas_from_state()

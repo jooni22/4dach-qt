@@ -21,6 +21,20 @@ def _material(**overrides) -> Material:
     return Material(**payload)
 
 
+def _segment_summary(result, band_index: int) -> list[tuple[float, float, float, float, str | None, float | None]]:
+    return [
+        (
+            segment.x_left_cm,
+            segment.x_right_cm,
+            segment.y_top_cm,
+            segment.y_bottom_cm,
+            segment.cutout_interaction,
+            segment.partial_cut_line_y_cm,
+        )
+        for segment in result.bands[band_index].segments
+    ]
+
+
 def test_layout_engine_generates_deterministic_bands_for_simple_rectangle():
     plane = RoofPlane(id="plane-1", name="Rect", outline=Polygon2D.rectangle(120, 200))
 
@@ -61,7 +75,7 @@ def test_layout_engine_splits_band_when_cutout_disconnects_vertical_strip():
     assert all(len(segment.coverage_polygons) == 1 for segment in result.bands[1].segments)
 
 
-def test_layout_engine_keeps_connected_notched_band_as_one_segment_with_coverage_polygons():
+def test_layout_engine_keeps_notched_band_segments_local_to_cutout_width():
     plane = RoofPlane(
         id="plane-1",
         name="Notch",
@@ -71,13 +85,18 @@ def test_layout_engine_keeps_connected_notched_band_as_one_segment_with_coverage
 
     result = generate_layout(plane, _material(effective_width_cm=51))
 
-    assert len(result.placements) == 4
-    assert len(result.bands[1].segments) == 1
-    assert len(result.bands[1].segments[0].coverage_polygons) == 4
-    assert result.bands[1].segments[0].cutout_interaction == "partial"
-    assert result.bands[1].segments[0].partial_cut_line_y_cm == 70.0
-    assert result.placements[1].x_left_cm == 51.0
-    assert result.placements[1].x_right_cm == 102.0
+    assert _segment_summary(result, 1) == [
+        (51.0, 60.0, 0.0, 200.0, None, None),
+        (60.0, 90.0, 0.0, 70.0, "partial", 70.0),
+        (60.0, 90.0, 120.0, 200.0, None, None),
+        (90.0, 102.0, 0.0, 200.0, None, None),
+    ]
+    assert [(placement.x_left_cm, placement.x_right_cm, placement.y_top_cm, placement.y_bottom_cm, placement.split_reason) for placement in result.placements if placement.band_index == 1] == [
+        (51.0, 60.0, 0.0, 200.0, None),
+        (60.0, 90.0, 0.0, 70.0, "partial_cutout_top"),
+        (60.0, 90.0, 120.0, 200.0, None),
+        (90.0, 102.0, 0.0, 200.0, None),
+    ]
 
 
 def test_layout_engine_handles_trapezoid_strip_lengths():
@@ -137,7 +156,12 @@ def test_layout_engine_uses_single_cross_section_for_skewed_band_lengths():
     expected_lengths = [100.0, 8.333333333333334, 100.0, 8.33333333333334, 100.0, 3.3333333333333286]
     expected_final_lengths = [100.0, 9.0, 100.0, 9.0, 100.0, 4.0]
     assert len(result.placements) == len(expected_lengths)
-    for p, raw_exp, final_exp in zip(result.placements, expected_lengths, expected_final_lengths):
+    for p, raw_exp, final_exp in zip(
+        result.placements,
+        expected_lengths,
+        expected_final_lengths,
+        strict=False,
+    ):
         assert almost_equal(p.raw_length_cm, raw_exp)
         assert almost_equal(p.final_length_cm, final_exp)
     assert result.requires_transverse_split is False
@@ -157,9 +181,8 @@ def test_layout_engine_tracks_multiple_cutouts_inside_band_coverage():
 
     result = generate_layout(plane, _material())
 
-    assert len(result.placements) == 6
-    assert [len(band.segments[0].coverage_polygons) for band in result.bands] == [4, 4, 4]
-    assert [band.segments[0].cutout_interaction for band in result.bands] == ["partial", "partial", "partial"]
+    assert [len(band.segments) for band in result.bands] == [4, 4, 4]
+    assert [next(segment for segment in band.segments if segment.cutout_interaction == "partial").partial_cut_line_y_cm for band in result.bands] == [20.0, 40.0, 60.0]
     assert [placement.split_reason for placement in result.placements if placement.split_reason] == [
         "partial_cutout_top",
         "partial_cutout_top",
@@ -209,34 +232,34 @@ def test_layout_engine_cutout_intersection_count():
     # Wycinek 300x300 na środku, czyli od x=350 do x=650
     hole = Polygon2D.rectangle(300, 300, origin_x=350, origin_y=350)
     plane = RoofPlane(id="p1", name="Test", outline=outline, holes=[hole])
-    
+
     # Szerokość arkusza 51 cm
     mat = _material(effective_width_cm=51, module_length_cm=0, max_sheet_length_cm=2000)
     result = generate_layout(plane, mat)
-    
+
     # Sprawdzamy ile pasów zostało przeciętych przez wycinek
-    # Wycinek jest od x=350 do x=650. 
+    # Wycinek jest od x=350 do x=650.
     # Pasy szerokości 51cm:
     # 350 / 51 = 6.86 -> pas nr 6 (zaczyna się od 306, kończy na 357). Przecięty!
     # 650 / 51 = 12.74 -> pas nr 12 (zaczyna się od 612, kończy na 663). Przecięty!
     # Pasy dotknięte przez wycinek to indeksy od 6 do 12 włącznie, czyli 7 pasów.
-    
+
     # Kiedy pas jest przecięty, ma więcej niż 1 segment (czyli generuje więcej niż 1 placement dla danego band_index)
     placements_by_band = {}
     for p in result.placements:
         placements_by_band.setdefault(p.band_index, []).append(p)
-        
+
     intersected_bands = [
-        band_index 
-        for band_index, pl_list in placements_by_band.items() 
+        band_index
+        for band_index, pl_list in placements_by_band.items()
         if len(pl_list) > 1
     ]
-    
+
     assert intersected_bands == [6, 7, 8, 9, 10, 11, 12]
 
 
-def test_partial_cutout_one_segment_annotated():
-    """Band partially covered by hole → 1 segment, cutout_interaction='partial'."""
+def test_partial_cutout_only_marks_segments_directly_above_the_hole():
+    """Only the local top segment inherits the partial split-line annotation."""
     # Outline: 100×1000, band width=50cm → band 0 is x=0..50
     # Hole: x=10..40, y=400..600 — doesn't cover full band width (0..50)
     plane = RoofPlane(
@@ -247,12 +270,12 @@ def test_partial_cutout_one_segment_annotated():
     )
     result = generate_layout(plane, _material(effective_width_cm=50, max_sheet_length_cm=2000))
 
-    # Band 0 should have 1 segment (partial cutout keeps it as one piece)
-    band0 = result.bands[0]
-    assert len(band0.segments) == 1
-    seg = band0.segments[0]
-    assert seg.cutout_interaction == "partial"
-    assert seg.partial_cut_line_y_cm == 400.0  # top edge of the hole
+    assert _segment_summary(result, 0) == [
+        (0.0, 10.0, 0.0, 1000.0, None, None),
+        (10.0, 40.0, 0.0, 400.0, "partial", 400.0),
+        (10.0, 40.0, 600.0, 1000.0, None, None),
+        (40.0, 50.0, 0.0, 1000.0, None, None),
+    ]
 
 
 def test_full_cutout_two_segments():
@@ -269,7 +292,7 @@ def test_full_cutout_two_segments():
     band0 = result.bands[0]
     assert len(band0.segments) == 2
     assert [(seg.y_top_cm, seg.y_bottom_cm, seg.cutout_interaction) for seg in band0.segments] == [
-        (0.0, 400.0, None),
+        (0.0, 400.0, "full"),
         (600.0, 1000.0, None),
     ]
 
@@ -304,13 +327,12 @@ def test_partial_cutout_top_extra_clamped():
     settings = AppSettings(partial_cutout_top_extra_cm=999.0)
     result = generate_layout(plane, _material(effective_width_cm=50, max_sheet_length_cm=2000), settings=settings)
 
-    band0 = result.bands[0]
-    seg = band0.segments[0]
+    seg = next(segment for segment in result.bands[0].segments if segment.cutout_interaction == "partial")
     assert seg.cutout_interaction == "partial"
     assert seg.top_extra_cm <= seg.partial_cut_line_y_cm - seg.y_top_cm + EPSILON
 
 
-def test_partial_split_generates_two_groups():
+def test_partial_split_is_localized_to_the_cutout_width():
     plane = RoofPlane(
         id="plane-1",
         name="PartialSplit",
@@ -322,20 +344,22 @@ def test_partial_split_generates_two_groups():
         _material(effective_width_cm=510, max_sheet_length_cm=1000),
     )
 
-    band0 = result.bands[0]
-    assert len(band0.segments) == 1
-    assert band0.segments[0].cutout_interaction == "partial"
-    assert band0.segments[0].partial_cut_line_y_cm == 300.0
-
-    band0_placements = [p for p in result.placements if p.band_index == 0]
-    assert [(p.y_top_cm, p.y_bottom_cm, p.raw_length_cm, p.final_length_cm, p.split_reason) for p in band0_placements] == [
-        (300.0, 1000.0, 700.0, 700.0, None),
-        (0.0, 300.0, 300.0, 315.0, "partial_cutout_top"),
+    assert _segment_summary(result, 0) == [
+        (0.0, 300.0, 0.0, 300.0, "partial", 300.0),
+        (0.0, 300.0, 600.0, 1000.0, None, None),
+        (300.0, 510.0, 0.0, 1000.0, None, None),
     ]
-
-    band1 = result.bands[1]
-    assert len(band1.segments) == 1
-    assert band1.segments[0].cutout_interaction is None
+    assert sorted(
+        [
+            (p.x_left_cm, p.x_right_cm, p.y_top_cm, p.y_bottom_cm, p.raw_length_cm, p.final_length_cm, p.split_reason)
+            for p in result.placements
+            if p.band_index == 0
+        ]
+    ) == [
+        (0.0, 300.0, 0.0, 300.0, 300.0, 315.0, "partial_cutout_top"),
+        (0.0, 300.0, 600.0, 1000.0, 400.0, 400.0, None),
+        (300.0, 510.0, 0.0, 1000.0, 1000.0, 1000.0, None),
+    ]
     assert [(p.y_top_cm, p.y_bottom_cm, p.raw_length_cm, p.final_length_cm, p.split_reason) for p in result.placements if p.band_index == 1] == [
         (0.0, 1000.0, 1000.0, 1000.0, None),
     ]
@@ -363,11 +387,57 @@ def test_partial_cut_line_uses_highest_cutout_edge_point_per_band():
         settings=AppSettings(partial_cutout_top_extra_cm=0.0),
     )
 
-    assert [band.segments[0].partial_cut_line_y_cm for band in result.bands] == [150.0, 100.0]
-    assert [band.segments[0].cutout_interaction for band in result.bands] == ["partial", "partial"]
-    assert [(p.band_index, p.y_top_cm, p.y_bottom_cm, p.split_reason) for p in result.placements if p.split_reason] == [
-        (0, 0.0, 150.0, "partial_cutout_top"),
-        (1, 0.0, 100.0, "partial_cutout_top"),
+    assert _segment_summary(result, 0) == [
+        (0.0, 40.0, 0.0, 400.0, None, None),
+        (40.0, 120.0, 0.0, 200.0, "partial", 150.0),
+        (40.0, 120.0, 300.0, 400.0, None, None),
+    ]
+    assert _segment_summary(result, 1) == [
+        (120.0, 200.0, 0.0, 150.0, "partial", 100.0),
+        (120.0, 200.0, 300.0, 400.0, None, None),
+        (200.0, 240.0, 0.0, 400.0, None, None),
+    ]
+    assert [
+        (p.band_index, p.x_left_cm, p.x_right_cm, p.y_top_cm, p.y_bottom_cm, p.split_reason)
+        for p in result.placements
+        if p.split_reason
+    ] == [
+        (0, 40.0, 120.0, 0.0, 150.0, "partial_cutout_top"),
+        (1, 120.0, 200.0, 0.0, 100.0, "partial_cutout_top"),
+    ]
+
+
+def test_partial_cutout_keeps_local_cut_lines_in_separate_segments():
+    plane = RoofPlane(
+        id="plane-1",
+        name="SteppedPartial",
+        outline=Polygon2D.rectangle(120, 400),
+        holes=[
+            Polygon2D(
+                [
+                    Point2D(10, 320),
+                    Point2D(40, 260),
+                    Point2D(70, 180),
+                    Point2D(90, 180),
+                    Point2D(90, 340),
+                    Point2D(10, 340),
+                ]
+            )
+        ],
+    )
+
+    result = generate_layout(
+        plane,
+        _material(effective_width_cm=120, max_sheet_length_cm=1000),
+        settings=AppSettings(partial_cutout_top_extra_cm=0.0),
+    )
+
+    assert _segment_summary(result, 0) == [
+        (0.0, 10.0, 0.0, 400.0, None, None),
+        (10.0, 40.0, 0.0, 320.0, "partial", 260.0),
+        (10.0, 90.0, 340.0, 400.0, None, None),
+        (40.0, 90.0, 0.0, 260.0, "partial", 180.0),
+        (90.0, 120.0, 0.0, 400.0, None, None),
     ]
 
 
@@ -385,13 +455,16 @@ def test_partial_cutout_bottom_phase_emits_standard_rows_before_top_phase_row():
         settings=AppSettings(partial_cutout_top_extra_cm=0.0),
     )
 
-    band0_placements = [p for p in result.placements if p.band_index == 0]
-    assert [(p.y_top_cm, p.y_bottom_cm, p.raw_length_cm, p.split_reason) for p in band0_placements] == [
-        (190.0, 260.0, 70.0, None),
-        (150.0, 190.0, 40.0, None),
+    local_partial_placements = [
+        p
+        for p in result.placements
+        if p.band_index == 0 and almost_equal(p.x_left_cm, 10.0) and almost_equal(p.x_right_cm, 40.0)
+    ]
+    assert [(p.y_top_cm, p.y_bottom_cm, p.raw_length_cm, p.split_reason) for p in local_partial_placements] == [
         (80.0, 150.0, 70.0, None),
         (10.0, 80.0, 70.0, None),
         (0.0, 10.0, 10.0, "partial_cutout_top"),
+        (210.0, 260.0, 50.0, None),
     ]
     assert result.rejected_segments == []
 
@@ -430,11 +503,14 @@ def test_layout_engine_uses_displayed_partial_top_length_in_rejection_reason():
         settings=AppSettings(partial_cutout_top_extra_cm=4.0),
     )
 
-    assert [(p.y_top_cm, p.y_bottom_cm, p.final_length_cm, p.split_reason) for p in result.placements if p.band_index == 0] == [
-        (190.0, 260.0, 70.0, None),
-        (150.0, 190.0, 40.0, None),
-        (80.0, 150.0, 70.0, None),
-        (10.0, 80.0, 70.0, None),
+    assert [
+        (p.x_left_cm, p.x_right_cm, p.y_top_cm, p.y_bottom_cm, p.final_length_cm, p.split_reason)
+        for p in result.placements
+        if p.band_index == 0 and almost_equal(p.x_left_cm, 10.0) and almost_equal(p.x_right_cm, 40.0)
+    ] == [
+        (10.0, 40.0, 80.0, 150.0, 70.0, None),
+        (10.0, 40.0, 10.0, 80.0, 70.0, None),
+        (10.0, 40.0, 210.0, 260.0, 50.0, None),
     ]
     assert len(result.rejected_segments) == 1
     assert result.rejected_segments[0].raw_length_cm == 10.0

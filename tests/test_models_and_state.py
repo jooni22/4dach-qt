@@ -23,7 +23,7 @@ from core.models import (
     SheetPlacement,
     almost_equal,
 )
-from core.project_state import ProjectState
+from core.project_state import ProjectState, _serialize_layout_bands
 from persistence import load_config, save_config
 
 
@@ -287,7 +287,7 @@ def test_layout_engine_splits_band_by_hole_and_flags_long_sheet():
 
     result = generate_layout(plane, material)
 
-    assert len(result.placements) == 11
+    assert len(result.placements) == 15
     # Check that sheets are properly stacked without exceeding max length
     assert all(placement.raw_length_cm <= 40 for placement in result.placements)
 
@@ -736,7 +736,7 @@ def test_project_state_rebuilds_sheet_split_inputs_after_outline_edit_moves_hole
     state.add_hole_to_plane(Polygon2D.rectangle(20, 50, origin_x=20, origin_y=40), plane.id)
 
     state.generate_layout_for_plane(plane.id)
-    assert plane.layout_bands[0]["segments"][0]["cutout_interaction"] == "partial"
+    assert any(segment["cutout_interaction"] == "partial" for segment in plane.layout_bands[0]["segments"])
 
     updated_outline = Polygon2D(
         [
@@ -749,10 +749,9 @@ def test_project_state_rebuilds_sheet_split_inputs_after_outline_edit_moves_hole
     state.set_roof_plane_outline(updated_outline, plane.id)
     result = state.generate_layout_for_plane(plane.id)
 
-    band_segment = result.bands[0].segments[0]
-    assert band_segment.cutout_interaction is None
-    assert band_segment.partial_cut_line_y_cm is None
-    assert len(band_segment.coverage_polygons) == 1
+    assert all(segment.cutout_interaction is None for segment in result.bands[0].segments)
+    assert all(segment.partial_cut_line_y_cm is None for segment in result.bands[0].segments)
+    assert all(len(segment.coverage_polygons) == 1 for segment in result.bands[0].segments)
 
 
 def test_project_state_delete_hole_marks_geometry_changed():
@@ -834,16 +833,75 @@ def test_project_state_generates_layout_for_active_plane_and_persists_auto_place
     fragment = state.to_config_fragment()
     plane_payload = _compact_plane_payload(fragment, plane.id)
 
-    assert len(result.placements) == 4
+    assert len(result.placements) == 6
     assert len(result.bands) == 3
-    assert len(result.bands[1].segments) == 1
-    assert len(result.bands[1].segments[0].coverage_polygons) == 4
-    assert result.bands[1].segments[0].cutout_interaction == "partial"
-    assert len(plane.auto_sheet_placements) == 4
+    assert len(result.bands[1].segments) == 4
+    assert [
+        (
+            segment.x_left_cm,
+            segment.x_right_cm,
+            segment.y_top_cm,
+            segment.y_bottom_cm,
+            segment.cutout_interaction,
+        )
+        for segment in result.bands[1].segments
+    ] == [
+        (51.0, 60.0, 0.0, 200.0, None),
+        (60.0, 90.0, 0.0, 70.0, "partial"),
+        (60.0, 90.0, 120.0, 200.0, None),
+        (90.0, 102.0, 0.0, 200.0, None),
+    ]
+    assert len(plane.auto_sheet_placements) == 6
     assert almost_equal(plane.generation_settings.base_line_y_cm or 0.0, 200.0)
     assert plane.layout_revision == 2
     assert "auto_sheet_placements" not in plane_payload
     assert "layout_bands" not in plane_payload
+
+
+def test_project_state_roundtrip_preserves_localized_layout_segments_in_legacy_layout_payload():
+    state = ProjectState(
+        materials=[
+            Material(
+                id="MAT",
+                nazwa="Material",
+                type="trapezowa",
+                effective_width_cm=50,
+                module_length_cm=0,
+                bottom_margin_cm=0,
+                top_margin_cm=0,
+                min_sheet_length_cm=0,
+                max_sheet_length_cm=2000,
+            )
+        ]
+    )
+    plane = state.add_roof_plane(build_rectangle_outline(100, 1000), selected_material_id="MAT")
+    state.add_hole_to_plane(Polygon2D.rectangle(30, 200, origin_x=10, origin_y=400), plane.id)
+    state.generate_layout_for_plane(plane.id)
+
+    payload = _legacy_like_fragment(state)
+    payload["project_state"]["roof_planes"][0]["layout_bands"] = _serialize_layout_bands(plane.layout_bands)
+
+    reloaded = ProjectState.from_config(payload)
+    reloaded_band0 = reloaded.roof_planes[0].layout_bands[0]["segments"]
+
+    assert reloaded.roof_planes[0].layout_bands == plane.layout_bands
+    assert [
+        (
+            segment["x_left_cm"],
+            segment["x_right_cm"],
+            segment["y_top_cm"],
+            segment["y_bottom_cm"],
+            segment["cutout_interaction"],
+            segment["partial_cut_line_y_cm"],
+            segment["placement_id"],
+        )
+        for segment in reloaded_band0
+    ] == [
+        (0.0, 10.0, 0.0, 1000.0, None, None, "plane-1-b0-s0-r0"),
+        (10.0, 40.0, 0.0, 400.0, "partial", 400.0, "plane-1-b0-s1-r0"),
+        (10.0, 40.0, 600.0, 1000.0, None, None, "plane-1-b0-s2-r0"),
+        (40.0, 50.0, 0.0, 1000.0, None, None, "plane-1-b0-s3-r0"),
+    ]
 
 
 def test_project_state_manual_sheet_overrides_are_merged_and_serialized():
