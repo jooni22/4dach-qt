@@ -389,6 +389,18 @@ def insert_polygon_point(polygon: Polygon2D, edge_index: int, point: Point2D) ->
     return Polygon2D(points)
 
 
+def scale_polygon_from_origin(polygon: Polygon2D, scale: float) -> Polygon2D:
+    return Polygon2D([Point2D(point.x * scale, point.y * scale) for point in polygon.points])
+
+
+def scale_outline_and_holes_from_origin(
+    outline: Polygon2D,
+    holes: list[Polygon2D],
+    scale: float,
+) -> tuple[Polygon2D, list[Polygon2D]]:
+    return scale_polygon_from_origin(outline, scale), [scale_polygon_from_origin(hole, scale) for hole in holes]
+
+
 def delete_polygon_point(polygon: Polygon2D, point_index: int) -> Polygon2D:
     if len(polygon.points) <= 3:
         raise ValueError("Polygon po usunięciu punktu musi mieć co najmniej 3 wierzchołki")

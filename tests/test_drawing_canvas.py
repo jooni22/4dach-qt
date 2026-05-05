@@ -14,7 +14,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from core.app_settings import AppSettings
-from core.geometry import point_in_polygon, polygon_edges, segment_length
+from core.geometry import point_in_polygon, scale_outline_and_holes_from_origin, segment_length
 from core.layout_engine import generate_layout
 from core.models import Material, Point2D, Polygon2D, RoofPlane, SheetPlacement
 from ui.drawing_canvas import AXIS_WIDGET_PADDING_PX, CommittedOutlineEdit, DrawingCanvas
@@ -171,40 +171,41 @@ def test_crosshair_axis_uses_dominant_freehand_direction(qtbot):
     assert canvas._crosshair_axis == "y"
 
 
-def test_canvas_clicking_midpoint_inserts_new_vertex_and_starts_drag(qtbot):
+def test_canvas_clicking_cutout_midpoint_inserts_new_vertex_and_starts_drag(qtbot):
     outline = Polygon2D.rectangle(300, 200)
-    canvas = _make_canvas(qtbot, outline)
-    canvas.set_app_settings(AppSettings(edge_drag_mode="insert_vertex"))
+    hole = Polygon2D.rectangle(80, 60, origin_x=100, origin_y=70)
+    canvas = _make_canvas(qtbot, outline, holes=[hole])
 
-    midpoint = _point_on_canvas(canvas, Point2D(150, 0))
+    midpoint = _point_on_canvas(canvas, Point2D(140, 70))
     QTest.mousePress(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, midpoint)
 
-    preview = canvas.display_outline()
-    assert preview is not None
+    preview = canvas.display_holes()[0]
     assert len(preview.points) == 5
-    assert preview.points[1] == Point2D(150, 0)
-    assert canvas._active_vertex_index == 1
+    assert preview.points[1] == Point2D(140, 70)
+    assert canvas.selected_cutout_index() == 0
+    assert canvas._active_hole_vertex_index == 1
     assert canvas._dragging_vertex_index == 1
 
 
-def test_canvas_dragging_inserted_midpoint_commits_split_edge_outline(qtbot):
+def test_canvas_dragging_inserted_cutout_midpoint_commits_split_edge_hole(qtbot):
     outline = Polygon2D.rectangle(300, 200)
-    canvas = _make_canvas(qtbot, outline)
-    canvas.set_app_settings(AppSettings(edge_drag_mode="insert_vertex"))
+    hole = Polygon2D.rectangle(80, 60, origin_x=100, origin_y=70)
+    canvas = _make_canvas(qtbot, outline, holes=[hole])
 
-    midpoint = _point_on_canvas(canvas, Point2D(150, 0))
-    target_domain = Point2D(150, 40)
+    midpoint = _point_on_canvas(canvas, Point2D(140, 70))
+    target_domain = Point2D(140, 40)
     target = _point_on_canvas(canvas, target_domain)
 
-    with qtbot.waitSignal(canvas.outline_edit_committed, timeout=1000) as blocker:
+    with qtbot.waitSignal(canvas.hole_edit_committed, timeout=1000) as blocker:
         QTest.mousePress(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, midpoint)
         _send_mouse_move(canvas, target, buttons=Qt.MouseButton.LeftButton)
         QTest.mouseRelease(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, target)
 
-    committed_outline = blocker.args[0]
-    assert len(committed_outline.points) == 5
-    assert committed_outline.points[1].x == pytest.approx(target_domain.x, abs=1.5)
-    assert committed_outline.points[1].y == pytest.approx(target_domain.y, abs=1.5)
+    assert blocker.args[0] == 0
+    committed_hole = blocker.args[1]
+    assert len(committed_hole.points) == 5
+    assert committed_hole.points[1].x == pytest.approx(target_domain.x, abs=1.5)
+    assert committed_hole.points[1].y == pytest.approx(target_domain.y, abs=1.5)
 
 
 def test_canvas_dragging_vertex_updates_preview_geometry_live(qtbot):
@@ -383,15 +384,17 @@ def test_canvas_dragging_outline_vertex_switches_edit_overlay_to_drag(qtbot):
     assert canvas._edit_overlay.vertex_index == 1
 
 
-def test_canvas_dragging_hole_center_updates_edit_overlay_domain_point(qtbot):
+def test_canvas_dragging_inside_cutout_without_center_handle_updates_edit_overlay_domain_point(qtbot):
     outline = Polygon2D.rectangle(300, 200)
     hole = Polygon2D.rectangle(80, 60, origin_x=100, origin_y=70)
     canvas = _make_canvas(qtbot, outline, holes=[hole])
+    canvas.set_snap_to_grid_enabled(False)
 
-    hole_center = Point2D(140, 100)
-    target_domain = Point2D(170, 120)
-    start = _point_on_canvas(canvas, hole_center)
-    target = _point_on_canvas(canvas, target_domain)
+    drag_start = Point2D(130, 95)
+    target_cursor = Point2D(160, 115)
+    expected_center = Point2D(170, 120)
+    start = _point_on_canvas(canvas, drag_start)
+    target = _point_on_canvas(canvas, target_cursor)
 
     QTest.mousePress(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, start)
     _send_mouse_move(canvas, target, buttons=Qt.MouseButton.LeftButton)
@@ -399,8 +402,8 @@ def test_canvas_dragging_hole_center_updates_edit_overlay_domain_point(qtbot):
     assert canvas._edit_overlay is not None
     assert canvas._edit_overlay.mode == "drag"
     assert canvas._edit_overlay.target_kind == "hole_center"
-    assert _overlay_point(canvas).x == pytest.approx(target_domain.x, abs=1.5)
-    assert _overlay_point(canvas).y == pytest.approx(target_domain.y, abs=1.5)
+    assert _overlay_point(canvas).x == pytest.approx(expected_center.x, abs=1.5)
+    assert _overlay_point(canvas).y == pytest.approx(expected_center.y, abs=1.5)
     assert canvas.mode() == canvas.MODE_MOVE
 
 
@@ -489,9 +492,31 @@ def test_canvas_default_edge_drag_mode_moves_both_edge_vertices(qtbot):
         QTest.mouseRelease(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, target)
 
     committed_outline = blocker.args[0]
+    assert committed_outline.points[0].x == pytest.approx(0.0, abs=1.5)
     assert committed_outline.points[0].y == pytest.approx(40.0, abs=1.5)
+    assert committed_outline.points[1].x == pytest.approx(300.0, abs=1.5)
     assert committed_outline.points[1].y == pytest.approx(40.0, abs=1.5)
     assert len(committed_outline.points) == 4
+
+
+def test_canvas_dragging_vertical_outline_edge_moves_only_x(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+
+    midpoint = _point_on_canvas(canvas, Point2D(300, 100))
+    target_domain = Point2D(340, 130)
+    target = _point_on_canvas(canvas, target_domain)
+
+    with qtbot.waitSignal(canvas.outline_edit_committed, timeout=1000) as blocker:
+        QTest.mousePress(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, midpoint)
+        _send_mouse_move(canvas, target, buttons=Qt.MouseButton.LeftButton)
+        QTest.mouseRelease(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, target)
+
+    committed_outline = blocker.args[0]
+    assert committed_outline.points[1].x == pytest.approx(340.0, abs=1.5)
+    assert committed_outline.points[1].y == pytest.approx(0.0, abs=1.5)
+    assert committed_outline.points[2].x == pytest.approx(340.0, abs=1.5)
+    assert committed_outline.points[2].y == pytest.approx(200.0, abs=1.5)
 
 
 def test_canvas_escape_returns_from_edit_to_idle(qtbot):
@@ -551,15 +576,17 @@ def test_canvas_angle_edit_keeps_previous_and_current_vertices_fixed_and_moves_n
     assert committed_outline.points[2] != outline.points[2]
 
 
-def test_canvas_dragging_hole_center_exposes_coordinate_labels_for_all_cutout_vertices(qtbot):
+def test_canvas_dragging_inside_cutout_exposes_coordinate_labels_for_all_cutout_vertices(qtbot):
     outline = Polygon2D.rectangle(300, 200)
     hole = Polygon2D.rectangle(80, 60, origin_x=100, origin_y=70)
     canvas = _make_canvas(qtbot, outline, holes=[hole])
+    canvas.set_snap_to_grid_enabled(False)
 
-    hole_center = Point2D(140, 100)
-    target_domain = Point2D(170, 120)
-    start = _point_on_canvas(canvas, hole_center)
-    target = _point_on_canvas(canvas, target_domain)
+    drag_start = Point2D(130, 95)
+    target_cursor = Point2D(160, 115)
+    expected_center = Point2D(170, 120)
+    start = _point_on_canvas(canvas, drag_start)
+    target = _point_on_canvas(canvas, target_cursor)
 
     QTest.mousePress(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, start)
     _send_mouse_move(canvas, target, buttons=Qt.MouseButton.LeftButton)
@@ -568,8 +595,8 @@ def test_canvas_dragging_hole_center_exposes_coordinate_labels_for_all_cutout_ve
 
     assert [label.kind for label in labels[:5]] == ["active", "vertex", "vertex", "vertex", "vertex"]
     assert labels[-1].kind == "delta"
-    assert labels[0].domain_point.x == pytest.approx(target_domain.x, abs=1.5)
-    assert labels[0].domain_point.y == pytest.approx(target_domain.y, abs=1.5)
+    assert labels[0].domain_point.x == pytest.approx(expected_center.x, abs=1.5)
+    assert labels[0].domain_point.y == pytest.approx(expected_center.y, abs=1.5)
 
     preview_hole = canvas.display_holes()[0]
     assert [label.domain_point for label in labels[1:5]] == preview_hole.points
@@ -1428,6 +1455,37 @@ def test_draw_reference_badge_renders_below_horizontal_span(qtbot, monkeypatch):
     assert captured_rects[0].top() > active_mapped.y()
 
 
+def test_edge_label_rect_avoids_outline_midpoint_handle_overlap(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    canvas = _make_canvas(qtbot, outline)
+    mapper = canvas._canvas_mapper()
+
+    regions = canvas._edge_label_regions(mapper, outline, None)
+    midpoints = canvas._edge_midpoints(mapper, outline)
+    handle_clearance = canvas._scaled_px(5.0)
+
+    for region, midpoint in zip(regions, midpoints, strict=False):
+        assert region.rect.adjusted(-handle_clearance, -handle_clearance, handle_clearance, handle_clearance).contains(
+            midpoint
+        ) is False
+
+
+def test_edge_label_rect_avoids_cutout_midpoint_handle_overlap(qtbot):
+    outline = Polygon2D.rectangle(300, 200)
+    hole = Polygon2D.rectangle(80, 60, origin_x=100, origin_y=70)
+    canvas = _make_canvas(qtbot, outline, holes=[hole])
+    mapper = canvas._canvas_mapper()
+
+    regions = canvas._edge_label_regions(mapper, hole, hole_index=0)
+    midpoints = canvas._edge_midpoints(mapper, hole)
+    handle_clearance = canvas._scaled_px(5.0)
+
+    for region, midpoint in zip(regions, midpoints, strict=False):
+        assert region.rect.adjusted(-handle_clearance, -handle_clearance, handle_clearance, handle_clearance).contains(
+            midpoint
+        ) is False
+
+
 def test_canvas_dragging_origin_projects_to_nearest_boundary_when_cursor_leaves_shape(qtbot):
     outline = Polygon2D.rectangle(300, 200)
     canvas = _make_canvas(qtbot, outline)
@@ -1770,7 +1828,7 @@ def test_canvas_dragging_hole_center_snaps_a_vertex_instead_of_the_center(qtbot)
     canvas = _make_canvas(qtbot, outline, holes=[hole])
     canvas.set_app_settings(AppSettings(grid_size_cm=25.0))
 
-    hole_center = Point2D(140, 100)
+    hole_center = Point2D(130, 95)
     target_domain = Point2D(171, 121)
     start = _point_on_canvas(canvas, hole_center)
     target = _point_on_canvas(canvas, target_domain)
@@ -2418,42 +2476,57 @@ def test_canvas_placement_render_polygons_returns_empty_for_unknown_segment_key(
     assert canvas._placement_render_polygons(missing_segment, {}) == []
 
 
-def test_canvas_edge_scale_preserves_anchor_point(qtbot):
-    """Scaling an edge should scale relative to the anchor point (first vertex of the edge),
-    not the origin (0, 0), so the shape scales in-place."""
-    # Create a rectangle at offset (100, 100)
+def test_canvas_edge_scale_uses_absolute_origin_for_outline_and_holes():
     outline = Polygon2D.rectangle(100, 100, origin_x=100, origin_y=100)
-    canvas = _make_canvas(qtbot, outline)
-    
-    # Store original anchor point and x_min
-    edges = list(polygon_edges(outline))
-    start, end = edges[0]  # First edge
-    original_anchor = start
-    original_x_min = outline.bounds().min_x
-    
-    # Scale the first edge from 100 to 150 (scale factor 1.5)
-    current_len = segment_length(start, end)
-    new_len = 150.0
-    scale = new_len / current_len
-    
-    # Apply the scaling logic from _prompt_scale_polygon
-    anchor = start
-    new_points = [
-        Point2D(
-            anchor.x + (p.x - anchor.x) * scale,
-            anchor.y + (p.y - anchor.y) * scale,
-        )
-        for p in outline.points
-    ]
-    new_outline = Polygon2D(new_points)
-    
-    # Verify anchor point is preserved (still at 100, 100)
-    assert new_outline.points[0].x == pytest.approx(100.0, abs=0.01)
-    assert new_outline.points[0].y == pytest.approx(100.0, abs=0.01)
-    
-    # Verify x_min has not moved (shape scaled in-place)
-    new_x_min = new_outline.bounds().min_x
-    assert new_x_min == pytest.approx(original_x_min, abs=0.01)
+    holes = [Polygon2D.rectangle(20, 20, origin_x=120, origin_y=120)]
+
+    scaled_outline, scaled_holes = scale_outline_and_holes_from_origin(outline, holes, 1.5)
+
+    assert scaled_outline.points[0] == Point2D(150.0, 150.0)
+    assert scaled_outline.points[2] == Point2D(300.0, 300.0)
+    assert scaled_holes[0].points[0] == Point2D(180.0, 180.0)
+    assert scaled_holes[0].points[2] == Point2D(210.0, 210.0)
+
+
+def test_canvas_inline_length_edit_scales_outline_and_holes_about_absolute_origin(qtbot):
+    outline = Polygon2D.rectangle(100, 100, origin_x=100, origin_y=100)
+    hole = Polygon2D.rectangle(20, 20, origin_x=120, origin_y=120)
+    canvas = _make_canvas(qtbot, outline, holes=[hole])
+    mapper = canvas._canvas_mapper()
+    canvas._start_post_draw_length_editor(0, outline, mapper)
+    canvas._inline_segment_editor.length_edit.setText("150")
+
+    with qtbot.waitSignal(canvas.outline_edit_committed, timeout=1000) as blocker:
+        canvas._confirm_post_draw_editor()
+
+    committed = blocker.args[0]
+    assert isinstance(committed, CommittedOutlineEdit)
+    assert committed.operation == "outline_scale"
+    assert committed.outline.points[0] == Point2D(150.0, 150.0)
+    assert committed.outline.points[2] == Point2D(300.0, 300.0)
+    assert committed.holes is not None
+    assert committed.holes[0].points[0] == Point2D(180.0, 180.0)
+    assert committed.holes[0].points[2] == Point2D(210.0, 210.0)
+
+
+def test_canvas_prompt_scale_polygon_scales_outline_and_holes_about_absolute_origin(qtbot, monkeypatch):
+    outline = Polygon2D.rectangle(100, 100, origin_x=100, origin_y=100)
+    hole = Polygon2D.rectangle(20, 20, origin_x=120, origin_y=120)
+    canvas = _make_canvas(qtbot, outline, holes=[hole])
+
+    monkeypatch.setattr("PySide6.QtWidgets.QInputDialog.getInt", lambda *args, **kwargs: (150, True))
+
+    with qtbot.waitSignal(canvas.outline_edit_committed, timeout=1000) as blocker:
+        canvas._prompt_scale_polygon(0, outline)
+
+    committed = blocker.args[0]
+    assert isinstance(committed, CommittedOutlineEdit)
+    assert committed.operation == "outline_scale"
+    assert committed.outline.points[0] == Point2D(150.0, 150.0)
+    assert committed.outline.points[2] == Point2D(300.0, 300.0)
+    assert committed.holes is not None
+    assert committed.holes[0].points[0] == Point2D(180.0, 180.0)
+    assert committed.holes[0].points[2] == Point2D(210.0, 210.0)
 
 
 def test_drawing_canvas_stage4_mixin_split_keeps_interaction_methods_out_of_class_dict():

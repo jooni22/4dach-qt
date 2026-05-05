@@ -71,10 +71,13 @@ def test_mainwindow_exposes_expected_ui_contract(qtbot):
     assert "Przelicz aktywną połać" in sheets_actions
     file_actions = [action.text() for action in actions[0].menu().actions() if not action.isSeparator()]
     assert file_actions[:4] == ["Nowy projekt", "Wczytaj projekt...", "Zapisz", "Zapisz jako..."]
+    assert "Drukuj raport" in file_actions
+    assert "Drukuj raport ciągły" not in file_actions
+    assert "Drukuj raport skrócony" not in file_actions
     assert window._tb_ctrl.action_new_surface.text() == "Nowa połać"
     assert window._tb_ctrl.action_duplicate_surface.text() == "Duplikuj połać"
     assert window._tb_ctrl.action_overlay_sheet.isCheckable() is True
-    assert window._tb_ctrl.action_overlay_sheet.isChecked() is True
+    assert window._tb_ctrl.action_overlay_sheet.isChecked() is False
     assert window._mode_label.text() == "Mode: IDLE"
 
 
@@ -86,6 +89,7 @@ def test_mainwindow_toolbar_hides_removed_actions_after_cleanup(qtbot):
     assert hasattr(window._tb_ctrl, "action_duplicate_surface") is True
     assert hasattr(window._tb_ctrl, "action_overlay_sheet") is True
     assert hasattr(window._tb_ctrl, "action_grid") is True
+    assert hasattr(window._tb_ctrl, "action_snap_to_grid") is True
     assert hasattr(window._tb_ctrl, "action_base_point_toggle") is True
     assert hasattr(window._tb_ctrl, "action_from_left") is True
     assert hasattr(window._tb_ctrl, "action_from_right") is True
@@ -93,6 +97,7 @@ def test_mainwindow_toolbar_hides_removed_actions_after_cleanup(qtbot):
     assert hasattr(window._tb_ctrl, "action_module_count") is False
     assert hasattr(window._tb_ctrl, "action_select_props") is False
     assert hasattr(window._tb_ctrl, "action_from_base") is False
+    assert hasattr(window._tb_ctrl, "material_button") is False
 
 
 def test_settings_dialog_exposes_only_supported_controls_after_cleanup(qtbot):
@@ -112,10 +117,12 @@ def test_settings_dialog_exposes_only_supported_controls_after_cleanup(qtbot):
     assert hasattr(dialog, "_check_show_inferences") is True
     assert hasattr(dialog, "_combo_live_angle_mode") is True
     assert hasattr(dialog, "_check_show_guide_lines") is True
-    assert hasattr(dialog, "_combo_edge_drag_mode") is True
+    assert hasattr(dialog, "_combo_edge_drag_mode") is False
     assert hasattr(dialog, "_check_show_edge_length_labels") is True
     assert hasattr(dialog, "_check_show_vertex_angle_labels") is True
     assert hasattr(dialog, "_check_label_always_visible") is True
+    assert hasattr(dialog, "_button_restore_defaults") is True
+    assert dialog._button_restore_defaults.text() == "Domyślne"
 
     assert hasattr(dialog, "_combo_shift_behavior") is False
     assert hasattr(dialog, "_check_show_grid") is False
@@ -142,6 +149,23 @@ def test_settings_dialog_build_settings_keeps_fixed_defaults(qtbot):
     assert settings.close_on_rmb is True
     assert settings.ui_element_scale == pytest.approx(1.0)
     assert settings.undo_stack_depth == 20
+
+
+def test_settings_dialog_restore_defaults_reloads_new_code_defaults_without_accepting(qtbot):
+    dialog = SettingsDialog(AppSettings())
+    qtbot.addWidget(dialog)
+
+    dialog._check_crosshair.setChecked(True)
+    dialog._check_snap_to_3060deg.setChecked(False)
+    dialog._check_label_always_visible.setChecked(False)
+
+    dialog._button_restore_defaults.click()
+
+    settings = dialog.build_settings()
+    assert dialog.result() == 0
+    assert settings.show_crosshair is False
+    assert settings.snap_to_3060deg is True
+    assert settings.label_always_visible is True
 
 
 def test_dane_blachy_dialog_exposes_only_trapez_minimal_fields_after_cleanup(qtbot):
@@ -784,6 +808,7 @@ def test_mainwindow_settings_dialog_updates_grid_size_on_project_state_and_canva
     assert canvas._app_settings.show_xy_references_during_draw is True
     assert canvas.snap_to_grid_enabled() is False
     assert window._tb_ctrl.action_grid.isChecked() is False
+    assert window._tb_ctrl.action_snap_to_grid.isChecked() is False
 
 
 def test_mainwindow_uses_code_defaults_when_config_payload_is_empty(qtbot, monkeypatch):
@@ -812,12 +837,16 @@ def test_mainwindow_toolbar_grid_toggle_updates_canvas_grid_visibility_only(qtbo
     assert window._tb_ctrl.action_grid.text() == "Pokaż siatkę"
     assert window._tb_ctrl.action_grid.isCheckable() is True
     assert window._tb_ctrl.action_grid.isChecked() is True
+    assert window._tb_ctrl.action_snap_to_grid.text() == "Snap to Grid"
+    assert window._tb_ctrl.action_snap_to_grid.isCheckable() is True
+    assert window._tb_ctrl.action_snap_to_grid.isChecked() is True
     assert canvas._show_grid is True
     assert canvas.snap_to_grid_enabled() is True
 
     window._tb_ctrl.action_grid.trigger()
 
     assert window._tb_ctrl.action_grid.isChecked() is False
+    assert window._tb_ctrl.action_snap_to_grid.isChecked() is True
     assert canvas._show_grid is False
     assert canvas.snap_to_grid_enabled() is True
     assert canvas._app_settings.show_axis_overlay is True
@@ -859,13 +888,15 @@ def test_mainwindow_toolbar_sheet_toggle_switches_wireframe_mode_without_recalc(
 
     canvas = window._workspace.canvas_for_plane(plane.id)
     assert canvas is not None
-    assert window._tb_ctrl.action_overlay_sheet.isChecked() is True
-
-    window._tb_ctrl.action_overlay_sheet.trigger()
-
     assert window._tb_ctrl.action_overlay_sheet.isChecked() is False
     assert window._sheets_visible is False
     assert canvas._show_sheet_placements is False
+
+    window._tb_ctrl.action_overlay_sheet.trigger()
+
+    assert window._tb_ctrl.action_overlay_sheet.isChecked() is True
+    assert window._sheets_visible is True
+    assert canvas._show_sheet_placements is True
     assert calls == []
 
 

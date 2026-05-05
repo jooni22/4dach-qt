@@ -1,10 +1,6 @@
 from __future__ import annotations
 
-from core.app_settings import (
-    EDGE_DRAG_MODE_INSERT_VERTEX,
-    LIVE_ANGLE_MODE_RELATIVE_TO_PREV,
-    AppSettings,
-)
+from core.app_settings import LIVE_ANGLE_MODE_RELATIVE_TO_PREV, AppSettings
 
 
 def test_default_value():
@@ -16,7 +12,7 @@ def test_default_value():
     assert s.show_axis_overlay is True
     assert s.grid_major_cm == 100
     assert s.grid_minor_cm == 10
-    assert s.show_crosshair is True
+    assert s.show_crosshair is False
     assert s.show_xy_references_during_draw is True
     assert s.live_angle_mode == "absolute"
     assert s.show_decimal_cm is False
@@ -24,10 +20,10 @@ def test_default_value():
     assert s.show_guide_lines is True
     assert s.ui_element_scale == 1.0
     assert s.close_on_rmb is True
-    assert s.edge_drag_mode == "move_vertices"
+    assert s.snap_to_3060deg is True
     assert s.show_edge_length_labels is True
     assert s.show_vertex_angle_labels is False
-    assert s.label_always_visible is False
+    assert s.label_always_visible is True
     assert s.undo_stack_depth == 20
 
 
@@ -55,7 +51,6 @@ def test_round_trip():
         snap_axis_threshold_deg=4.0,
         snap_45_threshold_deg=3.5,
         snap_radius_px=18,
-        edge_drag_mode=EDGE_DRAG_MODE_INSERT_VERTEX,
         show_edge_length_labels=False,
         show_vertex_angle_labels=True,
         label_always_visible=True,
@@ -86,11 +81,11 @@ def test_round_trip():
     assert s2.snap_axis_threshold_deg == 4.0
     assert s2.snap_45_threshold_deg == 3.5
     assert s2.snap_radius_px == 18
-    assert s2.edge_drag_mode == EDGE_DRAG_MODE_INSERT_VERTEX
     assert s2.show_edge_length_labels is False
     assert s2.show_vertex_angle_labels is True
     assert s2.label_always_visible is True
     assert s2.undo_stack_depth == 20
+    assert "edge_drag_mode" not in s.to_dict()
 
 
 def test_negative_clamped_to_zero():
@@ -133,7 +128,7 @@ def test_missing_key_uses_default():
     assert s.show_axis_overlay is True
     assert s.grid_major_cm == 100
     assert s.grid_minor_cm == 10
-    assert s.show_crosshair is True
+    assert s.show_crosshair is False
     assert s.show_xy_references_during_draw is True
     assert s.live_angle_mode == "absolute"
     assert s.show_decimal_cm is False
@@ -141,10 +136,10 @@ def test_missing_key_uses_default():
     assert s.show_guide_lines is True
     assert s.ui_element_scale == 1.0
     assert s.close_on_rmb is True
-    assert s.edge_drag_mode == "move_vertices"
+    assert s.snap_to_3060deg is True
     assert s.show_edge_length_labels is True
     assert s.show_vertex_angle_labels is False
-    assert s.label_always_visible is False
+    assert s.label_always_visible is True
     assert s.undo_stack_depth == 20
 
 
@@ -165,9 +160,13 @@ def test_invalid_live_angle_mode_uses_default():
     assert s.live_angle_mode == "absolute"
 
 
-def test_invalid_edge_drag_mode_uses_default():
+def test_legacy_edge_drag_mode_is_ignored_without_affecting_defaults():
     s = AppSettings.from_dict({"edge_drag_mode": "teleport_edge"})
-    assert s.edge_drag_mode == "move_vertices"
+
+    assert s.show_crosshair is False
+    assert s.snap_to_3060deg is True
+    assert s.label_always_visible is True
+    assert "edge_drag_mode" not in s.to_dict()
 
 
 def test_nonpositive_snap_thresholds_use_defaults():
