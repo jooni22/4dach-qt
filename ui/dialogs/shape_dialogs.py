@@ -56,6 +56,13 @@ class ProstokatDialog(QDialog):
         }
 
 
+class CutoutRectangleDialog(ProstokatDialog):
+    def _load_values(self) -> None:
+        values = self.config_data.get("wycinki", {}).get("prostokat", {})
+        self.szerokosc_spin.setValue(values.get("szerokosc", 100))
+        self.wysokosc_spin.setValue(values.get("wysokosc", 100))
+
+
 class TrojkatDialog(QDialog):
     def __init__(self, config_data: dict, parent=None) -> None:
         super().__init__(parent)

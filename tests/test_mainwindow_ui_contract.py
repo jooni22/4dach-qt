@@ -1684,3 +1684,58 @@ def test_build_centered_hole_prefers_space_after_existing_cutouts():
 
     assert hole.bounds().min_x == pytest.approx(110.0)
     assert hole.bounds().min_y == pytest.approx(75.0)
+
+
+def test_cutout_rectangle_dialog_uses_dedicated_config_values(qtbot):
+    from ui.dialogs.shape_dialogs import CutoutRectangleDialog
+
+    dialog = CutoutRectangleDialog(
+        {
+            "ksztalty": {"prostokat": {"szerokosc": 1500, "wysokosc": 1300}},
+            "wycinki": {"prostokat": {"szerokosc": 90, "wysokosc": 70}},
+        }
+    )
+    qtbot.addWidget(dialog)
+
+    assert dialog.get_values() == {"szerokosc": 90, "wysokosc": 70}
+
+
+def test_mainwindow_add_hole_uses_dedicated_cutout_rectangle_config(qtbot, monkeypatch):
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.project_state = ProjectState(materials=window.project_state.materials)
+    window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
+    window.project_state.add_empty_roof_plane(selected_material_id="PD510")
+    window._refresh_canvas_from_state()
+
+    plane = window.project_state.active_roof_plane()
+    assert plane is not None
+    window.project_state.set_roof_plane_outline(build_rectangle_outline(500, 400), plane.id)
+    window._refresh_canvas_from_state()
+    window._config.setdefault("ksztalty", {})["prostokat"] = {"szerokosc": 1500, "wysokosc": 1300}
+
+    class FakeCutoutRectangleDialog:
+        def __init__(self, config_data, parent=None) -> None:
+            self._values = {"szerokosc": 90, "wysokosc": 70}
+
+        def setWindowTitle(self, _title: str) -> None:
+            return None
+
+        def exec(self) -> int:
+            return QDialog.DialogCode.Accepted
+
+        def get_values(self) -> dict:
+            return dict(self._values)
+
+    monkeypatch.setattr("ui.main_window.CutoutRectangleDialog", FakeCutoutRectangleDialog)
+
+    window._dlg_add_hole()
+
+    updated_plane = window.project_state.active_roof_plane()
+    assert updated_plane is not None
+    assert window._config["ksztalty"]["prostokat"] == {"szerokosc": 1500, "wysokosc": 1300}
+    assert window._config["wycinki"]["prostokat"] == {"szerokosc": 90, "wysokosc": 70}
+    assert len(updated_plane.holes) == 1
+    assert updated_plane.holes[0].bounds().width == pytest.approx(90.0)
+    assert updated_plane.holes[0].bounds().height == pytest.approx(70.0)

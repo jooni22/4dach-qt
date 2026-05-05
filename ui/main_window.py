@@ -42,6 +42,7 @@ from persistence import load_config, save_config
 from ui.dialogs import (
     AddPolacDialog,
     BlachyDialog,
+    CutoutRectangleDialog,
     DaneFirmyDialog,
     ProstokatDialog,
     TrapezDialog,
@@ -1288,11 +1289,12 @@ class MainWindow(QMainWindow):
         plane = self._active_or_warn()
         if plane is None:
             return
-        dlg = ProstokatDialog(self._config, self)
+        dlg = CutoutRectangleDialog(self._config, self)
         dlg.setWindowTitle("Prostokątny wycinek")
         if not dialog_accepted(dlg):
             return
         values = dlg.get_values()
+        self._config.setdefault("wycinki", {})["prostokat"] = dict(values)
         hole = build_centered_hole(plane, values["szerokosc"], values["wysokosc"])
         self._edit(lambda: self.project_state.add_hole_to_plane(hole, plane.id), f"Dodano wycinek do {plane.name}")
 
