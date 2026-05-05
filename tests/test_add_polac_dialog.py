@@ -8,10 +8,10 @@ pytest.importorskip("PySide6")
 pytest.importorskip("pytestqt")
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QScrollArea, QSlider, QToolButton
+from PySide6.QtWidgets import QGroupBox, QScrollArea, QSlider, QToolButton
 
 from ui.dialogs.add_polac_catalog import SHAPE_CATALOG, SHAPE_ORDER
-from ui.dialogs.add_polac_dialog import AddPolacDialog
+from ui.dialogs.add_polac_dialog import AddPolacDialog, _PolygonPreviewWidget
 
 
 def _legacy_shape_config() -> dict:
@@ -198,18 +198,37 @@ def test_add_polac_dialog_rebuilds_representative_shape_and_cutout_forms(qtbot):
     assert dialog.cutout_form_fields["H"].value() == 60
 
 
-def test_add_polac_dialog_uses_left_scroll_library_and_right_parameters(qtbot):
+def test_add_polac_dialog_places_parameters_below_preview_and_keeps_library_scroll_space(
+    qtbot,
+):
     dialog = AddPolacDialog(_legacy_shape_config())
     qtbot.addWidget(dialog)
 
+    shape_layout = dialog.shape_step.layout()
+    shape_workspace = shape_layout.itemAt(1).layout()
+
     assert isinstance(dialog.shape_library_scroll, QScrollArea)
     assert dialog.shape_library_scroll.widgetResizable() is True
+    assert dialog.shape_library_scroll.widget().layout().contentsMargins().right() == 18
+    assert shape_workspace.itemAt(0).layout().itemAt(1).widget() is dialog.shape_preview
+    assert shape_workspace.itemAt(1).widget() is dialog.shape_parameters_panel
     assert dialog.shape_form_host.parent() is dialog.shape_parameters_panel
+    assert any(
+        group.title() == "Narzędzia"
+        for group in dialog.shape_parameters_panel.findChildren(QGroupBox)
+    )
+    assert _PolygonPreviewWidget.PREVIEW_MARGIN == 32.0
 
     qtbot.mouseClick(dialog.next_button, Qt.MouseButton.LeftButton)
 
+    cutout_layout = dialog.cutout_step.layout()
+    cutout_workspace = cutout_layout.itemAt(1).layout()
+
     assert isinstance(dialog.cutout_library_scroll, QScrollArea)
     assert dialog.cutout_library_scroll.widgetResizable() is True
+    assert dialog.cutout_library_scroll.widget().layout().contentsMargins().right() == 18
+    assert cutout_workspace.itemAt(0).layout().itemAt(1).widget() is dialog.cutout_preview
+    assert cutout_workspace.itemAt(1).widget() is dialog.cutout_parameters_panel
     assert dialog.cutout_form_host.parent() is dialog.cutout_parameters_panel
 
 

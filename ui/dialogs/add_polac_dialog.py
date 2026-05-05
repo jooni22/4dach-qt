@@ -49,6 +49,8 @@ class AddPolacResult:
 
 
 class _PolygonPreviewWidget(QWidget):
+    PREVIEW_MARGIN = 32.0
+
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._outline: Polygon2D | None = None
@@ -95,7 +97,7 @@ class _PolygonPreviewWidget(QWidget):
         max_y = max(point.y for point in all_points)
         width = max(max_x - min_x, 1.0)
         height = max(max_y - min_y, 1.0)
-        margin = 32.0
+        margin = self.PREVIEW_MARGIN
         scale = min((self.width() - 2 * margin) / width, (self.height() - 2 * margin) / height)
         offset_x = (self.width() - width * scale) / 2.0
         offset_y = (self.height() - height * scale) / 2.0

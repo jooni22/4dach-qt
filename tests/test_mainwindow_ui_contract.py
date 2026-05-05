@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -17,7 +18,6 @@ from PySide6.QtCore import QPointF
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
-    QFileDialog,
     QInputDialog,
     QLabel,
     QMenu,
@@ -30,9 +30,46 @@ from ui.dialogs.settings_dialog import SettingsDialog
 from ui.drawing_canvas import CommittedOutlineEdit
 
 
+def _accepted_project_dialog(*, selected_path: Path, project_name: str = "Projekt", project_meta: dict | None = None):
+    class FakeProjectManagerDialog:
+        def __init__(self, *, mode, projects_dir, default_name="Nowy projekt", parent=None) -> None:
+            self.mode = mode
+            self._projects_dir = Path(projects_dir)
+
+        def exec(self) -> int:
+            return QDialog.DialogCode.Accepted
+
+        def projects_dir(self) -> Path:
+            return self._projects_dir
+
+        def selected_path(self) -> Path:
+            return selected_path
+
+        def project_name(self) -> str:
+            return project_name
+
+        def project_meta(self) -> dict:
+            return dict(project_meta or {"name": project_name})
+
+        def startup_action(self) -> str:
+            return "open"
+
+    return FakeProjectManagerDialog
+
+
 @pytest.fixture(autouse=True)
 def _disable_mainwindow_disk_writes(monkeypatch):
     monkeypatch.setattr("ui.main_window.save_config", lambda *args, **kwargs: True)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_mainwindow_user_preferences(monkeypatch, tmp_path):
+    from user_preferences import UserPreferences
+
+    monkeypatch.setattr(
+        "ui.main_window.UserPreferences",
+        lambda: UserPreferences(path=tmp_path / "user_preferences.json"),
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -45,7 +82,7 @@ def _default_question_response(monkeypatch):
 
 
 def test_mainwindow_exposes_expected_ui_contract(qtbot):
-    window = MainWindow()
+    window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
     window.show()
 
@@ -82,7 +119,7 @@ def test_mainwindow_exposes_expected_ui_contract(qtbot):
 
 
 def test_mainwindow_toolbar_hides_removed_actions_after_cleanup(qtbot):
-    window = MainWindow()
+    window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
 
     assert hasattr(window._tb_ctrl, "action_new_surface") is True
@@ -206,7 +243,7 @@ def test_blachy_dialog_hides_legacy_material_detail_labels_after_cleanup(qtbot):
 
 
 def test_mainwindow_mode_indicator_tracks_draw_and_idle_transitions(qtbot):
-    window = MainWindow()
+    window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
 
     window._start_draw_outline()
@@ -217,7 +254,7 @@ def test_mainwindow_mode_indicator_tracks_draw_and_idle_transitions(qtbot):
 
 
 def test_mainwindow_refreshes_active_plane_on_primary_canvas(qtbot):
-    window = MainWindow()
+    window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
 
     window.project_state = ProjectState(materials=window.project_state.materials)
@@ -232,7 +269,7 @@ def test_mainwindow_refreshes_active_plane_on_primary_canvas(qtbot):
 
 
 def test_mainwindow_creates_plane_tabs_and_switches_active_plane(qtbot):
-    window = MainWindow()
+    window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
 
     window.project_state = ProjectState(materials=window.project_state.materials)
@@ -257,7 +294,7 @@ def test_mainwindow_creates_plane_tabs_and_switches_active_plane(qtbot):
 
 
 def test_mainwindow_adds_renames_and_deletes_roof_plane_tabs(qtbot, monkeypatch):
-    window = MainWindow()
+    window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
 
     window.project_state = ProjectState(materials=window.project_state.materials)
@@ -290,7 +327,7 @@ def test_mainwindow_adds_renames_and_deletes_roof_plane_tabs(qtbot, monkeypatch)
 
 
 def test_mainwindow_duplicates_active_roof_plane_with_geometry_and_cutouts(qtbot):
-    window = MainWindow()
+    window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
 
     window.project_state = ProjectState(materials=window.project_state.materials)
@@ -316,7 +353,7 @@ def test_mainwindow_duplicates_active_roof_plane_with_geometry_and_cutouts(qtbot
 
 
 def test_mainwindow_creates_rectangle_geometry_in_active_tab(qtbot, monkeypatch):
-    window = MainWindow()
+    window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
 
     window.project_state = ProjectState(materials=window.project_state.materials)
@@ -348,7 +385,7 @@ def test_mainwindow_creates_rectangle_geometry_in_active_tab(qtbot, monkeypatch)
 
 
 def test_mainwindow_wizard_updates_active_empty_plane_without_creating_new_tab(qtbot, monkeypatch):
-    window = MainWindow()
+    window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
 
     window.project_state = ProjectState(materials=window.project_state.materials)
@@ -396,7 +433,7 @@ def test_mainwindow_wizard_updates_active_empty_plane_without_creating_new_tab(q
 
 
 def test_mainwindow_wizard_creates_new_plane_when_none_exists(qtbot, monkeypatch):
-    window = MainWindow()
+    window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
 
     window.project_state = ProjectState(materials=window.project_state.materials)
@@ -433,7 +470,7 @@ def test_mainwindow_wizard_creates_new_plane_when_none_exists(qtbot, monkeypatch
 
 
 def test_mainwindow_wizard_commits_outline_and_cutout_as_single_undo_entry(qtbot, monkeypatch):
-    window = MainWindow()
+    window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
 
     window.project_state = ProjectState(materials=window.project_state.materials)
@@ -496,7 +533,7 @@ def test_mainwindow_wizard_commits_outline_and_cutout_as_single_undo_entry(qtbot
 
 
 def test_mainwindow_keeps_generated_shapes_separate_per_tab_and_persists_geometry(qtbot, monkeypatch):
-    window = MainWindow()
+    window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
 
     window.project_state = ProjectState(materials=window.project_state.materials)
@@ -559,7 +596,7 @@ def test_mainwindow_keeps_generated_shapes_separate_per_tab_and_persists_geometr
 
 
 def test_mainwindow_generates_project_report_for_all_roof_planes(qtbot):
-    window = MainWindow()
+    window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
 
     window.project_state = ProjectState(materials=window.project_state.materials)
@@ -578,7 +615,7 @@ def test_mainwindow_generates_project_report_for_all_roof_planes(qtbot):
 
 
 def test_mainwindow_commits_canvas_outline_edits_to_project_state(qtbot):
-    window = MainWindow()
+    window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
 
     window.project_state = ProjectState(materials=window.project_state.materials)
@@ -604,7 +641,7 @@ def test_mainwindow_commits_canvas_outline_edits_to_project_state(qtbot):
 
 
 def test_mainwindow_commits_whole_plane_move_outline_and_holes_to_project_state(qtbot):
-    window = MainWindow()
+    window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
 
     window.project_state = ProjectState(materials=window.project_state.materials)
@@ -643,7 +680,7 @@ def test_mainwindow_allows_canvas_outline_edit_even_when_cutout_moves_outside_ou
     messages: list[str] = []
     monkeypatch.setattr(QMessageBox, "warning", staticmethod(lambda *args: messages.append(args[2])))
 
-    window = MainWindow()
+    window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
 
     window.project_state = ProjectState(materials=window.project_state.materials)
@@ -669,7 +706,7 @@ def test_mainwindow_allows_canvas_outline_edit_even_when_cutout_moves_outside_ou
 
 
 def test_mainwindow_commits_canvas_cutout_edits_to_project_state(qtbot):
-    window = MainWindow()
+    window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
 
     window.project_state = ProjectState(materials=window.project_state.materials)
@@ -689,7 +726,7 @@ def test_mainwindow_commits_canvas_cutout_edits_to_project_state(qtbot):
 
 
 def test_mainwindow_preserves_cutout_selection_after_canvas_edit_commit(qtbot):
-    window = MainWindow()
+    window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
 
     window.project_state = ProjectState(materials=window.project_state.materials)
@@ -713,7 +750,7 @@ def test_mainwindow_preserves_cutout_selection_after_canvas_edit_commit(qtbot):
 
 
 def test_mainwindow_toolbar_origin_toggle_enables_origin_edit_mode(qtbot):
-    window = MainWindow()
+    window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
 
     window.project_state = ProjectState(materials=window.project_state.materials)
@@ -730,7 +767,7 @@ def test_mainwindow_toolbar_origin_toggle_enables_origin_edit_mode(qtbot):
 
 
 def test_mainwindow_settings_dialog_updates_grid_size_on_project_state_and_canvas(qtbot, monkeypatch):
-    window = MainWindow()
+    window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
 
     window.project_state = ProjectState(materials=window.project_state.materials)
@@ -814,7 +851,7 @@ def test_mainwindow_settings_dialog_updates_grid_size_on_project_state_and_canva
 def test_mainwindow_uses_code_defaults_when_config_payload_is_empty(qtbot, monkeypatch):
     monkeypatch.setattr("ui.main_window.load_config", lambda: {})
 
-    window = MainWindow()
+    window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
 
     settings = window.project_state.app_settings
@@ -824,7 +861,7 @@ def test_mainwindow_uses_code_defaults_when_config_payload_is_empty(qtbot, monke
 
 
 def test_mainwindow_toolbar_grid_toggle_updates_canvas_grid_visibility_only(qtbot):
-    window = MainWindow()
+    window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
 
     window.project_state = ProjectState(materials=window.project_state.materials)
@@ -855,7 +892,7 @@ def test_mainwindow_toolbar_grid_toggle_updates_canvas_grid_visibility_only(qtbo
 
 
 def test_mainwindow_cutout_menu_exposes_only_add_and_draw_actions(qtbot):
-    window = MainWindow()
+    window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
     window.show()
 
@@ -868,7 +905,7 @@ def test_mainwindow_cutout_menu_exposes_only_add_and_draw_actions(qtbot):
 
 
 def test_mainwindow_toolbar_sheet_toggle_switches_wireframe_mode_without_recalc(qtbot, monkeypatch):
-    window = MainWindow()
+    window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
 
     window.project_state = ProjectState(materials=window.project_state.materials)
@@ -901,7 +938,7 @@ def test_mainwindow_toolbar_sheet_toggle_switches_wireframe_mode_without_recalc(
 
 
 def test_mainwindow_layout_direction_uses_explicit_left_and_right_actions(qtbot):
-    window = MainWindow()
+    window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
 
     window.project_state = ProjectState(materials=window.project_state.materials)
@@ -926,7 +963,7 @@ def test_mainwindow_layout_direction_uses_explicit_left_and_right_actions(qtbot)
 
 
 def test_mainwindow_commits_canvas_origin_edit_to_project_state(qtbot):
-    window = MainWindow()
+    window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
 
     window.project_state = ProjectState(materials=window.project_state.materials)
@@ -944,7 +981,7 @@ def test_mainwindow_commits_canvas_origin_edit_to_project_state(qtbot):
 
 
 def test_mainwindow_material_catalog_edit_updates_project_state_and_dependent_workspace(qtbot, monkeypatch):
-    window = MainWindow()
+    window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
 
     window.project_state = ProjectState(
@@ -1059,7 +1096,7 @@ def test_mainwindow_connects_initial_canvas_edit_signals_on_startup(qtbot, monke
     }
     monkeypatch.setattr("ui.main_window.load_config", lambda: config)
 
-    window = MainWindow()
+    window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
 
     canvas = window._workspace.canvas_for_plane("plane-1")
@@ -1080,7 +1117,7 @@ def test_mainwindow_connects_initial_canvas_edit_signals_on_startup(qtbot, monke
 
 
 def test_mainwindow_freehand_outline_uses_canvas_mapper_instead_of_raw_pixels(qtbot):
-    first = MainWindow()
+    first = MainWindow(auto_startup=False)
     qtbot.addWidget(first)
     first_canvas = first._workspace.primary_canvas
     first_canvas.resize(640, 420)
@@ -1094,7 +1131,7 @@ def test_mainwindow_freehand_outline_uses_canvas_mapper_instead_of_raw_pixels(qt
         ]
     )
 
-    second = MainWindow()
+    second = MainWindow(auto_startup=False)
     qtbot.addWidget(second)
     second_canvas = second._workspace.primary_canvas
     second_canvas.resize(960, 630)
@@ -1117,7 +1154,7 @@ def test_mainwindow_freehand_outline_uses_canvas_mapper_instead_of_raw_pixels(qt
 
 
 def test_mainwindow_freehand_outline_keeps_global_canvas_position_instead_of_bbox_normalization(qtbot):
-    window = MainWindow()
+    window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
     canvas = window._workspace.primary_canvas
     canvas.resize(640, 420)
@@ -1153,7 +1190,7 @@ def test_mainwindow_freehand_outline_keeps_global_canvas_position_instead_of_bbo
 
 
 def test_mainwindow_freehand_outline_uses_same_grid_snap_as_canvas(qtbot):
-    window = MainWindow()
+    window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
     window.project_state = ProjectState(materials=window.project_state.materials)
     window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
@@ -1184,7 +1221,7 @@ def test_mainwindow_freehand_outline_uses_same_grid_snap_as_canvas(qtbot):
 
 
 def test_mainwindow_freehand_outline_does_not_resnap_with_different_origin(qtbot):
-    window = MainWindow()
+    window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
     window.project_state = ProjectState(materials=window.project_state.materials)
     window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
@@ -1215,7 +1252,7 @@ def test_mainwindow_freehand_outline_does_not_resnap_with_different_origin(qtbot
 
 
 def test_mainwindow_tab_switch_refreshes_status_report_material_and_origin_mode(qtbot):
-    window = MainWindow()
+    window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
 
     window.project_state = ProjectState(
@@ -1270,7 +1307,7 @@ def test_mainwindow_tab_switch_refreshes_status_report_material_and_origin_mode(
 
 
 def test_mainwindow_toolbar_grid_toggle_does_not_rebuild_workspace(qtbot, monkeypatch):
-    window = MainWindow()
+    window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
 
     window.project_state = ProjectState(materials=window.project_state.materials)
@@ -1291,7 +1328,7 @@ def test_mainwindow_toolbar_grid_toggle_does_not_rebuild_workspace(qtbot, monkey
     assert canvas._show_grid is False
 
 
-def test_mainwindow_open_project_resets_cached_report_and_company_title(qtbot, monkeypatch):
+def test_mainwindow_open_project_resets_cached_report_and_keeps_user_company_title(qtbot, monkeypatch):
     initial_config = {
         "company_data": {"name": "Firma A"},
         "blachy": [
@@ -1313,9 +1350,12 @@ def test_mainwindow_open_project_resets_cached_report_and_company_title(qtbot, m
     }
     loads = iter([initial_config, reopened_config])
     monkeypatch.setattr("ui.main_window.load_config", lambda *args, **kwargs: next(loads))
-    monkeypatch.setattr(QFileDialog, "getOpenFileName", staticmethod(lambda *args, **kwargs: ("/tmp/reopened.json", "JSON (*.json)")))
+    monkeypatch.setattr(
+        "ui.main_window.ProjectManagerDialog",
+        _accepted_project_dialog(selected_path=Path("/tmp/reopened.4dach")),
+    )
 
-    window = MainWindow()
+    window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
     window._latest_report_html = "<html>stary raport</html>"
     window._latest_report_plane_id = "plane-123"
@@ -1324,11 +1364,11 @@ def test_mainwindow_open_project_resets_cached_report_and_company_title(qtbot, m
 
     assert window._latest_report_html == ""
     assert window._latest_report_plane_id is None
-    assert window.windowTitle() == "4Dach — Firma B"
-    assert window._project_file_path == Path("/tmp/reopened.json")
+    assert window.windowTitle() == "4Dach — Firma A"
+    assert window._project_file_path == Path("/tmp/reopened.4dach")
 
 
-def test_mainwindow_marks_project_dirty_until_explicit_save(qtbot, monkeypatch):
+def test_mainwindow_marks_project_dirty_until_explicit_save(qtbot, monkeypatch, tmp_path):
     saved_payloads: list[dict] = []
 
     def _save_config(config_data, parent=None, path=None):
@@ -1337,8 +1377,9 @@ def test_mainwindow_marks_project_dirty_until_explicit_save(qtbot, monkeypatch):
 
     monkeypatch.setattr("ui.main_window.save_config", _save_config)
 
-    window = MainWindow()
+    window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
+    window._project_file_path = tmp_path / "dirty.4dach"
 
     window.project_state = ProjectState(materials=window.project_state.materials)
     window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
@@ -1372,21 +1413,27 @@ def test_mainwindow_marks_project_dirty_until_explicit_save(qtbot, monkeypatch):
     assert saved_payloads
 
 
-def test_mainwindow_new_project_clears_roof_planes_and_detaches_save_path(qtbot):
-    window = MainWindow()
+def test_mainwindow_new_project_clears_roof_planes_and_reserves_save_path(qtbot, monkeypatch, tmp_path):
+    project_path = tmp_path / "missing" / "nowy.4dach"
+    monkeypatch.setattr(
+        "ui.main_window.ProjectManagerDialog",
+        _accepted_project_dialog(selected_path=project_path, project_name="Nowy"),
+    )
+    window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
 
     window.project_state = ProjectState(materials=window.project_state.materials)
     window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
     window.project_state.add_roof_plane(build_rectangle_outline(320, 180), selected_material_id="PD510")
-    window._project_file_path = Path("/tmp/existing.json")
+    window._project_file_path = tmp_path / "existing.4dach"
     window._refresh_canvas_from_state()
 
     window._new_project()
 
     assert window.project_state.roof_planes == []
     assert window.project_state.active_plane_id is None
-    assert window._project_file_path is None
+    assert window._project_file_path == project_path
+    assert project_path.parent.is_dir()
 
 
 def test_mainwindow_save_as_updates_target_path(qtbot, monkeypatch):
@@ -1397,15 +1444,212 @@ def test_mainwindow_save_as_updates_target_path(qtbot, monkeypatch):
         return True
 
     monkeypatch.setattr("ui.main_window.save_config", _save_config)
-    monkeypatch.setattr(QFileDialog, "getSaveFileName", staticmethod(lambda *args, **kwargs: ("/tmp/exported-project.json", "JSON (*.json)")))
+    monkeypatch.setattr(
+        "ui.main_window.ProjectManagerDialog",
+        _accepted_project_dialog(selected_path=Path("/tmp/exported-project.4dach")),
+    )
 
-    window = MainWindow()
+    window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
     window._project_file_path = None
 
     assert window._save_project_as() is True
-    assert window._project_file_path == Path("/tmp/exported-project.json")
-    assert saved_paths == [Path("/tmp/exported-project.json")]
+    assert window._project_file_path == Path("/tmp/exported-project.4dach")
+    assert saved_paths == [Path("/tmp/exported-project.4dach")]
+
+
+def test_mainwindow_save_as_updates_project_meta_name_and_window_title(qtbot, monkeypatch, tmp_path):
+    saved_payloads: list[dict] = []
+    project_path = tmp_path / "renamed-file.4dach"
+
+    def _save_config(config_data, parent=None, path=None):
+        saved_payloads.append(config_data)
+        return True
+
+    monkeypatch.setattr("ui.main_window.save_config", _save_config)
+    monkeypatch.setattr(
+        "ui.main_window.ProjectManagerDialog",
+        _accepted_project_dialog(
+            selected_path=project_path,
+            project_name="Nazwa z dialogu",
+            project_meta={
+                "name": "Nazwa z dialogu",
+                "address": "Adres",
+                "contact_name": "Kontakt",
+                "phone": "Telefon",
+                "notes": "Notatka",
+            },
+        ),
+    )
+
+    window = MainWindow(auto_startup=False)
+    qtbot.addWidget(window)
+    window._config["project_meta"] = {"name": "Stara nazwa"}
+
+    assert window._save_project_as() is True
+
+    meta = saved_payloads[0]["project_meta"]
+    assert meta["name"] == "Nazwa z dialogu"
+    assert meta["address"] == "Adres"
+    assert meta["contact_name"] == "Kontakt"
+    assert meta["phone"] == "Telefon"
+    assert meta["notes"] == "Notatka"
+    assert window._config["project_meta"]["name"] == "Nazwa z dialogu"
+    assert window.windowTitle() == "4Dach — Nazwa z dialogu"
+
+
+def test_mainwindow_save_payload_contains_only_project_level_keys(qtbot, monkeypatch, tmp_path):
+    saved_payloads: list[dict] = []
+
+    def _save_config(config_data, parent=None, path=None):
+        saved_payloads.append(config_data)
+        return True
+
+    monkeypatch.setattr("ui.main_window.save_config", _save_config)
+
+    window = MainWindow(auto_startup=False)
+    qtbot.addWidget(window)
+    window._project_file_path = tmp_path / "project.4dach"
+    window._config["company_data"] = {"name": "User Firma"}
+    window._config["ksztalty"] = {"prostokat": {"szerokosc": 300}}
+    window._config["wycinki"] = {"prostokat": {"szerokosc": 90}}
+    window._config["add_polac_dialog"] = {"last_shape": "prostokat"}
+    window.project_state.app_settings.show_grid = False
+
+    assert window._save_project() is True
+
+    payload = saved_payloads[0]
+    assert set(payload) == {"project_meta", "materials", "project_state", "blachy"}
+    assert "company_data" not in payload
+    assert "ksztalty" not in payload
+    assert "wycinki" not in payload
+    assert "add_polac_dialog" not in payload
+    assert "app_settings" not in payload
+
+
+def test_mainwindow_save_payload_contains_project_meta_v2_keys(qtbot, monkeypatch, tmp_path):
+    saved_payloads: list[dict] = []
+
+    def _save_config(config_data, parent=None, path=None):
+        saved_payloads.append(config_data)
+        return True
+
+    monkeypatch.setattr("ui.main_window.save_config", _save_config)
+
+    window = MainWindow(auto_startup=False)
+    qtbot.addWidget(window)
+    window._project_file_path = tmp_path / "project.4dach"
+    window._config["project_meta"] = {"name": "Projekt", "address": "Adres"}
+
+    assert window._save_project() is True
+
+    meta = saved_payloads[0]["project_meta"]
+    assert set(meta) == {
+        "name",
+        "address",
+        "contact_name",
+        "phone",
+        "notes",
+        "created_at",
+        "modified_at",
+    }
+    assert meta["name"] == "Projekt"
+    assert meta["address"] == "Adres"
+    assert meta["contact_name"] == ""
+    assert meta["phone"] == ""
+    assert meta["notes"] == ""
+
+
+def test_mainwindow_load_injects_user_preferences_before_project_state(qtbot, monkeypatch, tmp_path):
+    prefs_path = tmp_path / "user_preferences.json"
+    prefs_path.write_text(
+        json.dumps(
+            {
+                "company_data": {"name": "User Firma"},
+                "app_settings": {"grid_size_cm": 25},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    from user_preferences import UserPreferences
+
+    monkeypatch.setattr(
+        "ui.main_window.UserPreferences",
+        lambda: UserPreferences(path=prefs_path),
+    )
+    monkeypatch.setattr(
+        "ui.main_window.load_config",
+        lambda: {
+            "project_meta": {"name": "Projekt A"},
+            "company_data": {"name": "Projekt Firma"},
+            "app_settings": {"grid_size_cm": 99},
+            "project_state": {"roof_planes": []},
+            "materials": {"order": [], "items": {}},
+            "blachy": [],
+        },
+    )
+
+    window = MainWindow(auto_startup=False)
+    qtbot.addWidget(window)
+
+    assert window.project_state.company_data.name == "User Firma"
+    assert window.project_state.app_settings.grid_size_cm == 25
+    assert window.windowTitle() == "4Dach — Projekt A"
+
+
+def test_mainwindow_creates_user_preferences_before_startup_manager(qtbot, monkeypatch, tmp_path):
+    prefs_path = tmp_path / "Documents" / "4Dach" / "user_preferences.json"
+    observed: list[bool] = []
+
+    from user_preferences import UserPreferences
+
+    monkeypatch.setattr(
+        "ui.main_window.UserPreferences",
+        lambda: UserPreferences(path=prefs_path, initialize_defaults=True),
+    )
+
+    class StartupProjectManagerDialog:
+        def __init__(self, *, mode, projects_dir, default_name="Nowy projekt", parent=None) -> None:
+            observed.append(prefs_path.is_file())
+            self._projects_dir = Path(projects_dir)
+
+        def exec(self) -> int:
+            return QDialog.DialogCode.Rejected
+
+        def projects_dir(self) -> Path:
+            return self._projects_dir
+
+    monkeypatch.setattr("ui.main_window.ProjectManagerDialog", StartupProjectManagerDialog)
+
+    window = MainWindow(auto_startup=True)
+    qtbot.addWidget(window)
+
+    assert observed == [True]
+    assert prefs_path.is_file()
+
+
+def test_mainwindow_new_and_open_confirm_discard_before_project_manager(qtbot, monkeypatch):
+    calls: list[str] = []
+
+    class FailingProjectManagerDialog:
+        def __init__(self, *args, **kwargs) -> None:
+            raise AssertionError("project manager should not open after cancelled confirmation")
+
+    monkeypatch.setattr("ui.main_window.ProjectManagerDialog", FailingProjectManagerDialog)
+
+    window = MainWindow(auto_startup=False)
+    qtbot.addWidget(window)
+    monkeypatch.setattr(
+        window,
+        "_confirm_discard_unsaved_changes",
+        lambda *, context: calls.append(context) or False,
+    )
+
+    window._new_project()
+    window._open_project()
+
+    assert calls == ["utworzeniem nowego projektu", "otwarciem projektu"]
 
 
 def test_mainwindow_unsaved_close_confirmation_can_cancel_or_discard(qtbot, monkeypatch):
@@ -1417,7 +1661,7 @@ def test_mainwindow_unsaved_close_confirmation_can_cancel_or_discard(qtbot, monk
     )
     monkeypatch.setattr(QMessageBox, "question", staticmethod(lambda *args, **kwargs: next(responses)))
 
-    window = MainWindow()
+    window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
 
     window.project_state = ProjectState(materials=window.project_state.materials)
@@ -1447,7 +1691,7 @@ def test_mainwindow_unsaved_close_confirmation_can_cancel_or_discard(qtbot, monk
 
 
 def test_mainwindow_undo_redo_restores_outline_and_material(qtbot):
-    window = MainWindow()
+    window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
 
     window.project_state = ProjectState(
@@ -1525,7 +1769,7 @@ def test_mainwindow_report_generation_recalculates_only_dirty_planes(qtbot, monk
         staticmethod(lambda *args, **kwargs: QMessageBox.StandardButton.Yes),
     )
 
-    window = MainWindow()
+    window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
 
     window.project_state = ProjectState(materials=window.project_state.materials)
@@ -1563,7 +1807,7 @@ def test_mainwindow_triangle_dialog_shows_validation_error_without_mutating_stat
     messages: list[str] = []
     monkeypatch.setattr(QMessageBox, "warning", staticmethod(lambda *args: messages.append(args[2])))
 
-    window = MainWindow()
+    window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
     window.project_state = ProjectState(materials=window.project_state.materials)
     window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
@@ -1594,7 +1838,7 @@ def test_mainwindow_triangle_dialog_shows_validation_error_without_mutating_stat
 
 
 def test_mainwindow_settings_dialog_does_not_overwrite_manual_override_on_planes(qtbot, monkeypatch):
-    window = MainWindow()
+    window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
 
     window.project_state = ProjectState(materials=window.project_state.materials)
@@ -1703,7 +1947,7 @@ def test_cutout_rectangle_dialog_uses_dedicated_config_values(qtbot):
 
 
 def test_mainwindow_add_hole_uses_dedicated_cutout_rectangle_config(qtbot, monkeypatch):
-    window = MainWindow()
+    window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
 
     window.project_state = ProjectState(materials=window.project_state.materials)

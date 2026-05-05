@@ -8,12 +8,12 @@ import warnings
 from collections import deque
 from contextlib import suppress
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QRectF, QSettings, QSize, Qt, QUrl
 from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QKeySequence
 from PySide6.QtWidgets import (
-    QFileDialog,
     QInputDialog,
     QLabel,
     QMainWindow,
@@ -48,6 +48,7 @@ from ui.dialogs import (
     TrapezDialog,
     TrojkatDialog,
 )
+from ui.dialogs.project_manager_dialog import Mode, ProjectManagerDialog
 from ui.drawing_canvas import CommittedOutlineEdit, DrawingCanvas
 from ui.main_window_dialogs import (
     build_centered_hole,
@@ -62,6 +63,7 @@ from ui.main_window_refresh import (
 from ui.report_view import ReportController
 from ui.theme_manager import ThemeManager
 from ui.workspace import WorkspaceController
+from user_preferences import UserPreferences
 
 
 def _show_warning(parent, title: str, msg: str) -> None:
@@ -77,9 +79,15 @@ class _HistoryEntry:
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent=None, *, auto_startup: bool = True) -> None:
         super().__init__(parent)
         self._config = load_config()
+        self._user_prefs = UserPreferences()
+        if not self._user_prefs.storage_ready:
+            self._show_user_preferences_storage_error()
+        if self._user_prefs.migrate_from_config(self._config):
+            self._user_prefs.save()
+        self._inject_user_preferences(self._config)
         self.project_state = ProjectState.from_config(self._config)
         self._theme_mgr = ThemeManager()
         self._latest_report_html = ""
@@ -94,7 +102,7 @@ class MainWindow(QMainWindow):
         self._base_window_title = ""
         self._snap_to_grid_enabled = self.project_state.app_settings.snap_to_grid
         self._sheets_visible = False
-        self._project_file_path: Path | None = Path(__file__).resolve().parent.parent / "config.json"
+        self._project_file_path: Path | None = None
 
         self._status_label = QLabel("")
         self._mode_label = QLabel("Mode: IDLE")
@@ -128,6 +136,8 @@ class MainWindow(QMainWindow):
             self.resize(1120, 720)
 
         self.statusBar().showMessage("Lewy przycisk myszy: rysowanie, prawy: wyczyść szkic", 5000)
+        if auto_startup:
+            self._show_startup_project_manager()
 
     # ------------------------------------------------------------------
     def _build_chrome(self) -> None:
@@ -248,17 +258,121 @@ class MainWindow(QMainWindow):
 
     # ------------------------------------------------------------------
     def _set_company_title(self, company: str) -> None:
-        self._base_window_title = f"4Dach — {company}"
+        project_meta = self._config.get("project_meta")
+        project_name = project_meta.get("name") if isinstance(project_meta, dict) else ""
+        self._base_window_title = f"4Dach — {project_name or company or '4Dach'}"
         self._refresh_window_title()
+
+    def _refresh_base_window_title(self) -> None:
+        company = self._config.get("company_data", {}).get("name", "") or "4Dach"
+        self._set_company_title(company)
 
     def _refresh_window_title(self) -> None:
         suffix = " *" if self._has_unsaved_changes else ""
         self.setWindowTitle(f"{self._base_window_title}{suffix}")
 
     def _serialize_current_config(self) -> dict:
-        payload = copy.deepcopy(self._config)
-        self.project_state.apply_to_config(payload)
+        fragment = copy.deepcopy(self.project_state.to_config_fragment())
+        fragment.pop("app_settings", None)
+        payload = {
+            "project_meta": copy.deepcopy(self._config.get("project_meta", {})),
+            "materials": fragment.get("materials", {"order": [], "items": {}}),
+            "project_state": fragment.get("project_state", {}),
+            "blachy": fragment.get("blachy", []),
+        }
         return payload
+
+    def _inject_user_preferences(self, payload: dict) -> dict:
+        return self._user_prefs.inject_into_config(payload)
+
+    def _state_config_from_project_payload(self, payload: dict) -> dict:
+        return self._inject_user_preferences(copy.deepcopy(payload))
+
+    def _project_display_name(self, fallback: str = "Nowy projekt") -> str:
+        project_meta = self._config.get("project_meta")
+        if isinstance(project_meta, dict) and project_meta.get("name"):
+            return str(project_meta["name"])
+        if self._project_file_path is not None:
+            return self._project_file_path.stem
+        company = self._config.get("company_data", {}).get("name", "")
+        return company or fallback
+
+    def _prepare_payload_for_save(self, payload: dict, project_path: Path) -> dict:
+        return self._prepare_payload_for_save_with_meta(payload, project_path, None)
+
+    def _prepare_payload_for_save_with_meta(
+        self,
+        payload: dict,
+        project_path: Path,
+        project_meta: dict | None,
+    ) -> dict:
+        now = datetime.now().astimezone().isoformat()
+        meta = copy.deepcopy(payload.get("project_meta") or {})
+        if isinstance(project_meta, dict):
+            meta.update(copy.deepcopy(project_meta))
+        name = str(meta.get("name") or project_path.stem).strip() or project_path.stem
+        meta = {
+            "name": name,
+            "address": str(meta.get("address") or ""),
+            "contact_name": str(meta.get("contact_name") or ""),
+            "phone": str(meta.get("phone") or ""),
+            "notes": str(meta.get("notes") or ""),
+            "created_at": str(meta.get("created_at") or now),
+            "modified_at": now,
+        }
+        payload = copy.deepcopy(payload)
+        payload["project_meta"] = meta
+        return payload
+
+    def _project_meta_from_dialog(self, dialog: ProjectManagerDialog) -> dict:
+        provider = getattr(dialog, "project_meta", None)
+        if callable(provider):
+            meta = provider()
+            if isinstance(meta, dict):
+                return copy.deepcopy(meta)
+        return {"name": dialog.project_name()}
+
+    def _ensure_project_file_parent_ready(self, project_path: Path) -> bool:
+        parent = project_path.parent
+        try:
+            parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(dir=parent, delete=True):
+                pass
+            return True
+        except OSError as exc:
+            QMessageBox.critical(
+                self,
+                "Błąd katalogu projektu",
+                f"Nie można przygotować katalogu projektu:\n{parent}\n\n{exc}",
+            )
+            return False
+
+    def _show_user_preferences_storage_error(self) -> None:
+        candidates = "\n".join(str(path) for path in self._user_prefs.storage_candidates)
+        QMessageBox.critical(
+            self,
+            "Błąd katalogu 4Dach",
+            "Nie można utworzyć katalogu danych użytkownika.\n\n"
+            f"Sprawdzone ścieżki:\n{candidates}\n\n"
+            "Utwórz folder ręcznie i uruchom aplikację ponownie.",
+        )
+
+    def _persist_user_preferences(self, *keys: str) -> None:
+        values: dict = {}
+        for key in keys:
+            if key == "app_settings":
+                values[key] = self.project_state.app_settings.to_dict()
+            elif key in self._config:
+                values[key] = copy.deepcopy(self._config[key])
+        if values:
+            self._user_prefs.update(values)
+            self._user_prefs.save()
+            for key, value in values.items():
+                self._config[key] = copy.deepcopy(value)
+
+    def _persist_projects_dir(self, projects_dir: Path) -> None:
+        self._user_prefs.set("projects_dir", str(projects_dir))
+        self._user_prefs.save()
 
     def _normalized_dirty_payload(self, payload: dict) -> dict:
         normalized = copy.deepcopy(payload)
@@ -368,12 +482,11 @@ class MainWindow(QMainWindow):
         return canvas.mode()
 
     def _apply_snapshot(self, snapshot: dict) -> None:
-        self._config = copy.deepcopy(snapshot)
+        self._config = self._state_config_from_project_payload(snapshot)
         self.project_state = ProjectState.from_config(self._config)
         self._workspace.bind_project_state(self.project_state, self.project_state.material_by_id)
         self._invalidate_cached_report()
-        company = self._config.get("company_data", {}).get("name", "") or "4Dach"
-        self._set_company_title(company)
+        self._refresh_base_window_title()
         self._refresh_ui_after_state_change(
             invalidate_report_cache=True,
             refresh_materials=True,
@@ -383,31 +496,45 @@ class MainWindow(QMainWindow):
     def _save_project(self) -> bool:
         if self._project_file_path is None:
             return self._save_project_as()
-        payload = self._serialize_current_config()
+        payload = self._prepare_payload_for_save(
+            self._serialize_current_config(),
+            self._project_file_path,
+        )
+        if not self._ensure_project_file_parent_ready(self._project_file_path):
+            return False
         if not save_config(payload, self, path=self._project_file_path):
             return False
-        self._config = payload
+        self._config = self._state_config_from_project_payload(payload)
+        self._refresh_base_window_title()
         self._mark_saved_state()
         self.statusBar().showMessage("Zapisano projekt", 3000)
         return True
 
     def _save_project_as(self) -> bool:
-        target, _ = QFileDialog.getSaveFileName(
-            self,
-            "Zapisz projekt jako",
-            str(self._project_file_path or Path.cwd() / "projekt.json"),
-            "JSON (*.json);;Wszystkie pliki (*)",
+        dialog = ProjectManagerDialog(
+            mode=Mode.SAVE_AS,
+            projects_dir=self._user_prefs.projects_dir,
+            default_name=self._project_display_name(),
+            parent=self,
         )
-        if not target:
+        if not dialog_accepted(dialog):
             return False
-        if not target.lower().endswith(".json"):
-            target = f"{target}.json"
-        payload = self._serialize_current_config()
-        project_path = Path(target)
+        self._persist_projects_dir(dialog.projects_dir())
+        project_path = dialog.selected_path()
+        if project_path is None:
+            return False
+        payload = self._prepare_payload_for_save_with_meta(
+            self._serialize_current_config(),
+            project_path,
+            self._project_meta_from_dialog(dialog),
+        )
+        if not self._ensure_project_file_parent_ready(project_path):
+            return False
         if not save_config(payload, self, path=project_path):
             return False
         self._project_file_path = project_path
-        self._config = payload
+        self._config = self._state_config_from_project_payload(payload)
+        self._refresh_base_window_title()
         self._mark_saved_state()
         self.statusBar().showMessage("Zapisano projekt pod nową nazwą", 3000)
         return True
@@ -431,13 +558,12 @@ class MainWindow(QMainWindow):
             self._undo_stack.clear()
             self._redo_stack.clear()
         self._project_file_path = project_file_path
-        self._config = payload
+        self._config = self._state_config_from_project_payload(payload)
         self.project_state = ProjectState.from_config(self._config)
         self._set_undo_stack_depth(self.project_state.app_settings.undo_stack_depth)
         self._workspace.bind_project_state(self.project_state, self.project_state.material_by_id)
         self._invalidate_cached_report()
-        company = self._config.get("company_data", {}).get("name", "") or "4Dach"
-        self._set_company_title(company)
+        self._refresh_base_window_title()
         self._refresh_ui_after_state_change(
             invalidate_report_cache=True,
             refresh_materials=True,
@@ -447,26 +573,71 @@ class MainWindow(QMainWindow):
     def _new_project(self) -> None:
         if not self._confirm_discard_unsaved_changes(context="utworzeniem nowego projektu"):
             return
+        dialog = ProjectManagerDialog(
+            mode=Mode.NEW,
+            projects_dir=self._user_prefs.projects_dir,
+            default_name="Nowy projekt",
+            parent=self,
+        )
+        if not dialog_accepted(dialog):
+            return
+        self._persist_projects_dir(dialog.projects_dir())
+        project_path = dialog.selected_path()
+        if project_path is None:
+            return
         payload = self._serialize_current_config()
+        payload["project_meta"] = self._project_meta_from_dialog(dialog)
         payload.setdefault("project_state", {})["active_plane_id"] = None
         payload["project_state"]["roof_planes"] = {"order": [], "items": {}}
-        self._load_project_payload(payload, project_file_path=None, reset_history=True)
+        payload = self._prepare_payload_for_save(payload, project_path)
+        if not self._ensure_project_file_parent_ready(project_path):
+            return
+        if not save_config(payload, self, path=project_path):
+            return
+        self._load_project_payload(payload, project_file_path=project_path, reset_history=True)
         self.statusBar().showMessage("Utworzono nowy projekt", 3000)
 
     def _open_project(self) -> None:
         if not self._confirm_discard_unsaved_changes(context="otwarciem projektu"):
             return
-        target, _ = QFileDialog.getOpenFileName(
-            self,
-            "Wczytaj projekt",
-            str(self._project_file_path or Path.cwd()),
-            "JSON (*.json);;Wszystkie pliki (*)",
+        dialog = ProjectManagerDialog(
+            mode=Mode.OPEN,
+            projects_dir=self._user_prefs.projects_dir,
+            parent=self,
         )
-        if not target:
+        if not dialog_accepted(dialog):
             return
-        project_path = Path(target)
+        self._persist_projects_dir(dialog.projects_dir())
+        project_path = dialog.selected_path()
+        if project_path is None:
+            return
         self._load_project_payload(load_config(project_path), project_file_path=project_path, reset_history=True)
         self.statusBar().showMessage("Wczytano projekt", 3000)
+
+    def _show_startup_project_manager(self) -> None:
+        dialog = ProjectManagerDialog(
+            mode=Mode.STARTUP,
+            projects_dir=self._user_prefs.projects_dir,
+            parent=self,
+        )
+        if not dialog_accepted(dialog):
+            return
+        self._persist_projects_dir(dialog.projects_dir())
+        if dialog.startup_action() == "new":
+            project_path = dialog.selected_path()
+            if project_path is None:
+                return
+            payload = self._serialize_current_config()
+            payload["project_meta"] = self._project_meta_from_dialog(dialog)
+            payload.setdefault("project_state", {})["active_plane_id"] = None
+            payload["project_state"]["roof_planes"] = {"order": [], "items": {}}
+            payload = self._prepare_payload_for_save(payload, project_path)
+            if self._ensure_project_file_parent_ready(project_path) and save_config(payload, self, path=project_path):
+                self._load_project_payload(payload, project_file_path=project_path, reset_history=True)
+            return
+        project_path = dialog.selected_path()
+        if project_path is not None:
+            self._load_project_payload(load_config(project_path), project_file_path=project_path, reset_history=True)
 
     def _undo(self) -> None:
         if not self._undo_stack:
@@ -1005,13 +1176,13 @@ class MainWindow(QMainWindow):
     def _on_grid_toggled(self, checked: bool) -> None:
         self.project_state.app_settings.show_grid = checked
         self._workspace.toggle_grid(checked)
-        self._refresh_dirty_state()
+        self._persist_user_preferences("app_settings")
 
     def _on_snap_to_grid_toggled(self, checked: bool) -> None:
         self._snap_to_grid_enabled = checked
         self.project_state.app_settings.snap_to_grid = checked
         self._workspace.set_snap_to_grid_enabled(checked)
-        self._refresh_dirty_state()
+        self._persist_user_preferences("app_settings")
 
     def _on_sheet_visibility_toggled(self, checked: bool) -> None:
         self._sheets_visible = checked
@@ -1209,6 +1380,7 @@ class MainWindow(QMainWindow):
         result = dlg.get_result()
         if result is None:
             return
+        self._persist_user_preferences("add_polac_dialog")
 
         try:
             outline = build_add_polac_outline(result.shape_key, result.shape_values)
@@ -1249,6 +1421,7 @@ class MainWindow(QMainWindow):
             return
         values = dlg.get_values()
         remember_shape_config(self._config, "prostokat", values)
+        self._persist_user_preferences("ksztalty")
         outline = make_rectangle(values["szerokosc"], values["wysokosc"])
         self._set_active_plane_geometry(
             outline,
@@ -1267,6 +1440,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Błąd edycji", str(e))
             return
         remember_shape_config(self._config, "trojkat", values)
+        self._persist_user_preferences("ksztalty")
         self._set_active_plane_geometry(outline, f"Ustawiono obrys trójkąta {values['typ']}")
 
     def _dlg_trapez(self) -> None:
@@ -1275,6 +1449,7 @@ class MainWindow(QMainWindow):
             return
         values = dlg.get_values()
         remember_shape_config(self._config, "trapez", values)
+        self._persist_user_preferences("ksztalty")
         outline = make_trapezoid(
             values["typ"],
             values["podstawa_dolna"],
@@ -1295,6 +1470,7 @@ class MainWindow(QMainWindow):
             return
         values = dlg.get_values()
         self._config.setdefault("wycinki", {})["prostokat"] = dict(values)
+        self._persist_user_preferences("wycinki")
         hole = build_centered_hole(plane, values["szerokosc"], values["wysokosc"])
         self._edit(lambda: self.project_state.add_hole_to_plane(hole, plane.id), f"Dodano wycinek do {plane.name}")
 
@@ -1411,14 +1587,12 @@ class MainWindow(QMainWindow):
         if not dialog_accepted(dlg):
             return
         values = dlg.get_values()
-
-        def _apply_company_data() -> None:
-            self._config["company_data"] = values
-            self.project_state.company_data = self.project_state.company_data.from_dict(values)
-            company = values.get("name", "") or "4Dach"
-            self._set_company_title(company)
-
-        self._edit(_apply_company_data, "Zaktualizowano dane firmy", label="Edycja danych firmy")
+        self._config["company_data"] = values
+        self.project_state.company_data = self.project_state.company_data.from_dict(values)
+        self._persist_user_preferences("company_data")
+        self._refresh_base_window_title()
+        self._refresh_report()
+        self.statusBar().showMessage("Zaktualizowano dane firmy", 4000)
 
     def _dlg_settings(self) -> None:
         from ui.dialogs.settings_dialog import SettingsDialog
@@ -1427,18 +1601,12 @@ class MainWindow(QMainWindow):
         if not dialog_accepted(dlg):
             return
         new_settings = dlg.build_settings()
-
-        def _apply_settings() -> None:
-            self.project_state.app_settings = new_settings
-            self._set_undo_stack_depth(new_settings.undo_stack_depth)
-            self._snap_to_grid_enabled = new_settings.snap_to_grid
-            self.project_state.mark_app_settings_layouts_dirty()
-
-        self._edit(
-            _apply_settings,
-            "Zaktualizowano ustawienia aplikacji",
-            label="Zmiana ustawień aplikacji",
-        )
+        self.project_state.app_settings = new_settings
+        self._set_undo_stack_depth(new_settings.undo_stack_depth)
+        self._snap_to_grid_enabled = new_settings.snap_to_grid
+        self._persist_user_preferences("app_settings")
+        self._refresh_canvas()
+        self.statusBar().showMessage("Zaktualizowano ustawienia aplikacji", 4000)
 
     # ------------------------------------------------------------------
     def closeEvent(self, event: QCloseEvent) -> None:
