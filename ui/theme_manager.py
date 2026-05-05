@@ -109,8 +109,6 @@ def _build_stylesheet(t: _ThemeTokens) -> str:
         f"QTabBar::tab:hover {{ background: {t.tab_hover}; }}"
         f"QStatusBar {{ color: {t.menu_text}; border-top: 1px solid {t.border}; }}"
         f"DrawingCanvas {{ border: 1px solid {t.canvas_border}; background: palette(base); }}"
-        f"QToolButton#material_button {{ color: {t.menu_text}; border: 1px solid {t.border}; background: {t.input_bg}; padding: 0px; margin-left: 2px; margin-right: 0px; }}"
-        f"QToolButton#material_button:hover {{ background: {t.button_hover}; border: 1px solid {t.border}; }}"
         f"QToolButton#theme_toggle {{ border: none; padding: 0 8px; background: transparent; }}"
         f"QToolButton#theme_toggle:hover {{ background: {t.menu_hover}; border: none; }}"
     )

@@ -2,14 +2,14 @@
 
 Responsibilities:
 - Creating toolbar actions with consistent icon + tooltip + callback wiring
-- Exposing named action references (self.action_grid, self.action_from_right, …)
+- Exposing named action references (self.action_grid, self.action_snap_to_grid, …)
 - Refreshing icon colours when the theme changes
 """
 from __future__ import annotations
 
 from PySide6.QtCore import QSize, Qt
-from PySide6.QtGui import QAction, QColor, QFont
-from PySide6.QtWidgets import QComboBox, QMainWindow, QToolBar, QToolButton
+from PySide6.QtGui import QAction, QColor
+from PySide6.QtWidgets import QComboBox, QMainWindow, QToolBar
 
 from app_icons import build_icon
 
@@ -82,7 +82,7 @@ class ToolbarController:
     def _icon_color_for_kind(self, kind: str, fg: QColor, accent: QColor, muted: QColor) -> QColor:
         if kind in {"base_point_toggle", "sun", "moon"}:
             return accent
-        if kind in {"module_count", "grid", "broom"}:
+        if kind in {"module_count", "grid", "snap_to_grid", "broom"}:
             return muted
         return fg
 
@@ -103,7 +103,7 @@ class ToolbarController:
         ]
 
         for index, (icon_kind, text, checkable, callback) in enumerate(icon_rows):
-            action = self._add_action(icon_kind, text, checkable=checkable, callback=callback)
+            self._add_action(icon_kind, text, checkable=checkable, callback=callback)
             if index in sep_after:
                 tb.addSeparator()
 
@@ -118,22 +118,6 @@ class ToolbarController:
         self.action_new_surface = self._action("plus")
         self.action_duplicate_surface = self._action("duplicate_surface")
         self.action_trash = self._action("trash")
-
-        # Material selector button + combo
-        self.material_button = QToolButton(self._win)
-        self.material_button.setObjectName("material_button")
-        self.material_button.setText("A")
-        self.material_button.setToolTip("Wybór aktywnej blachy")
-        self.material_button.setStatusTip("Wybór aktywnej blachy")
-        self.material_button.setAutoRaise(True)
-        self.material_button.setFixedSize(22, 20)
-        bold_font = QFont(self._win.font())
-        bold_font.setBold(True)
-        self.material_button.setFont(bold_font)
-        self.material_button.clicked.connect(
-            lambda: self._win.statusBar().showMessage("Wybór aktywnej blachy", 2500)
-        )
-        tb.addWidget(self.material_button)
 
         self.variant_combo = QComboBox(self._win)
         self.variant_combo.setObjectName("variant_combo")
@@ -151,6 +135,7 @@ class ToolbarController:
         trailing: list[tuple[str, str, bool, object]] = [
             ("overlay_sheet",    "Pokaż arkusze",                    True,  None),
             ("grid",             "Pokaż siatkę",                     True,  None),
+            ("snap_to_grid",     "Snap to Grid",                     True,  None),
             ("from_left",        "Układaj od lewej",                  True,  None),
             ("from_right",       "Od prawej",                          True,  None),
         ]
@@ -160,5 +145,6 @@ class ToolbarController:
         # Named references for trailing actions
         self.action_overlay_sheet = self._action("overlay_sheet")
         self.action_grid = self._action("grid")
+        self.action_snap_to_grid = self._action("snap_to_grid")
         self.action_from_left = self._action("from_left")
         self.action_from_right = self._action("from_right")

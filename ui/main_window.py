@@ -92,7 +92,7 @@ class MainWindow(QMainWindow):
         self._has_unsaved_changes = False
         self._base_window_title = ""
         self._snap_to_grid_enabled = self.project_state.app_settings.snap_to_grid
-        self._sheets_visible = True
+        self._sheets_visible = False
         self._project_file_path: Path | None = Path(__file__).resolve().parent.parent / "config.json"
 
         self._status_label = QLabel("")
@@ -174,8 +174,6 @@ class MainWindow(QMainWindow):
         plik.addAction(act("Ponów", "Ctrl+Shift+Z", self._redo))
         plik.addSeparator()
         plik.addAction(act("Drukuj raport", "Ctrl+P", lambda: self._gen_report("standard", True)))
-        plik.addAction(act("Drukuj raport ciągły", "Shift+Ctrl+P", lambda: self._gen_report("continuous", True)))
-        plik.addAction(act("Drukuj raport skrócony", None, lambda: self._gen_report("short", True)))
         plik.addSeparator()
         plik.addAction(act("Zakończ", "Ctrl+Q", self.close))
 
@@ -217,6 +215,8 @@ class MainWindow(QMainWindow):
         self._tb_ctrl.action_trash.setEnabled(False)
         self._tb_ctrl.action_grid.triggered.connect(self._on_grid_toggled)
         self._tb_ctrl.action_grid.setChecked(self.project_state.app_settings.show_grid)
+        self._tb_ctrl.action_snap_to_grid.triggered.connect(self._on_snap_to_grid_toggled)
+        self._tb_ctrl.action_snap_to_grid.setChecked(self.project_state.app_settings.snap_to_grid)
         self._tb_ctrl.action_base_point_toggle.triggered.connect(self._on_origin_mode_toggled)
         self._tb_ctrl.action_from_left.triggered.connect(self._on_from_left_toggled)
         self._tb_ctrl.action_from_right.triggered.connect(self._on_from_right_toggled)
@@ -528,6 +528,12 @@ class MainWindow(QMainWindow):
             self._tb_ctrl.action_grid.blockSignals(True)
             self._tb_ctrl.action_grid.setChecked(self.project_state.app_settings.show_grid)
             self._tb_ctrl.action_grid.blockSignals(False)
+            self._tb_ctrl.action_snap_to_grid.blockSignals(True)
+            self._tb_ctrl.action_snap_to_grid.setChecked(self.project_state.app_settings.snap_to_grid)
+            self._tb_ctrl.action_snap_to_grid.blockSignals(False)
+            self._tb_ctrl.action_overlay_sheet.blockSignals(True)
+            self._tb_ctrl.action_overlay_sheet.setChecked(self._sheets_visible)
+            self._tb_ctrl.action_overlay_sheet.blockSignals(False)
         self.primary_canvas = self._workspace.primary_canvas
         self.workspace_tabs = self._workspace.tabs
         for candidate in self._workspace.plane_canvases():
@@ -998,6 +1004,12 @@ class MainWindow(QMainWindow):
     def _on_grid_toggled(self, checked: bool) -> None:
         self.project_state.app_settings.show_grid = checked
         self._workspace.toggle_grid(checked)
+        self._refresh_dirty_state()
+
+    def _on_snap_to_grid_toggled(self, checked: bool) -> None:
+        self._snap_to_grid_enabled = checked
+        self.project_state.app_settings.snap_to_grid = checked
+        self._workspace.set_snap_to_grid_enabled(checked)
         self._refresh_dirty_state()
 
     def _on_sheet_visibility_toggled(self, checked: bool) -> None:

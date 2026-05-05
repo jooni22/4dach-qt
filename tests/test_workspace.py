@@ -71,6 +71,7 @@ def test_workspace_controller_update_all_canvases_preserves_primary_first_fan_ou
 
 def test_workspace_controller_set_sheet_visibility_updates_workspace_state(qtbot):
     workspace, _, _ = _workspace_with_recording_canvases(qtbot)
+    assert workspace._sheets_visible is False
 
     workspace.set_sheet_visibility(False)
 
