@@ -341,7 +341,7 @@ def test_partial_split_generates_two_groups():
     ]
 
 
-def test_partial_cut_line_uses_highest_cutout_edge_point_per_band():
+def test_partial_cut_line_uses_shared_shoulder_level_across_bands():
     plane = RoofPlane(
         id="plane-1",
         name="SlopedPartial",
@@ -363,11 +363,110 @@ def test_partial_cut_line_uses_highest_cutout_edge_point_per_band():
         settings=AppSettings(partial_cutout_top_extra_cm=0.0),
     )
 
-    assert [band.segments[0].partial_cut_line_y_cm for band in result.bands] == [150.0, 100.0]
+    assert [band.segments[0].partial_cut_reference_y_cm for band in result.bands] == [200.0, 200.0]
+    assert [band.segments[0].partial_cut_line_y_cm for band in result.bands] == [200.0, 200.0]
     assert [band.segments[0].cutout_interaction for band in result.bands] == ["partial", "partial"]
     assert [(p.band_index, p.y_top_cm, p.y_bottom_cm, p.split_reason) for p in result.placements if p.split_reason] == [
-        (0, 0.0, 150.0, "partial_cutout_top"),
-        (1, 0.0, 100.0, "partial_cutout_top"),
+        (0, 0.0, 200.0, "partial_cutout_top"),
+        (1, 0.0, 200.0, "partial_cutout_top"),
+    ]
+
+
+def test_partial_cut_reference_uses_plateau_start_for_irregular_cutout():
+    plane = RoofPlane(
+        id="plane-1",
+        name="IrregularPlateau",
+        outline=Polygon2D.rectangle(300, 300),
+        holes=[
+            Polygon2D(
+                [
+                    Point2D(100, 40),
+                    Point2D(160, 100),
+                    Point2D(210, 100),
+                    Point2D(240, 140),
+                    Point2D(240, 240),
+                    Point2D(60, 240),
+                    Point2D(60, 140),
+                    Point2D(90, 100),
+                ]
+            )
+        ],
+    )
+
+    result = generate_layout(
+        plane,
+        _material(effective_width_cm=100, max_sheet_length_cm=1000),
+        settings=AppSettings(partial_cutout_top_extra_cm=0.0),
+    )
+
+    partial_segments = [segment for band in result.bands for segment in band.segments if segment.cutout_interaction == "partial"]
+
+    assert partial_segments
+    assert {segment.partial_cut_reference_y_cm for segment in partial_segments} == {140.0}
+
+
+def test_partial_cut_reference_uses_band_shoulder_for_triangle_cutout():
+    plane = RoofPlane(
+        id="plane-1",
+        name="TriangleSharedCut",
+        outline=Polygon2D.rectangle(300, 300),
+        holes=[
+            Polygon2D(
+                [
+                    Point2D(150, 80),
+                    Point2D(210, 200),
+                    Point2D(90, 200),
+                ]
+            )
+        ],
+    )
+
+    result = generate_layout(
+        plane,
+        _material(effective_width_cm=65, max_sheet_length_cm=1000),
+        settings=AppSettings(partial_cutout_top_extra_cm=0.0),
+    )
+
+    partial_segments = [segment for band in result.bands for segment in band.segments if segment.cutout_interaction == "partial"]
+    assert len(partial_segments) == 2
+    assert {segment.partial_cut_reference_y_cm for segment in partial_segments} == {200.0}
+    assert {segment.partial_cut_line_y_cm for segment in partial_segments} == {200.0}
+    assert [(p.band_index, p.y_top_cm, p.y_bottom_cm, p.split_reason) for p in result.placements if p.split_reason] == [
+        (1, 0.0, 200.0, "partial_cutout_top"),
+        (3, 0.0, 200.0, "partial_cutout_top"),
+    ]
+
+
+def test_partial_cut_reference_uses_band_shoulder_for_trapezoid_cutout():
+    plane = RoofPlane(
+        id="plane-1",
+        name="TrapezoidSharedCut",
+        outline=Polygon2D.rectangle(300, 300),
+        holes=[
+            Polygon2D(
+                [
+                    Point2D(120, 80),
+                    Point2D(180, 80),
+                    Point2D(240, 200),
+                    Point2D(60, 200),
+                ]
+            )
+        ],
+    )
+
+    result = generate_layout(
+        plane,
+        _material(effective_width_cm=65, max_sheet_length_cm=1000),
+        settings=AppSettings(partial_cutout_top_extra_cm=0.0),
+    )
+
+    partial_segments = [segment for band in result.bands for segment in band.segments if segment.cutout_interaction == "partial"]
+    assert len(partial_segments) == 2
+    assert {segment.partial_cut_reference_y_cm for segment in partial_segments} == {200.0}
+    assert {segment.partial_cut_line_y_cm for segment in partial_segments} == {200.0}
+    assert [(p.band_index, p.y_top_cm, p.y_bottom_cm, p.split_reason) for p in result.placements if p.split_reason] == [
+        (0, 0.0, 200.0, "partial_cutout_top"),
+        (3, 0.0, 200.0, "partial_cutout_top"),
     ]
 
 

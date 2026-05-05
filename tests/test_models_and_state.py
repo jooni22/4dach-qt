@@ -23,7 +23,7 @@ from core.models import (
     SheetPlacement,
     almost_equal,
 )
-from core.project_state import ProjectState
+from core.project_state import ProjectState, _deserialize_layout_bands
 from persistence import load_config, save_config
 
 
@@ -753,6 +753,73 @@ def test_project_state_rebuilds_sheet_split_inputs_after_outline_edit_moves_hole
     assert band_segment.cutout_interaction is None
     assert band_segment.partial_cut_line_y_cm is None
     assert len(band_segment.coverage_polygons) == 1
+
+
+def test_project_state_deserializes_partial_cut_reference_with_backward_compatibility():
+    bands = _deserialize_layout_bands(
+        {
+            "order": ["0"],
+            "items": {
+                "0": [
+                    0.0,
+                    100.0,
+                    [
+                        [
+                            0,
+                            0.0,
+                            250.0,
+                            250.0,
+                            [[[0.0, 0.0], [100.0, 0.0], [100.0, 250.0], [0.0, 250.0]]],
+                            "plane-1-b0-s0-r0",
+                            "partial_cutout_top",
+                            "partial",
+                            180.0,
+                            180.0,
+                            15.0,
+                        ]
+                    ],
+                ]
+            },
+        }
+    )
+
+    segment = bands[0]["segments"][0]
+    assert segment["partial_cut_line_y_cm"] == 180.0
+    assert segment["partial_cut_reference_y_cm"] == 180.0
+    assert segment["top_extra_cm"] == 15.0
+
+
+def test_project_state_deserializes_legacy_partial_cut_reference_from_old_layout_entry():
+    bands = _deserialize_layout_bands(
+        {
+            "order": ["0"],
+            "items": {
+                "0": [
+                    0.0,
+                    100.0,
+                    [
+                        [
+                            0,
+                            0.0,
+                            250.0,
+                            250.0,
+                            [[[0.0, 0.0], [100.0, 0.0], [100.0, 250.0], [0.0, 250.0]]],
+                            "plane-1-b0-s0-r0",
+                            "partial_cutout_top",
+                            "partial",
+                            175.0,
+                            12.0,
+                        ]
+                    ],
+                ]
+            },
+        }
+    )
+
+    segment = bands[0]["segments"][0]
+    assert segment["partial_cut_line_y_cm"] == 175.0
+    assert segment["partial_cut_reference_y_cm"] == 175.0
+    assert segment["top_extra_cm"] == 12.0
 
 
 def test_project_state_delete_hole_marks_geometry_changed():

@@ -897,6 +897,7 @@ def _serialize_layout_bands(layout_bands: list[dict]) -> dict:
                     segment.get("split_reason"),
                     segment.get("cutout_interaction"),
                     segment.get("partial_cut_line_y_cm"),
+                    segment.get("partial_cut_reference_y_cm"),
                     segment.get("top_extra_cm", 0.0),
                 ]
                 for segment in band.get("segments", [])
@@ -934,7 +935,18 @@ def _deserialize_layout_bands(payload: object) -> list[dict]:
                         "split_reason": segment_entry[6] if len(segment_entry) > 6 else None,
                         "cutout_interaction": segment_entry[7] if len(segment_entry) > 7 else None,
                         "partial_cut_line_y_cm": segment_entry[8] if len(segment_entry) > 8 else None,
-                        "top_extra_cm": float(segment_entry[9]) if len(segment_entry) > 9 and segment_entry[9] is not None else 0.0,
+                        "partial_cut_reference_y_cm": (
+                            float(segment_entry[9])
+                            if len(segment_entry) > 10 and segment_entry[9] is not None
+                            else (
+                                float(segment_entry[8])
+                                if len(segment_entry) > 8 and segment_entry[8] is not None
+                                else None
+                            )
+                        ),
+                        "top_extra_cm": float(segment_entry[10]) if len(segment_entry) > 10 and segment_entry[10] is not None else (
+                            float(segment_entry[9]) if len(segment_entry) > 9 and segment_entry[9] is not None else 0.0
+                        ),
                     }
                 )
             bands.append(

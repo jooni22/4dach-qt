@@ -50,6 +50,7 @@ class LayoutBandSegment:
     split_reason: str | None = None
     cutout_interaction: str | None = None
     partial_cut_line_y_cm: float | None = None
+    partial_cut_reference_y_cm: float | None = None
     top_extra_cm: float = 0.0
 
     def to_dict(self) -> dict:
@@ -65,6 +66,7 @@ class LayoutBandSegment:
             "split_reason": self.split_reason,
             "cutout_interaction": self.cutout_interaction,
             "partial_cut_line_y_cm": self.partial_cut_line_y_cm,
+            "partial_cut_reference_y_cm": self.partial_cut_reference_y_cm,
             "top_extra_cm": self.top_extra_cm,
         }
 
@@ -199,12 +201,20 @@ def generate_layout(
         )
         return result
 
-    for band_index, (x_left, x_right) in enumerate(_iter_band_ranges(layout_plane, width)):
+    band_ranges = _iter_band_ranges(layout_plane, width)
+    partial_cut_references_by_hole = _partial_cut_references_by_hole(layout_plane, band_ranges)
+
+    for band_index, (x_left, x_right) in enumerate(band_ranges):
         band_segments = _build_band_segments(layout_plane, band_index, x_left, x_right)
         layout_band = LayoutBand(band_index=band_index, x_left_cm=x_left, x_right_cm=x_right)
 
         for band_segment in band_segments:
-            _detect_cutout_interaction(layout_plane, band_segment, _settings)
+            _detect_cutout_interaction(
+                layout_plane,
+                band_segment,
+                _settings,
+                partial_cut_references_by_hole=partial_cut_references_by_hole,
+            )
 
         for segment_index, band_segment in enumerate(band_segments):
             max_len = material.max_sheet_length_cm
@@ -274,11 +284,12 @@ def _make_placement_id(plane_id: str, band_index: int, segment_index: int, row_i
 
 
 def _row_phases_for_segment(segment: LayoutBandSegment) -> list[_RowPhase]:
-    if segment.cutout_interaction == "partial" and segment.partial_cut_line_y_cm is not None:
+    cut_reference_y_cm = _segment_partial_cut_reference_y(segment)
+    if segment.cutout_interaction == "partial" and cut_reference_y_cm is not None:
         return [
-            _RowPhase(start_y_cm=segment.y_bottom_cm, limit_y_cm=segment.partial_cut_line_y_cm),
+            _RowPhase(start_y_cm=segment.y_bottom_cm, limit_y_cm=cut_reference_y_cm),
             _RowPhase(
-                start_y_cm=segment.partial_cut_line_y_cm,
+                start_y_cm=cut_reference_y_cm,
                 limit_y_cm=segment.y_top_cm,
                 terminal_split_reason="partial_cutout_top",
                 terminal_extra_cm=segment.top_extra_cm,
@@ -720,15 +731,17 @@ def _detect_cutout_interaction(
     plane: RoofPlane,
     segment: LayoutBandSegment,
     settings,
+    *,
+    partial_cut_references_by_hole: list[float | None] | None = None,
 ) -> None:
     """Inspect holes of *plane* against the segment x/y range and annotate
     *segment* in-place with ``cutout_interaction``, ``partial_cut_line_y_cm``,
     and ``top_extra_cm``.
     """
     full_overlap_detected = False
-    partial_cut_line_y_cm: float | None = None
+    partial_cut_reference_y_cm: float | None = None
 
-    for hole in plane.holes:
+    for hole_index, hole in enumerate(plane.holes):
         bounds = hole.bounds()
 
         # Skip holes that don't touch this segment's y-range
@@ -744,21 +757,23 @@ def _detect_cutout_interaction(
             full_overlap_detected = True
             continue  # keep inspecting — another hole might be partial
 
-        # PARTIAL: hole partially overlaps this segment in x
-        cut_y = _highest_cutout_edge_y_in_range(hole, segment.x_left_cm, segment.x_right_cm)
-        if cut_y is None:
-            continue
-        if partial_cut_line_y_cm is None or cut_y < partial_cut_line_y_cm:
-            partial_cut_line_y_cm = cut_y
+        cut_reference_y = None
+        if partial_cut_references_by_hole is not None and hole_index < len(partial_cut_references_by_hole):
+            cut_reference_y = partial_cut_references_by_hole[hole_index]
+        if cut_reference_y is None:
+            cut_reference_y = _partial_cut_reference_y_for_hole(hole)
+        if partial_cut_reference_y_cm is None or cut_reference_y < partial_cut_reference_y_cm:
+            partial_cut_reference_y_cm = cut_reference_y
 
-    if partial_cut_line_y_cm is not None:
-        cut_y = min(max(partial_cut_line_y_cm, segment.y_top_cm), segment.y_bottom_cm)
+    if partial_cut_reference_y_cm is not None:
+        cut_y = min(max(partial_cut_reference_y_cm, segment.y_top_cm), segment.y_bottom_cm)
         extra_raw = getattr(settings, "partial_cutout_top_extra_cm", 15.0)
         max_possible_extra = cut_y - segment.y_top_cm
         extra_clamped = max(0.0, min(extra_raw, max_possible_extra))
 
         segment.cutout_interaction = "partial"
         segment.partial_cut_line_y_cm = cut_y
+        segment.partial_cut_reference_y_cm = cut_y
         segment.top_extra_cm = extra_clamped
         return
 
@@ -777,6 +792,230 @@ def _highest_cutout_edge_y_in_range(hole: Polygon2D, x_left: float, x_right: flo
         if highest_y is None or edge_highest_y < highest_y:
             highest_y = edge_highest_y
     return highest_y
+
+
+def _segment_partial_cut_reference_y(segment: LayoutBandSegment) -> float | None:
+    if segment.partial_cut_reference_y_cm is not None:
+        return segment.partial_cut_reference_y_cm
+    return segment.partial_cut_line_y_cm
+
+
+def _partial_cut_reference_y_for_hole(hole: Polygon2D) -> float:
+    vertical_side_reference = _vertical_side_reference_y(hole)
+    if vertical_side_reference is not None:
+        return vertical_side_reference
+
+    plateau_reference = _max_width_plateau_reference_y(hole)
+    if plateau_reference is not None:
+        return plateau_reference
+
+    return hole.bounds().min_y
+
+
+def _partial_cut_references_by_hole(
+    plane: RoofPlane,
+    band_ranges: list[tuple[float, float]],
+) -> list[float | None]:
+    references: list[float | None] = []
+    for hole in plane.holes:
+        vertical_side_reference = _vertical_side_reference_y(hole)
+        if vertical_side_reference is not None:
+            references.append(vertical_side_reference)
+            continue
+
+        plateau_reference = _max_width_plateau_reference_y(hole)
+        if plateau_reference is not None:
+            references.append(plateau_reference)
+            continue
+
+        simple_base_reference = _simple_sloped_cutout_base_reference_y(hole)
+        if simple_base_reference is not None:
+            references.append(simple_base_reference)
+            continue
+
+        band_shoulder_reference = _band_shoulder_reference_y(hole, band_ranges)
+        if band_shoulder_reference is not None:
+            references.append(band_shoulder_reference)
+            continue
+
+        references.append(hole.bounds().min_y)
+    return references
+
+
+def _vertical_side_reference_y(hole: Polygon2D) -> float | None:
+    bounds = hole.bounds()
+    left_top = _outer_vertical_side_top_y(hole, bounds.min_x)
+    right_top = _outer_vertical_side_top_y(hole, bounds.max_x)
+    if left_top is None or right_top is None:
+        return None
+    return max(left_top, right_top)
+
+
+def _outer_vertical_side_top_y(hole: Polygon2D, target_x: float) -> float | None:
+    candidates: list[tuple[float, float]] = []
+    for start, end in polygon_edges(hole):
+        if abs(start.x - end.x) > EPSILON:
+            continue
+        if abs(start.x - target_x) > EPSILON:
+            continue
+        top_y = min(start.y, end.y)
+        bottom_y = max(start.y, end.y)
+        if bottom_y - top_y <= EPSILON:
+            continue
+        candidates.append((top_y, bottom_y))
+    if not candidates:
+        return None
+    top_y, _ = max(candidates, key=lambda span: (span[1] - span[0], -span[0]))
+    return top_y
+
+
+def _max_width_plateau_reference_y(hole: Polygon2D) -> float | None:
+    slabs = _hole_width_slabs(hole)
+    if not slabs:
+        return None
+    if len(slabs) == 1:
+        return None
+
+    max_width = max(width_cm for _, _, width_cm in slabs)
+    tolerance_cm = max(1e-3, min(1.0, max_width * 0.01))
+    plateau_start = _plateau_suffix_start_y(slabs, max_width=max_width, tolerance_cm=tolerance_cm)
+    if plateau_start is not None:
+        return plateau_start
+
+    stable_run_start = _longest_plateau_run_start_y(slabs, max_width=max_width, tolerance_cm=tolerance_cm)
+    if stable_run_start is not None:
+        return stable_run_start
+
+    for top_y, _, width_cm in slabs:
+        if width_cm >= max_width - tolerance_cm:
+            return top_y
+    return None
+
+
+def _hole_width_slabs(hole: Polygon2D) -> list[tuple[float, float, float]]:
+    y_levels = _unique_sorted([point.y for point in hole.points])
+    slabs: list[tuple[float, float, float]] = []
+    for top_y, bottom_y in zip(y_levels, y_levels[1:], strict=False):
+        if bottom_y - top_y <= EPSILON:
+            continue
+        sample_y = (top_y + bottom_y) / 2.0
+        span = _horizontal_span_at_y(hole, sample_y)
+        if span is None:
+            continue
+        slabs.append((top_y, bottom_y, span[1] - span[0]))
+    return slabs
+
+
+def _plateau_suffix_start_y(
+    slabs: list[tuple[float, float, float]],
+    *,
+    max_width: float,
+    tolerance_cm: float,
+) -> float | None:
+    suffix_start_y: float | None = None
+    for top_y, _, width_cm in reversed(slabs):
+        if width_cm < max_width - tolerance_cm:
+            break
+        suffix_start_y = top_y
+    return suffix_start_y
+
+
+def _longest_plateau_run_start_y(
+    slabs: list[tuple[float, float, float]],
+    *,
+    max_width: float,
+    tolerance_cm: float,
+) -> float | None:
+    best_run: tuple[float, float] | None = None
+    current_top_y: float | None = None
+    current_height = 0.0
+
+    for top_y, bottom_y, width_cm in slabs:
+        if width_cm >= max_width - tolerance_cm:
+            if current_top_y is None:
+                current_top_y = top_y
+                current_height = 0.0
+            current_height += bottom_y - top_y
+            continue
+
+        if current_top_y is not None:
+            if best_run is None or current_height > best_run[1]:
+                best_run = (current_top_y, current_height)
+            current_top_y = None
+            current_height = 0.0
+
+    if current_top_y is not None and (best_run is None or current_height > best_run[1]):
+        best_run = (current_top_y, current_height)
+
+    return None if best_run is None else best_run[0]
+
+
+def _horizontal_span_at_y(hole: Polygon2D, y_value: float) -> tuple[float, float] | None:
+    intersections: list[float] = []
+    for start, end in polygon_edges(hole):
+        if abs(start.y - end.y) <= EPSILON:
+            continue
+        edge_min_y = min(start.y, end.y)
+        edge_max_y = max(start.y, end.y)
+        if y_value < edge_min_y - EPSILON or y_value >= edge_max_y - EPSILON:
+            continue
+        ratio = (y_value - start.y) / (end.y - start.y)
+        intersections.append(start.x + ratio * (end.x - start.x))
+
+    if len(intersections) < 2:
+        return None
+
+    intersections.sort()
+    return intersections[0], intersections[-1]
+
+
+def _simple_sloped_cutout_base_reference_y(hole: Polygon2D) -> float | None:
+    if len(hole.points) not in {3, 4}:
+        return None
+    if _vertical_side_reference_y(hole) is not None:
+        return None
+    return hole.bounds().max_y
+
+
+def _band_shoulder_reference_y(
+    hole: Polygon2D,
+    band_ranges: list[tuple[float, float]],
+) -> float | None:
+    touched_bands: list[tuple[int, float, str]] = []
+    bounds = hole.bounds()
+
+    for band_index, (x_left, x_right) in enumerate(band_ranges):
+        if bounds.max_x <= x_left or bounds.min_x >= x_right:
+            continue
+        local_top = _highest_cutout_edge_y_in_range(hole, x_left, x_right)
+        if local_top is None:
+            continue
+        interaction = "full" if bounds.min_x <= x_left and bounds.max_x >= x_right else "partial"
+        touched_bands.append((band_index, local_top, interaction))
+
+    if len(touched_bands) < 3:
+        return None
+
+    tolerance_cm = 1e-6
+    full_band_indices = [band_index for band_index, _, interaction in touched_bands if interaction == "full"]
+    if not full_band_indices:
+        return None
+
+    core_start = min(full_band_indices)
+    core_end = max(full_band_indices)
+    local_tops_by_band = {band_index: local_top for band_index, local_top, _ in touched_bands}
+
+    left_shoulder = local_tops_by_band.get(core_start - 1)
+    right_shoulder = local_tops_by_band.get(core_end + 1)
+    shoulder_candidates = [value for value in (left_shoulder, right_shoulder) if value is not None]
+    if shoulder_candidates:
+        return max(shoulder_candidates)
+
+    partial_band_tops = [local_top for _, local_top, interaction in touched_bands if interaction == "partial"]
+    if partial_band_tops:
+        return max(partial_band_tops)
+
+    return None
 
 
 def _clip_edge_to_x_range(

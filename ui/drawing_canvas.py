@@ -2765,7 +2765,7 @@ class _DrawingCanvasPaintingMixin:
                 for seg_dict in band_dict.get("segments", []):
                     if seg_dict.get("cutout_interaction") != "partial":
                         continue
-                    cut_y = seg_dict.get("partial_cut_line_y_cm")
+                    cut_y = seg_dict.get("partial_cut_reference_y_cm", seg_dict.get("partial_cut_line_y_cm"))
                     if cut_y is None:
                         continue
                     x_left = seg_dict["x_left_cm"]
