@@ -1564,6 +1564,70 @@ def test_mainwindow_edit_project_updates_project_meta_and_marks_dirty(qtbot, mon
     assert window._has_unsaved_changes is True
 
 
+def test_mainwindow_starts_autosave_timer_on_init(qtbot):
+    window = MainWindow(auto_startup=False)
+    qtbot.addWidget(window)
+
+    assert window._autosave_timer.interval() == 300000
+    assert window._autosave_timer.isActive() is True
+
+
+def test_mainwindow_autosave_skips_new_unsaved_session(qtbot, monkeypatch):
+    save_calls: list[Path | None] = []
+
+    def _save_config(config_data, parent=None, path=None):
+        save_calls.append(path)
+        return True
+
+    monkeypatch.setattr("ui.main_window.save_config", _save_config)
+    window = MainWindow(auto_startup=False)
+    qtbot.addWidget(window)
+    window._project_file_path = None
+    window._has_unsaved_changes = True
+
+    window._autosave_project_if_needed()
+
+    assert save_calls == []
+
+
+def test_mainwindow_autosave_saves_dirty_project_with_path(qtbot, monkeypatch, tmp_path):
+    saved_paths: list[Path | None] = []
+
+    def _save_config(config_data, parent=None, path=None):
+        saved_paths.append(path)
+        return True
+
+    monkeypatch.setattr("ui.main_window.save_config", _save_config)
+    window = MainWindow(auto_startup=False)
+    qtbot.addWidget(window)
+    window._project_file_path = tmp_path / "autosave.4dach"
+    window._config["project_meta"] = {"name": "Auto"}
+    window._mark_saved_state()
+    window._config["project_meta"]["notes"] = "Zmienione"
+    window._refresh_dirty_state()
+
+    window._autosave_project_if_needed()
+
+    assert saved_paths == [tmp_path / "autosave.4dach"]
+    assert window._has_unsaved_changes is False
+    assert "Autozapisano projekt" in window.statusBar().currentMessage()
+
+
+def test_mainwindow_autosave_failure_keeps_dirty_state(qtbot, monkeypatch, tmp_path):
+    monkeypatch.setattr("ui.main_window.save_config", lambda *args, **kwargs: False)
+    window = MainWindow(auto_startup=False)
+    qtbot.addWidget(window)
+    window._project_file_path = tmp_path / "autosave.4dach"
+    window._config["project_meta"] = {"name": "Auto"}
+    window._mark_saved_state()
+    window._config["project_meta"]["notes"] = "Zmienione"
+    window._refresh_dirty_state()
+
+    window._autosave_project_if_needed()
+
+    assert window._has_unsaved_changes is True
+
+
 def test_mainwindow_save_payload_contains_only_project_level_keys(qtbot, monkeypatch, tmp_path):
     saved_payloads: list[dict] = []
 

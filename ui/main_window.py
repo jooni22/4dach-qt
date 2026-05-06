@@ -1,4 +1,5 @@
 """Main application window coordinating project, workspace, and report flows."""
+
 from __future__ import annotations
 
 import copy
@@ -11,7 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QRectF, QSettings, QSize, Qt, QUrl
+from PySide6.QtCore import QRectF, QSettings, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QKeySequence
 from PySide6.QtWidgets import (
     QInputDialog,
@@ -105,6 +106,7 @@ class MainWindow(QMainWindow):
         self._sheets_visible = False
         self._project_file_path: Path | None = None
         self._close_after_startup_cancel = False
+        self._last_autosave_error: str | None = None
 
         self._status_label = QLabel("")
         self._mode_label = QLabel("Mode: IDLE")
@@ -129,6 +131,7 @@ class MainWindow(QMainWindow):
         self._apply_theme()
         self._refresh_canvas()
         self._mark_saved_state()
+        self._start_autosave_timer()
 
         settings = QSettings()
         geo = settings.value("geometry")
@@ -516,6 +519,7 @@ class MainWindow(QMainWindow):
         self._config = self._state_config_from_project_payload(payload)
         self._refresh_base_window_title()
         self._mark_saved_state()
+        self._last_autosave_error = None
         self.statusBar().showMessage("Zapisano projekt", 3000)
         return True
 
@@ -551,6 +555,7 @@ class MainWindow(QMainWindow):
         self._config = self._state_config_from_project_payload(payload_to_save)
         self._refresh_base_window_title()
         self._mark_saved_state()
+        self._last_autosave_error = None
         return payload_to_save
 
     def _create_new_project(self) -> bool:
@@ -597,6 +602,33 @@ class MainWindow(QMainWindow):
         self._push_history("Edycja danych projektu", before_snapshot, after_snapshot)
         self._refresh_dirty_state()
         self.statusBar().showMessage("Zaktualizowano dane projektu", 4000)
+
+    def _start_autosave_timer(self) -> None:
+        self._autosave_timer = QTimer(self)
+        self._autosave_timer.setInterval(5 * 60 * 1000)
+        self._autosave_timer.timeout.connect(self._autosave_project_if_needed)
+        self._autosave_timer.start()
+
+    def _autosave_project_if_needed(self) -> None:
+        if self._project_file_path is None or not self._has_unsaved_changes:
+            return
+        payload = self._prepare_payload_for_save(
+            self._serialize_current_config(),
+            self._project_file_path,
+        )
+        if not self._ensure_project_file_parent_ready(self._project_file_path):
+            return
+        if not save_config(payload, self, path=self._project_file_path):
+            error_key = str(self._project_file_path)
+            if self._last_autosave_error != error_key:
+                self.statusBar().showMessage("Autozapis nie powiódł się", 5000)
+                self._last_autosave_error = error_key
+            return
+        self._config = self._state_config_from_project_payload(payload)
+        self._refresh_base_window_title()
+        self._mark_saved_state()
+        self._last_autosave_error = None
+        self.statusBar().showMessage("Autozapisano projekt", 3000)
 
     def _confirm_discard_unsaved_changes(self, *, context: str) -> bool:
         if not self._has_unsaved_changes:
