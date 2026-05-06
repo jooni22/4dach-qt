@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import json
+import shutil
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QUrl
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -27,6 +29,7 @@ from PySide6.QtWidgets import (
 )
 
 from core.project_state import ProjectState
+from project_files import project_config_path, project_report_path, resolve_unique_project_dir
 
 
 class Mode(Enum):
@@ -38,7 +41,10 @@ class Mode(Enum):
 
 @dataclass(frozen=True, slots=True)
 class ProjectMeta:
-    path: Path
+    project_dir: Path
+    config_path: Path
+    report_path: Path
+    has_report: bool
     name: str
     address: str
     contact_name: str
@@ -68,10 +74,16 @@ def scan_projects_dir(projects_dir: Path | str) -> list[ProjectMeta]:
         return []
 
     projects: list[ProjectMeta] = []
-    for path in root.glob("*.4dach"):
+    for project_dir in root.iterdir():
+        if not project_dir.is_dir():
+            continue
+        config_path = project_config_path(project_dir)
+        report_path = project_report_path(project_dir)
+        if not config_path.is_file():
+            continue
         try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-            stat = path.stat()
+            payload = json.loads(config_path.read_text(encoding="utf-8"))
+            stat = config_path.stat()
         except (OSError, json.JSONDecodeError):
             continue
         if not isinstance(payload, dict):
@@ -85,8 +97,11 @@ def scan_projects_dir(projects_dir: Path | str) -> list[ProjectMeta]:
         net_area_cm2 = sum(plane.net_area_cm2 for plane in project_state.roof_planes)
         projects.append(
             ProjectMeta(
-                path=path,
-                name=str(meta.get("name") or path.stem),
+                project_dir=project_dir,
+                config_path=config_path,
+                report_path=report_path,
+                has_report=report_path.is_file(),
+                name=str(meta.get("name") or project_dir.name),
                 address=str(meta.get("address") or ""),
                 contact_name=str(meta.get("contact_name") or ""),
                 phone=str(meta.get("phone") or ""),
@@ -122,21 +137,7 @@ class ProjectManagerDialog(QDialog):
         self._reload_projects()
 
     def _project_path_for_name(self, name: str) -> Path:
-        return self._projects_dir / f"{name}.4dach"
-
-    def _resolve_unique_project_name(self, name: str) -> str:
-        candidate = name.strip()
-        if not candidate:
-            return candidate
-        if not self._project_path_for_name(candidate).exists():
-            return candidate
-
-        index = 2
-        while True:
-            next_candidate = f"{candidate} {index}"
-            if not self._project_path_for_name(next_candidate).exists():
-                return next_candidate
-            index += 1
+        return project_config_path(resolve_unique_project_dir(self._projects_dir, name))
 
     def _title_for_mode(self, mode: Mode) -> str:
         return {
@@ -171,7 +172,7 @@ class ProjectManagerDialog(QDialog):
             self._notes_edit.setFixedHeight(80)
             form.addRow("Nazwa projektu:", self._name_edit)
             form.addRow("Adres:", self._address_edit)
-            form.addRow("Imię nazwisko:", self._contact_name_edit)
+            form.addRow("Osoba kontaktowa:", self._contact_name_edit)
             form.addRow("Telefon:", self._phone_edit)
             form.addRow("Notatki:", self._notes_edit)
             root.addLayout(form)
@@ -237,6 +238,10 @@ class ProjectManagerDialog(QDialog):
         details_form.addRow("Powierzchnia netto:", self._details_net_area_value)
         details_form.addRow("Notatki:", self._details_notes_value)
         details_layout.addLayout(details_form)
+        self._report_button = QPushButton("Raport", details_panel)
+        self._report_button.setEnabled(False)
+        self._report_button.clicked.connect(self._open_selected_report)
+        details_layout.addWidget(self._report_button)
         details_layout.addStretch(1)
 
         self._browser_splitter.setStretchFactor(0, 1)
@@ -317,6 +322,7 @@ class ProjectManagerDialog(QDialog):
             self._details_notes_value,
         ):
             label.setText("-")
+        self._report_button.setEnabled(False)
 
     def _update_project_details(self, project: ProjectMeta | None) -> None:
         if self.mode in {Mode.NEW, Mode.SAVE_AS}:
@@ -333,6 +339,7 @@ class ProjectManagerDialog(QDialog):
         self._set_detail_label(self._details_roof_plane_count_value, str(project.roof_plane_count))
         self._set_detail_label(self._details_net_area_value, f"{project.net_area_m2:.2f} m²")
         self._set_detail_label(self._details_notes_value, project.notes)
+        self._report_button.setEnabled(project.has_report)
 
     def _on_current_item_changed(self, current: QListWidgetItem | None, _previous: QListWidgetItem | None) -> None:
         project = current.data(Qt.ItemDataRole.UserRole) if current is not None else None
@@ -354,7 +361,7 @@ class ProjectManagerDialog(QDialog):
         project = self._current_project()
         if project is None:
             return
-        if self._current_project_path is not None and project.path == self._current_project_path:
+        if self._current_project_path is not None and project.config_path == self._current_project_path:
             QMessageBox.warning(self, "Nie można usunąć projektu", "Nie można usunąć aktualnie otwartego projektu.")
             return
         answer = QMessageBox.question(
@@ -367,11 +374,21 @@ class ProjectManagerDialog(QDialog):
         if answer != QMessageBox.StandardButton.Yes:
             return
         try:
-            project.path.unlink()
+            project.project_dir.relative_to(self._projects_dir)
+            shutil.rmtree(project.project_dir)
         except OSError as exc:
             QMessageBox.warning(self, "Nie można usunąć projektu", str(exc))
             return
+        except ValueError:
+            QMessageBox.warning(self, "Nie można usunąć projektu", "Nieprawidłowa ścieżka katalogu projektu.")
+            return
         self._reload_projects()
+
+    def _open_selected_report(self) -> None:
+        project = self._current_project()
+        if project is None or not project.has_report:
+            return
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(project.report_path)))
 
     def _accept_new_from_startup(self) -> None:
         self._startup_action = "new"
@@ -404,8 +421,6 @@ class ProjectManagerDialog(QDialog):
             if not project_name:
                 QMessageBox.warning(self, "Brak nazwy projektu", "Nazwa projektu jest wymagana.")
                 return
-            project_name = self._resolve_unique_project_name(project_name)
-            self._name_edit.setText(project_name)
             self._selected_path = self._project_path_for_name(project_name)
             super().accept()
             return
@@ -416,6 +431,6 @@ class ProjectManagerDialog(QDialog):
         project = self._current_project()
         if project is None:
             return
-        self._selected_path = project.path
+        self._selected_path = project.config_path
         self._startup_action = "open"
         super().accept()

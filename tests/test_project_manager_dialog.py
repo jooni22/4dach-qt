@@ -3,17 +3,19 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta
 
+from PySide6.QtCore import QUrl
 from PySide6.QtWidgets import QMessageBox
 
 from core.geometry import build_rectangle_outline
 from core.models import Polygon2D
+from project_files import project_config_path, project_report_path
 from ui.dialogs.project_manager_dialog import Mode, ProjectManagerDialog, scan_projects_dir
 
 pytest_plugins = ("pytestqt",)
 
 
 def _write_project(
-    path,
+    project_dir,
     *,
     name: str,
     created_at: datetime | None = None,
@@ -23,7 +25,10 @@ def _write_project(
     phone: str = "",
     notes: str = "",
     roof_planes=None,
+    with_report: bool = False,
 ) -> None:
+    project_dir.mkdir(parents=True, exist_ok=True)
+    path = project_config_path(project_dir)
     path.write_text(
         json.dumps(
             {
@@ -43,6 +48,8 @@ def _write_project(
         ),
         encoding="utf-8",
     )
+    if with_report:
+        project_report_path(project_dir).write_text("<html>raport</html>", encoding="utf-8")
 
 
 def test_scan_projects_dir_returns_empty_for_missing_dir(tmp_path):
@@ -52,14 +59,19 @@ def test_scan_projects_dir_returns_empty_for_missing_dir(tmp_path):
 def test_scan_projects_dir_skips_corrupted_json_and_sorts_by_modified_at(tmp_path):
     older = datetime.now(UTC) - timedelta(days=2)
     newer = datetime.now(UTC)
-    _write_project(tmp_path / "older.4dach", name="Starszy", modified_at=older)
-    _write_project(tmp_path / "newer.4dach", name="Nowszy", modified_at=newer)
-    (tmp_path / "broken.4dach").write_text("{broken", encoding="utf-8")
+    _write_project(tmp_path / "older", name="Starszy", modified_at=older)
+    _write_project(tmp_path / "newer", name="Nowszy", modified_at=newer)
+    broken_dir = tmp_path / "broken"
+    broken_dir.mkdir()
+    project_config_path(broken_dir).write_text("{broken", encoding="utf-8")
 
     projects = scan_projects_dir(tmp_path)
 
     assert [project.name for project in projects] == ["Nowszy", "Starszy"]
-    assert [project.path.name for project in projects] == ["newer.4dach", "older.4dach"]
+    assert [project.config_path for project in projects] == [
+        project_config_path(tmp_path / "newer"),
+        project_config_path(tmp_path / "older"),
+    ]
 
 
 def test_project_manager_save_mode_builds_4dach_path(qtbot, tmp_path):
@@ -69,7 +81,7 @@ def test_project_manager_save_mode_builds_4dach_path(qtbot, tmp_path):
     dialog._name_edit.setText("Projekt Test")
     dialog.accept()
 
-    assert dialog.selected_path() == tmp_path / "Projekt Test.4dach"
+    assert dialog.selected_path() == project_config_path(tmp_path / "projekt-test")
     assert dialog.project_name() == "Projekt Test"
 
 
@@ -122,16 +134,16 @@ def test_project_manager_returns_full_project_meta(qtbot, tmp_path):
 
 
 def test_project_manager_iterates_project_name_when_target_file_exists(qtbot, tmp_path):
-    (tmp_path / "Projekt Test.4dach").write_text("{}", encoding="utf-8")
-    (tmp_path / "Projekt Test 2.4dach").write_text("{}", encoding="utf-8")
+    (tmp_path / "projekt-test").mkdir()
+    (tmp_path / "projekt-test-2").mkdir()
     dialog = ProjectManagerDialog(mode=Mode.SAVE_AS, projects_dir=tmp_path, default_name="Nowy")
     qtbot.addWidget(dialog)
 
     dialog._name_edit.setText("Projekt Test")
     dialog.accept()
 
-    assert dialog.selected_path() == tmp_path / "Projekt Test 3.4dach"
-    assert dialog.project_name() == "Projekt Test 3"
+    assert dialog.selected_path() == project_config_path(tmp_path / "projekt-test-3")
+    assert dialog.project_name() == "Projekt Test"
 
 
 def test_scan_projects_dir_reads_meta_and_calculates_statistics(tmp_path):
@@ -155,7 +167,7 @@ def test_scan_projects_dir_reads_meta_and_calculates_statistics(tmp_path):
         },
     ]
     _write_project(
-        tmp_path / "meta.4dach",
+        tmp_path / "meta",
         name="Dach Kowalski",
         address="Ulica 1",
         contact_name="Jan Kowalski",
@@ -168,6 +180,10 @@ def test_scan_projects_dir_reads_meta_and_calculates_statistics(tmp_path):
     [project] = scan_projects_dir(tmp_path)
 
     assert project.name == "Dach Kowalski"
+    assert project.project_dir == tmp_path / "meta"
+    assert project.config_path == project_config_path(tmp_path / "meta")
+    assert project.report_path == project_report_path(tmp_path / "meta")
+    assert project.has_report is False
     assert project.address == "Ulica 1"
     assert project.contact_name == "Jan Kowalski"
     assert project.phone == "123"
@@ -178,7 +194,7 @@ def test_scan_projects_dir_reads_meta_and_calculates_statistics(tmp_path):
 
 def test_project_list_displays_meta_and_statistics(qtbot, tmp_path):
     _write_project(
-        tmp_path / "meta.4dach",
+        tmp_path / "meta",
         name="Dach Kowalski",
         address="Ulica 1",
         contact_name="Jan Kowalski",
@@ -206,7 +222,7 @@ def test_project_list_displays_meta_and_statistics(qtbot, tmp_path):
 
 def test_project_manager_open_mode_builds_browser_split_view(qtbot, tmp_path):
     _write_project(
-        tmp_path / "meta.4dach",
+        tmp_path / "meta",
         name="Dach Kowalski",
         modified_at=datetime.now(UTC),
     )
@@ -224,7 +240,7 @@ def test_project_manager_preview_updates_when_selection_changes(qtbot, tmp_path)
     second_created = datetime(2024, 2, 5, 9, 0, tzinfo=UTC)
     second_modified = datetime(2024, 2, 6, 16, 45, tzinfo=UTC)
     _write_project(
-        tmp_path / "first.4dach",
+        tmp_path / "first",
         name="Projekt A",
         created_at=first_created,
         modified_at=first_modified,
@@ -242,7 +258,7 @@ def test_project_manager_preview_updates_when_selection_changes(qtbot, tmp_path)
         ],
     )
     _write_project(
-        tmp_path / "second.4dach",
+        tmp_path / "second",
         name="Projekt B",
         created_at=second_created,
         modified_at=second_modified,
@@ -282,8 +298,9 @@ def test_project_manager_preview_updates_when_selection_changes(qtbot, tmp_path)
 
 
 def test_project_manager_delete_removes_selected_project_after_confirmation(qtbot, monkeypatch, tmp_path):
-    project_path = tmp_path / "delete-me.4dach"
-    _write_project(project_path, name="Usuń mnie", modified_at=datetime.now(UTC))
+    project_dir = tmp_path / "delete-me"
+    project_path = project_config_path(project_dir)
+    _write_project(project_dir, name="Usuń mnie", modified_at=datetime.now(UTC))
     monkeypatch.setattr(
         "ui.dialogs.project_manager_dialog.QMessageBox.question",
         lambda *args, **kwargs: QMessageBox.StandardButton.Yes,
@@ -293,14 +310,16 @@ def test_project_manager_delete_removes_selected_project_after_confirmation(qtbo
 
     dialog._delete_selected_project()
 
+    assert project_dir.exists() is False
     assert project_path.exists() is False
     assert dialog._project_list.count() == 0
     assert dialog._details_name_value.text() == "-"
 
 
 def test_project_manager_delete_is_cancelled_when_confirmation_rejected(qtbot, monkeypatch, tmp_path):
-    project_path = tmp_path / "keep-me.4dach"
-    _write_project(project_path, name="Zostaw mnie", modified_at=datetime.now(UTC))
+    project_dir = tmp_path / "keep-me"
+    project_path = project_config_path(project_dir)
+    _write_project(project_dir, name="Zostaw mnie", modified_at=datetime.now(UTC))
     monkeypatch.setattr(
         "ui.dialogs.project_manager_dialog.QMessageBox.question",
         lambda *args, **kwargs: QMessageBox.StandardButton.No,
@@ -310,14 +329,16 @@ def test_project_manager_delete_is_cancelled_when_confirmation_rejected(qtbot, m
 
     dialog._delete_selected_project()
 
+    assert project_dir.exists() is True
     assert project_path.exists() is True
     assert dialog._project_list.count() == 1
     assert dialog._details_name_value.text() == "Zostaw mnie"
 
 
 def test_project_manager_delete_blocks_currently_open_project(qtbot, monkeypatch, tmp_path):
-    project_path = tmp_path / "current.4dach"
-    _write_project(project_path, name="Bieżący", modified_at=datetime.now(UTC))
+    project_dir = tmp_path / "current"
+    project_path = project_config_path(project_dir)
+    _write_project(project_dir, name="Bieżący", modified_at=datetime.now(UTC))
     warnings: list[str] = []
     monkeypatch.setattr(
         "ui.dialogs.project_manager_dialog.QMessageBox.warning",
@@ -334,3 +355,40 @@ def test_project_manager_delete_blocks_currently_open_project(qtbot, monkeypatch
 
     assert project_path.exists() is True
     assert warnings == ["Nie można usunąć aktualnie otwartego projektu."]
+
+
+def test_scan_projects_dir_marks_report_availability(tmp_path):
+    _write_project(tmp_path / "with-report", name="Z raportem", modified_at=datetime.now(UTC), with_report=True)
+
+    [project] = scan_projects_dir(tmp_path)
+
+    assert project.has_report is True
+    assert project.report_path == project_report_path(tmp_path / "with-report")
+
+
+def test_project_manager_report_button_state_follows_report_file(qtbot, tmp_path):
+    _write_project(tmp_path / "with-report", name="Z raportem", modified_at=datetime.now(UTC), with_report=True)
+    _write_project(tmp_path / "without-report", name="Bez raportu", modified_at=datetime.now(UTC) - timedelta(days=1))
+    dialog = ProjectManagerDialog(mode=Mode.OPEN, projects_dir=tmp_path)
+    qtbot.addWidget(dialog)
+
+    assert dialog._report_button.isEnabled() is True
+
+    dialog._project_list.setCurrentRow(1)
+
+    assert dialog._report_button.isEnabled() is False
+
+
+def test_project_manager_report_button_opens_existing_report(qtbot, monkeypatch, tmp_path):
+    _write_project(tmp_path / "with-report", name="Z raportem", modified_at=datetime.now(UTC), with_report=True)
+    opened_urls: list[QUrl] = []
+    monkeypatch.setattr(
+        "ui.dialogs.project_manager_dialog.QDesktopServices.openUrl",
+        lambda url: opened_urls.append(url) or True,
+    )
+    dialog = ProjectManagerDialog(mode=Mode.OPEN, projects_dir=tmp_path)
+    qtbot.addWidget(dialog)
+
+    dialog._open_selected_report()
+
+    assert opened_urls == [QUrl.fromLocalFile(str(project_report_path(tmp_path / "with-report")))]

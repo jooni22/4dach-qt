@@ -14,6 +14,12 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from project_files import (
+    project_config_path,
+    project_dir_from_config_path,
+    resolve_unique_project_dir,
+)
+
 
 class ProjectDetailsDialog(QDialog):
     def __init__(
@@ -28,7 +34,9 @@ class ProjectDetailsDialog(QDialog):
         super().__init__(parent)
         self._projects_dir = Path(projects_dir)
         self._project_path = project_path
+        self._current_project_dir = project_dir_from_config_path(project_path) if project_path is not None else None
         self._selected_path: Path | None = project_path
+        self._initial_project_name = str((initial_meta or {}).get("name") or default_name).strip()
         self.setWindowTitle("Dane projektu")
         self.setMinimumWidth(480)
         self._build_ui(default_name, initial_meta or {})
@@ -61,28 +69,18 @@ class ProjectDetailsDialog(QDialog):
         root.addWidget(self._button_box)
 
     def _project_path_for_name(self, name: str) -> Path:
-        return self._projects_dir / f"{name}.4dach"
+        project_dir = resolve_unique_project_dir(
+            self._projects_dir,
+            name,
+            current_dir=self._current_project_dir,
+        )
+        return project_config_path(project_dir)
 
-    def _resolve_unique_project_name(self, name: str) -> str:
+    def _resolve_selected_project_path(self, name: str) -> Path:
         candidate = name.strip()
-        if not candidate:
-            return candidate
-
-        candidate_path = self._project_path_for_name(candidate)
-        if self._project_path is not None and candidate_path == self._project_path:
-            return candidate
-        if not candidate_path.exists():
-            return candidate
-
-        index = 2
-        while True:
-            next_candidate = f"{candidate} {index}"
-            next_path = self._project_path_for_name(next_candidate)
-            if self._project_path is not None and next_path == self._project_path:
-                return next_candidate
-            if not next_path.exists():
-                return next_candidate
-            index += 1
+        if self._project_path is not None and candidate == self._initial_project_name:
+            return self._project_path
+        return self._project_path_for_name(candidate)
 
     def projects_dir(self) -> Path:
         return self._projects_dir
@@ -107,11 +105,5 @@ class ProjectDetailsDialog(QDialog):
         if not project_name:
             QMessageBox.warning(self, "Brak nazwy projektu", "Nazwa projektu jest wymagana.")
             return
-        if self._project_path is not None:
-            self._selected_path = self._project_path
-            super().accept()
-            return
-        project_name = self._resolve_unique_project_name(project_name)
-        self._name_edit.setText(project_name)
-        self._selected_path = self._project_path_for_name(project_name)
+        self._selected_path = self._resolve_selected_project_path(project_name)
         super().accept()

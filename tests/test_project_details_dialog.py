@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from project_files import project_config_path
 from ui.dialogs.project_details_dialog import ProjectDetailsDialog
 
 pytest_plugins = ("pytestqt",)
@@ -40,20 +41,20 @@ def test_project_details_dialog_returns_full_project_meta(qtbot, tmp_path):
         "phone": "123 456 789",
         "notes": "Pilny montaż",
     }
-    assert dialog.selected_path() == tmp_path / "Dach Kowalski.4dach"
+    assert dialog.selected_path() == project_config_path(tmp_path / "dach-kowalski")
 
 
 def test_project_details_dialog_iterates_project_name_when_target_file_exists(qtbot, tmp_path):
-    (tmp_path / "Projekt Test.4dach").write_text("{}", encoding="utf-8")
-    (tmp_path / "Projekt Test 2.4dach").write_text("{}", encoding="utf-8")
+    (tmp_path / "projekt-test").mkdir()
+    (tmp_path / "projekt-test-2").mkdir()
     dialog = ProjectDetailsDialog(projects_dir=tmp_path, default_name="Nowy")
     qtbot.addWidget(dialog)
 
     dialog._name_edit.setText("Projekt Test")
     dialog.accept()
 
-    assert dialog.selected_path() == tmp_path / "Projekt Test 3.4dach"
-    assert dialog.project_name() == "Projekt Test 3"
+    assert dialog.selected_path() == project_config_path(tmp_path / "projekt-test-3")
+    assert dialog.project_name() == "Projekt Test"
 
 
 def test_project_details_dialog_populates_initial_meta_values(qtbot, tmp_path):
@@ -78,7 +79,7 @@ def test_project_details_dialog_populates_initial_meta_values(qtbot, tmp_path):
 
 
 def test_project_details_dialog_edit_mode_keeps_existing_project_path(qtbot, tmp_path):
-    existing_path = tmp_path / "istniejacy.4dach"
+    existing_path = project_config_path(tmp_path / "istniejacy")
     dialog = ProjectDetailsDialog(
         projects_dir=tmp_path,
         default_name="Nowy",
@@ -92,3 +93,20 @@ def test_project_details_dialog_edit_mode_keeps_existing_project_path(qtbot, tmp
 
     assert dialog.selected_path() == existing_path
     assert dialog.project_name() == "Projekt A"
+
+
+def test_project_details_dialog_edit_mode_resolves_new_project_directory_from_renamed_project(qtbot, tmp_path):
+    existing_path = project_config_path(tmp_path / "stary-projekt")
+    dialog = ProjectDetailsDialog(
+        projects_dir=tmp_path,
+        default_name="Nowy",
+        initial_meta={"name": "Stary projekt"},
+        project_path=existing_path,
+    )
+    qtbot.addWidget(dialog)
+
+    dialog._name_edit.setText("Nowy projekt")
+    dialog.accept()
+
+    assert dialog.selected_path() == project_config_path(tmp_path / "nowy-projekt")
+    assert dialog.project_name() == "Nowy projekt"

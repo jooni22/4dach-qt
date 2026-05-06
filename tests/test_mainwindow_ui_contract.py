@@ -10,11 +10,12 @@ from core.app_settings import AppSettings
 from core.geometry import build_rectangle_outline
 from core.models import Material, Point2D, Polygon2D
 from core.project_state import ProjectState
+from project_files import project_config_path, project_report_path
 
 pytest.importorskip("PySide6")
 pytest.importorskip("pytestqt")
 
-from PySide6.QtCore import QPointF
+from PySide6.QtCore import QPointF, QUrl
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -643,6 +644,54 @@ def test_mainwindow_generates_project_report_for_all_roof_planes(qtbot):
     assert "Zbiorcze zestawienie materiałów" in window._latest_report_html
     assert window._latest_report_plane_id is None
     assert window.workspace_tabs.currentIndex() == 1
+
+
+def test_mainwindow_generates_persistent_report_file_for_saved_project(qtbot, tmp_path):
+    window = MainWindow(auto_startup=False)
+    qtbot.addWidget(window)
+
+    window.project_state = ProjectState(materials=window.project_state.materials)
+    window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
+    window.project_state.add_roof_plane(build_rectangle_outline(320, 180), name="Front", selected_material_id="PD510")
+    window._project_file_path = project_config_path(tmp_path / "saved-project")
+    window._refresh_canvas_from_state()
+
+    assert window._gen_report("standard") is True
+
+    report_path = project_report_path(tmp_path / "saved-project")
+    assert report_path.is_file() is True
+    assert "Raport projektu 4Dach" in report_path.read_text(encoding="utf-8")
+
+
+def test_mainwindow_open_external_report_opens_persistent_report_file(qtbot, monkeypatch, tmp_path):
+    opened_urls = []
+    monkeypatch.setattr("ui.main_window.QDesktopServices.openUrl", lambda url: opened_urls.append(url) or True)
+    window = MainWindow(auto_startup=False)
+    qtbot.addWidget(window)
+
+    window.project_state = ProjectState(materials=window.project_state.materials)
+    window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
+    window.project_state.add_roof_plane(build_rectangle_outline(320, 180), name="Front", selected_material_id="PD510")
+    window._project_file_path = project_config_path(tmp_path / "saved-project")
+    window._refresh_canvas_from_state()
+
+    assert window._gen_report("standard", open_external=True) is True
+
+    assert opened_urls == [QUrl.fromLocalFile(str(project_report_path(tmp_path / "saved-project")))]
+
+
+def test_mainwindow_unsaved_session_report_does_not_write_persistent_file(qtbot, tmp_path):
+    window = MainWindow(auto_startup=False)
+    qtbot.addWidget(window)
+
+    window.project_state = ProjectState(materials=window.project_state.materials)
+    window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
+    window.project_state.add_roof_plane(build_rectangle_outline(320, 180), name="Front", selected_material_id="PD510")
+    window._project_file_path = None
+    window._refresh_canvas_from_state()
+
+    assert window._gen_report("standard") is True
+    assert project_report_path(tmp_path / "saved-project").exists() is False
 
 
 def test_mainwindow_commits_canvas_outline_edits_to_project_state(qtbot):
@@ -1445,7 +1494,7 @@ def test_mainwindow_marks_project_dirty_until_explicit_save(qtbot, monkeypatch, 
 
 
 def test_mainwindow_new_project_clears_roof_planes_and_reserves_save_path(qtbot, monkeypatch, tmp_path):
-    project_path = tmp_path / "missing" / "nowy.4dach"
+    project_path = project_config_path(tmp_path / "missing" / "nowy")
     monkeypatch.setattr(
         "ui.main_window.ProjectDetailsDialog",
         _accepted_project_details_dialog(selected_path=project_path, project_name="Nowy"),
@@ -1477,7 +1526,7 @@ def test_mainwindow_save_as_updates_target_path(qtbot, monkeypatch):
     monkeypatch.setattr("ui.main_window.save_config", _save_config)
     monkeypatch.setattr(
         "ui.main_window.ProjectDetailsDialog",
-        _accepted_project_details_dialog(selected_path=Path("/tmp/exported-project.4dach")),
+        _accepted_project_details_dialog(selected_path=Path("/tmp/exported-project/project.4dach")),
     )
 
     window = MainWindow(auto_startup=False)
@@ -1485,13 +1534,13 @@ def test_mainwindow_save_as_updates_target_path(qtbot, monkeypatch):
     window._project_file_path = None
 
     assert window._save_project_as() is True
-    assert window._project_file_path == Path("/tmp/exported-project.4dach")
-    assert saved_paths == [Path("/tmp/exported-project.4dach")]
+    assert window._project_file_path == Path("/tmp/exported-project/project.4dach")
+    assert saved_paths == [Path("/tmp/exported-project/project.4dach")]
 
 
 def test_mainwindow_save_as_updates_project_meta_name_and_window_title(qtbot, monkeypatch, tmp_path):
     saved_payloads: list[dict] = []
-    project_path = tmp_path / "renamed-file.4dach"
+    project_path = project_config_path(tmp_path / "renamed-file")
 
     def _save_config(config_data, parent=None, path=None):
         saved_payloads.append(config_data)
@@ -1533,7 +1582,7 @@ def test_mainwindow_edit_project_updates_project_meta_and_marks_dirty(qtbot, mon
     monkeypatch.setattr(
         "ui.main_window.ProjectDetailsDialog",
         _accepted_project_details_dialog(
-            selected_path=tmp_path / "istniejacy.4dach",
+            selected_path=project_config_path(tmp_path / "istniejacy"),
             project_name="Projekt po edycji",
             project_meta={
                 "name": "Projekt po edycji",
@@ -1546,7 +1595,7 @@ def test_mainwindow_edit_project_updates_project_meta_and_marks_dirty(qtbot, mon
     )
     window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
-    window._project_file_path = tmp_path / "istniejacy.4dach"
+    window._project_file_path = project_config_path(tmp_path / "istniejacy")
     window._config["project_meta"] = {
         "name": "Projekt przed edycją",
         "address": "Stary adres",

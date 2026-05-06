@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import json
+import shutil
 import tempfile
 import warnings
 from collections import deque
@@ -40,6 +41,7 @@ from core.project_state import ProjectState
 from core.reporting import build_project_report, build_project_report_html
 from core.rounding import ceil_cm
 from persistence import load_config, save_config
+from project_files import project_config_path, project_dir_from_config_path, project_report_path
 from ui.dialogs import (
     AddPolacDialog,
     BlachyDialog,
@@ -305,7 +307,7 @@ class MainWindow(QMainWindow):
         if isinstance(project_meta, dict) and project_meta.get("name"):
             return str(project_meta["name"])
         if self._project_file_path is not None:
-            return self._project_file_path.stem
+            return project_dir_from_config_path(self._project_file_path).name
         company = self._config.get("company_data", {}).get("name", "")
         return company or fallback
 
@@ -322,7 +324,8 @@ class MainWindow(QMainWindow):
         meta = copy.deepcopy(payload.get("project_meta") or {})
         if isinstance(project_meta, dict):
             meta.update(copy.deepcopy(project_meta))
-        name = str(meta.get("name") or project_path.stem).strip() or project_path.stem
+        fallback_name = project_dir_from_config_path(project_path).name
+        name = str(meta.get("name") or fallback_name).strip() or fallback_name
         meta = {
             "name": name,
             "address": str(meta.get("address") or ""),
@@ -343,6 +346,21 @@ class MainWindow(QMainWindow):
             if isinstance(meta, dict):
                 return copy.deepcopy(meta)
         return {"name": dialog.project_name()}
+
+    def _rename_project_directory_if_needed(self, target_project_path: Path) -> tuple[Path, str | None]:
+        current_project_path = self._project_file_path
+        if current_project_path is None:
+            return target_project_path, None
+        current_project_dir = project_dir_from_config_path(current_project_path)
+        target_project_dir = project_dir_from_config_path(target_project_path)
+        if current_project_dir == target_project_dir:
+            return current_project_path, None
+        try:
+            target_project_dir.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(current_project_dir), str(target_project_dir))
+        except OSError:
+            return current_project_path, "Nazwa projektu została zmieniona, ale nazwa katalogu pozostała bez zmian."
+        return project_config_path(target_project_dir), None
 
     def _ensure_project_file_parent_ready(self, project_path: Path) -> bool:
         parent = project_path.parent
@@ -592,15 +610,21 @@ class MainWindow(QMainWindow):
             return
         self._persist_projects_dir(dialog.projects_dir())
         before_snapshot = self._serialize_current_config()
+        renamed_project_path = dialog.selected_path() or self._project_file_path
+        rename_warning: str | None = None
+        if renamed_project_path is not None:
+            self._project_file_path, rename_warning = self._rename_project_directory_if_needed(renamed_project_path)
         self._config["project_meta"] = self._prepare_payload_for_save_with_meta(
             {"project_meta": self._config.get("project_meta", {})},
-            self._project_file_path or dialog.selected_path() or Path(f"{self._project_display_name()}.4dach"),
+            self._project_file_path or renamed_project_path or project_config_path(Path(self._project_display_name())),
             self._project_meta_from_dialog(dialog),
         )["project_meta"]
         self._refresh_base_window_title()
         after_snapshot = self._serialize_current_config()
         self._push_history("Edycja danych projektu", before_snapshot, after_snapshot)
         self._refresh_dirty_state()
+        if rename_warning is not None:
+            QMessageBox.information(self, "Zmieniono nazwę projektu", rename_warning)
         self.statusBar().showMessage("Zaktualizowano dane projektu", 4000)
 
     def _start_autosave_timer(self) -> None:
@@ -1408,11 +1432,25 @@ class MainWindow(QMainWindow):
         self._latest_report_html = html
         self._latest_report_plane_id = None
         self._refresh_ui_after_state_change(dirty_state_mode="refresh")
+        report_path: Path | None = None
+        if self._project_file_path is not None:
+            report_path = project_report_path(project_dir_from_config_path(self._project_file_path))
+            if not self._ensure_project_file_parent_ready(self._project_file_path):
+                return False
+            try:
+                report_path.write_text(html, encoding="utf-8")
+            except OSError as exc:
+                QMessageBox.warning(self, "Błąd raportu", f"Nie można zapisać raportu HTML:\n{exc}")
+                return False
         if open_external:
-            suffix = {"continuous": "_ciagly", "short": "_skrocony"}.get(variant, "")
-            p = Path(tempfile.gettempdir()) / f"raport-dach{suffix}.html"
-            p.write_text(html, encoding="utf-8")
-            QDesktopServices.openUrl(QUrl.fromLocalFile(str(p)))
+            if report_path is None:
+                QMessageBox.information(
+                    self,
+                    "Zapisz projekt",
+                    "Aby otworzyć raport w przeglądarce, najpierw zapisz projekt.",
+                )
+                return False
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(report_path)))
         else:
             self._report_ctrl.show_html(html)
             active_index = self._workspace.tab_index_for_plane(self.project_state.active_plane_id)
