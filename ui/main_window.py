@@ -44,6 +44,7 @@ from ui.dialogs import (
     BlachyDialog,
     CutoutRectangleDialog,
     DaneFirmyDialog,
+    ProjectDetailsDialog,
     ProstokatDialog,
     TrapezDialog,
     TrojkatDialog,
@@ -518,10 +519,10 @@ class MainWindow(QMainWindow):
         return True
 
     def _save_project_as(self) -> bool:
-        dialog = ProjectManagerDialog(
-            mode=Mode.SAVE_AS,
+        dialog = ProjectDetailsDialog(
             projects_dir=self._user_prefs.projects_dir,
             default_name=self._project_display_name(),
+            initial_meta=copy.deepcopy(self._config.get("project_meta", {})),
             parent=self,
         )
         if not dialog_accepted(dialog):
@@ -531,7 +532,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Zapisano projekt pod nową nazwą", 3000)
         return True
 
-    def _save_project_from_dialog(self, dialog: ProjectManagerDialog, *, payload: dict | None = None) -> dict | None:
+    def _save_project_from_dialog(self, dialog, *, payload: dict | None = None) -> dict | None:
         self._persist_projects_dir(dialog.projects_dir())
         project_path = dialog.selected_path()
         if project_path is None:
@@ -552,8 +553,7 @@ class MainWindow(QMainWindow):
         return payload_to_save
 
     def _create_new_project(self) -> bool:
-        dialog = ProjectManagerDialog(
-            mode=Mode.NEW,
+        dialog = ProjectDetailsDialog(
             projects_dir=self._user_prefs.projects_dir,
             default_name="Nowy projekt",
             parent=self,

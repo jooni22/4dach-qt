@@ -57,6 +57,37 @@ def _accepted_project_dialog(*, selected_path: Path, project_name: str = "Projek
     return FakeProjectManagerDialog
 
 
+def _accepted_project_details_dialog(*, selected_path: Path, project_name: str = "Projekt", project_meta: dict | None = None):
+    class FakeProjectDetailsDialog:
+        def __init__(
+            self,
+            *,
+            projects_dir,
+            default_name="Nowy projekt",
+            initial_meta=None,
+            project_path=None,
+            parent=None,
+        ) -> None:
+            self._projects_dir = Path(projects_dir)
+
+        def exec(self) -> int:
+            return QDialog.DialogCode.Accepted
+
+        def projects_dir(self) -> Path:
+            return self._projects_dir
+
+        def selected_path(self) -> Path:
+            return selected_path
+
+        def project_name(self) -> str:
+            return project_name
+
+        def project_meta(self) -> dict:
+            return dict(project_meta or {"name": project_name})
+
+    return FakeProjectDetailsDialog
+
+
 @pytest.fixture(autouse=True)
 def _disable_mainwindow_disk_writes(monkeypatch):
     monkeypatch.setattr("ui.main_window.save_config", lambda *args, **kwargs: True)
@@ -1416,8 +1447,8 @@ def test_mainwindow_marks_project_dirty_until_explicit_save(qtbot, monkeypatch, 
 def test_mainwindow_new_project_clears_roof_planes_and_reserves_save_path(qtbot, monkeypatch, tmp_path):
     project_path = tmp_path / "missing" / "nowy.4dach"
     monkeypatch.setattr(
-        "ui.main_window.ProjectManagerDialog",
-        _accepted_project_dialog(selected_path=project_path, project_name="Nowy"),
+        "ui.main_window.ProjectDetailsDialog",
+        _accepted_project_details_dialog(selected_path=project_path, project_name="Nowy"),
     )
     window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
@@ -1445,8 +1476,8 @@ def test_mainwindow_save_as_updates_target_path(qtbot, monkeypatch):
 
     monkeypatch.setattr("ui.main_window.save_config", _save_config)
     monkeypatch.setattr(
-        "ui.main_window.ProjectManagerDialog",
-        _accepted_project_dialog(selected_path=Path("/tmp/exported-project.4dach")),
+        "ui.main_window.ProjectDetailsDialog",
+        _accepted_project_details_dialog(selected_path=Path("/tmp/exported-project.4dach")),
     )
 
     window = MainWindow(auto_startup=False)
@@ -1468,8 +1499,8 @@ def test_mainwindow_save_as_updates_project_meta_name_and_window_title(qtbot, mo
 
     monkeypatch.setattr("ui.main_window.save_config", _save_config)
     monkeypatch.setattr(
-        "ui.main_window.ProjectManagerDialog",
-        _accepted_project_dialog(
+        "ui.main_window.ProjectDetailsDialog",
+        _accepted_project_details_dialog(
             selected_path=project_path,
             project_name="Nazwa z dialogu",
             project_meta={
