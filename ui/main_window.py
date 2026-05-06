@@ -103,6 +103,7 @@ class MainWindow(QMainWindow):
         self._snap_to_grid_enabled = self.project_state.app_settings.snap_to_grid
         self._sheets_visible = False
         self._project_file_path: Path | None = None
+        self._close_after_startup_cancel = False
 
         self._status_label = QLabel("")
         self._mode_label = QLabel("Mode: IDLE")
@@ -138,6 +139,12 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Lewy przycisk myszy: rysowanie, prawy: wyczyść szkic", 5000)
         if auto_startup:
             self._show_startup_project_manager()
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        if self._close_after_startup_cancel:
+            self._close_after_startup_cancel = False
+            self.close()
 
     # ------------------------------------------------------------------
     def _build_chrome(self) -> None:
@@ -519,24 +526,52 @@ class MainWindow(QMainWindow):
         )
         if not dialog_accepted(dialog):
             return False
+        if self._save_project_from_dialog(dialog) is None:
+            return False
+        self.statusBar().showMessage("Zapisano projekt pod nową nazwą", 3000)
+        return True
+
+    def _save_project_from_dialog(self, dialog: ProjectManagerDialog, *, payload: dict | None = None) -> dict | None:
         self._persist_projects_dir(dialog.projects_dir())
         project_path = dialog.selected_path()
         if project_path is None:
-            return False
-        payload = self._prepare_payload_for_save_with_meta(
-            self._serialize_current_config(),
+            return None
+        payload_to_save = self._prepare_payload_for_save_with_meta(
+            self._serialize_current_config() if payload is None else payload,
             project_path,
             self._project_meta_from_dialog(dialog),
         )
         if not self._ensure_project_file_parent_ready(project_path):
-            return False
-        if not save_config(payload, self, path=project_path):
-            return False
+            return None
+        if not save_config(payload_to_save, self, path=project_path):
+            return None
         self._project_file_path = project_path
-        self._config = self._state_config_from_project_payload(payload)
+        self._config = self._state_config_from_project_payload(payload_to_save)
         self._refresh_base_window_title()
         self._mark_saved_state()
-        self.statusBar().showMessage("Zapisano projekt pod nową nazwą", 3000)
+        return payload_to_save
+
+    def _create_new_project(self) -> bool:
+        dialog = ProjectManagerDialog(
+            mode=Mode.NEW,
+            projects_dir=self._user_prefs.projects_dir,
+            default_name="Nowy projekt",
+            parent=self,
+        )
+        if not dialog_accepted(dialog):
+            return False
+        payload = self._serialize_current_config()
+        payload.setdefault("project_state", {})["active_plane_id"] = None
+        payload["project_state"]["roof_planes"] = {"order": [], "items": {}}
+        saved_payload = self._save_project_from_dialog(dialog, payload=payload)
+        if saved_payload is None:
+            return False
+        self._load_project_payload(
+            saved_payload,
+            project_file_path=self._project_file_path,
+            reset_history=True,
+        )
+        self.statusBar().showMessage("Utworzono nowy projekt", 3000)
         return True
 
     def _confirm_discard_unsaved_changes(self, *, context: str) -> bool:
@@ -573,29 +608,7 @@ class MainWindow(QMainWindow):
     def _new_project(self) -> None:
         if not self._confirm_discard_unsaved_changes(context="utworzeniem nowego projektu"):
             return
-        dialog = ProjectManagerDialog(
-            mode=Mode.NEW,
-            projects_dir=self._user_prefs.projects_dir,
-            default_name="Nowy projekt",
-            parent=self,
-        )
-        if not dialog_accepted(dialog):
-            return
-        self._persist_projects_dir(dialog.projects_dir())
-        project_path = dialog.selected_path()
-        if project_path is None:
-            return
-        payload = self._serialize_current_config()
-        payload["project_meta"] = self._project_meta_from_dialog(dialog)
-        payload.setdefault("project_state", {})["active_plane_id"] = None
-        payload["project_state"]["roof_planes"] = {"order": [], "items": {}}
-        payload = self._prepare_payload_for_save(payload, project_path)
-        if not self._ensure_project_file_parent_ready(project_path):
-            return
-        if not save_config(payload, self, path=project_path):
-            return
-        self._load_project_payload(payload, project_file_path=project_path, reset_history=True)
-        self.statusBar().showMessage("Utworzono nowy projekt", 3000)
+        self._create_new_project()
 
     def _open_project(self) -> None:
         if not self._confirm_discard_unsaved_changes(context="otwarciem projektu"):
@@ -621,19 +634,11 @@ class MainWindow(QMainWindow):
             parent=self,
         )
         if not dialog_accepted(dialog):
+            self._close_after_startup_cancel = True
             return
         self._persist_projects_dir(dialog.projects_dir())
         if dialog.startup_action() == "new":
-            project_path = dialog.selected_path()
-            if project_path is None:
-                return
-            payload = self._serialize_current_config()
-            payload["project_meta"] = self._project_meta_from_dialog(dialog)
-            payload.setdefault("project_state", {})["active_plane_id"] = None
-            payload["project_state"]["roof_planes"] = {"order": [], "items": {}}
-            payload = self._prepare_payload_for_save(payload, project_path)
-            if self._ensure_project_file_parent_ready(project_path) and save_config(payload, self, path=project_path):
-                self._load_project_payload(payload, project_file_path=project_path, reset_history=True)
+            self._create_new_project()
             return
         project_path = dialog.selected_path()
         if project_path is not None:

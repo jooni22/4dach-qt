@@ -86,6 +86,17 @@ def test_project_manager_requires_non_empty_project_name(qtbot, monkeypatch, tmp
     assert warnings == ["Nazwa projektu jest wymagana."]
 
 
+def test_project_manager_startup_new_does_not_reserve_default_path(qtbot, tmp_path):
+    dialog = ProjectManagerDialog(mode=Mode.STARTUP, projects_dir=tmp_path)
+    qtbot.addWidget(dialog)
+
+    dialog._accept_new_from_startup()
+
+    assert dialog.result() == dialog.DialogCode.Accepted
+    assert dialog.startup_action() == "new"
+    assert dialog.selected_path() is None
+
+
 def test_project_manager_returns_full_project_meta(qtbot, tmp_path):
     dialog = ProjectManagerDialog(mode=Mode.SAVE_AS, projects_dir=tmp_path, default_name="Nowy")
     qtbot.addWidget(dialog)
@@ -104,6 +115,19 @@ def test_project_manager_returns_full_project_meta(qtbot, tmp_path):
         "phone": "123 456 789",
         "notes": "Pilny montaż",
     }
+
+
+def test_project_manager_iterates_project_name_when_target_file_exists(qtbot, tmp_path):
+    (tmp_path / "Projekt Test.4dach").write_text("{}", encoding="utf-8")
+    (tmp_path / "Projekt Test 2.4dach").write_text("{}", encoding="utf-8")
+    dialog = ProjectManagerDialog(mode=Mode.SAVE_AS, projects_dir=tmp_path, default_name="Nowy")
+    qtbot.addWidget(dialog)
+
+    dialog._name_edit.setText("Projekt Test")
+    dialog.accept()
+
+    assert dialog.selected_path() == tmp_path / "Projekt Test 3.4dach"
+    assert dialog.project_name() == "Projekt Test 3"
 
 
 def test_scan_projects_dir_reads_meta_and_calculates_statistics(tmp_path):

@@ -1629,6 +1629,25 @@ def test_mainwindow_creates_user_preferences_before_startup_manager(qtbot, monke
     assert prefs_path.is_file()
 
 
+def test_mainwindow_startup_cancel_closes_window(qtbot, monkeypatch):
+    class StartupProjectManagerDialog:
+        def __init__(self, *, mode, projects_dir, default_name="Nowy projekt", parent=None) -> None:
+            self._projects_dir = Path(projects_dir)
+
+        def exec(self) -> int:
+            return QDialog.DialogCode.Rejected
+
+        def projects_dir(self) -> Path:
+            return self._projects_dir
+
+    monkeypatch.setattr("ui.main_window.ProjectManagerDialog", StartupProjectManagerDialog)
+
+    window = MainWindow(auto_startup=True)
+    qtbot.addWidget(window)
+
+    assert window.isVisible() is False
+
+
 def test_mainwindow_new_and_open_confirm_discard_before_project_manager(qtbot, monkeypatch):
     calls: list[str] = []
 

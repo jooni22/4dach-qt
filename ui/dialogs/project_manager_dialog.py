@@ -115,6 +115,23 @@ class ProjectManagerDialog(QDialog):
         self._build_ui(default_name)
         self._reload_projects()
 
+    def _project_path_for_name(self, name: str) -> Path:
+        return self._projects_dir / f"{name}.4dach"
+
+    def _resolve_unique_project_name(self, name: str) -> str:
+        candidate = name.strip()
+        if not candidate:
+            return candidate
+        if not self._project_path_for_name(candidate).exists():
+            return candidate
+
+        index = 2
+        while True:
+            next_candidate = f"{candidate} {index}"
+            if not self._project_path_for_name(next_candidate).exists():
+                return next_candidate
+            index += 1
+
     def _title_for_mode(self, mode: Mode) -> str:
         return {
             Mode.STARTUP: "Projekty 4Dach",
@@ -219,7 +236,7 @@ class ProjectManagerDialog(QDialog):
 
     def _accept_new_from_startup(self) -> None:
         self._startup_action = "new"
-        self.accept()
+        super().accept()
 
     def projects_dir(self) -> Path:
         return self._projects_dir
@@ -243,11 +260,14 @@ class ProjectManagerDialog(QDialog):
         return self._selected_path
 
     def accept(self) -> None:
-        if self.mode in {Mode.NEW, Mode.SAVE_AS} or self._startup_action == "new":
-            if not self.project_name():
+        if self.mode in {Mode.NEW, Mode.SAVE_AS}:
+            project_name = self.project_name()
+            if not project_name:
                 QMessageBox.warning(self, "Brak nazwy projektu", "Nazwa projektu jest wymagana.")
                 return
-            self._selected_path = self._projects_dir / f"{self.project_name()}.4dach"
+            project_name = self._resolve_unique_project_name(project_name)
+            self._name_edit.setText(project_name)
+            self._selected_path = self._project_path_for_name(project_name)
             super().accept()
             return
 
