@@ -20,8 +20,10 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
+    QSplitter,
     QTextEdit,
     QVBoxLayout,
+    QWidget,
 )
 
 from core.project_state import ProjectState
@@ -42,6 +44,7 @@ class ProjectMeta:
     contact_name: str
     phone: str
     notes: str
+    created_at: datetime
     modified_at: datetime
     roof_plane_count: int
     net_area_m2: float
@@ -88,6 +91,7 @@ def scan_projects_dir(projects_dir: Path | str) -> list[ProjectMeta]:
                 contact_name=str(meta.get("contact_name") or ""),
                 phone=str(meta.get("phone") or ""),
                 notes=str(meta.get("notes") or ""),
+                created_at=_parse_modified_at(meta.get("created_at"), stat.st_ctime),
                 modified_at=_parse_modified_at(meta.get("modified_at"), stat.st_mtime),
                 roof_plane_count=len(project_state.roof_planes),
                 net_area_m2=net_area_cm2 / 10000.0,
@@ -154,7 +158,6 @@ class ProjectManagerDialog(QDialog):
 
         self._project_list = QListWidget(self)
         self._project_list.itemDoubleClicked.connect(lambda _item: self.accept())
-        root.addWidget(self._project_list)
 
         self._name_edit = QLineEdit(default_name, self)
         if self.mode in {Mode.NEW, Mode.SAVE_AS}:
@@ -171,6 +174,7 @@ class ProjectManagerDialog(QDialog):
             form.addRow("Notatki:", self._notes_edit)
             root.addLayout(form)
         else:
+            self._build_browser_panel(root)
             self._name_edit.hide()
             self._address_edit = QLineEdit(self)
             self._contact_name_edit = QLineEdit(self)
@@ -180,6 +184,63 @@ class ProjectManagerDialog(QDialog):
             self._contact_name_edit.hide()
             self._phone_edit.hide()
             self._notes_edit.hide()
+
+    def _build_browser_panel(self, root: QVBoxLayout) -> None:
+        self._browser_splitter = QSplitter(Qt.Orientation.Horizontal, self)
+        self._browser_splitter.setChildrenCollapsible(False)
+
+        list_panel = QWidget(self._browser_splitter)
+        list_layout = QVBoxLayout(list_panel)
+        list_layout.setContentsMargins(0, 0, 0, 0)
+        list_layout.addWidget(QLabel("Projekty", list_panel))
+        list_layout.addWidget(self._project_list)
+
+        details_panel = QWidget(self._browser_splitter)
+        details_layout = QVBoxLayout(details_panel)
+        details_layout.setContentsMargins(0, 0, 0, 0)
+        details_layout.addWidget(QLabel("Szczegóły projektu", details_panel))
+
+        details_form = QFormLayout()
+        self._details_name_value = QLabel("-", details_panel)
+        self._details_created_at_value = QLabel("-", details_panel)
+        self._details_modified_at_value = QLabel("-", details_panel)
+        self._details_contact_name_value = QLabel("-", details_panel)
+        self._details_phone_value = QLabel("-", details_panel)
+        self._details_address_value = QLabel("-", details_panel)
+        self._details_roof_plane_count_value = QLabel("-", details_panel)
+        self._details_net_area_value = QLabel("-", details_panel)
+        self._details_notes_value = QLabel("-", details_panel)
+
+        for label in (
+            self._details_name_value,
+            self._details_created_at_value,
+            self._details_modified_at_value,
+            self._details_contact_name_value,
+            self._details_phone_value,
+            self._details_address_value,
+            self._details_roof_plane_count_value,
+            self._details_net_area_value,
+            self._details_notes_value,
+        ):
+            label.setWordWrap(True)
+            label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+
+        details_form.addRow("Nazwa:", self._details_name_value)
+        details_form.addRow("Utworzono:", self._details_created_at_value)
+        details_form.addRow("Zmodyfikowano:", self._details_modified_at_value)
+        details_form.addRow("Osoba kontaktowa:", self._details_contact_name_value)
+        details_form.addRow("Telefon:", self._details_phone_value)
+        details_form.addRow("Adres:", self._details_address_value)
+        details_form.addRow("Połacie:", self._details_roof_plane_count_value)
+        details_form.addRow("Powierzchnia netto:", self._details_net_area_value)
+        details_form.addRow("Notatki:", self._details_notes_value)
+        details_layout.addLayout(details_form)
+        details_layout.addStretch(1)
+
+        self._browser_splitter.setStretchFactor(0, 1)
+        self._browser_splitter.setStretchFactor(1, 1)
+        root.addWidget(self._browser_splitter)
+        self._project_list.currentItemChanged.connect(self._on_current_item_changed)
 
         self._button_box = QDialogButtonBox(self)
         if self.mode == Mode.STARTUP:
@@ -204,23 +265,64 @@ class ProjectManagerDialog(QDialog):
         self._project_list.clear()
         for project in scan_projects_dir(self._projects_dir):
             item = QListWidgetItem(self._project_item_text(project))
-            item.setData(Qt.ItemDataRole.UserRole, project.path)
+            item.setData(Qt.ItemDataRole.UserRole, project)
             self._project_list.addItem(item)
         if self._project_list.count():
             self._project_list.setCurrentRow(0)
+        else:
+            self._clear_project_details()
 
     def _project_item_text(self, project: ProjectMeta) -> str:
-        lines = [project.name]
-        details = [value for value in (project.address, project.contact_name, project.phone) if value]
-        if details:
-            lines.append(" | ".join(details))
-        if project.notes:
-            lines.append(project.notes)
-        lines.append(
-            f"Połacie: {project.roof_plane_count} | "
-            f"Powierzchnia netto: {project.net_area_m2:.2f} m²"
-        )
-        return "\n".join(lines)
+        return f"{project.name}\nOstatnia modyfikacja: {self._format_datetime(project.modified_at)}"
+
+    def _format_datetime(self, value: datetime) -> str:
+        return value.astimezone().strftime("%Y-%m-%d %H:%M")
+
+    def _current_project(self) -> ProjectMeta | None:
+        item = self._project_list.currentItem()
+        if item is None:
+            return None
+        project = item.data(Qt.ItemDataRole.UserRole)
+        return project if isinstance(project, ProjectMeta) else None
+
+    def _set_detail_label(self, label: QLabel, value: str) -> None:
+        label.setText(value or "-")
+
+    def _clear_project_details(self) -> None:
+        if self.mode in {Mode.NEW, Mode.SAVE_AS}:
+            return
+        for label in (
+            self._details_name_value,
+            self._details_created_at_value,
+            self._details_modified_at_value,
+            self._details_contact_name_value,
+            self._details_phone_value,
+            self._details_address_value,
+            self._details_roof_plane_count_value,
+            self._details_net_area_value,
+            self._details_notes_value,
+        ):
+            label.setText("-")
+
+    def _update_project_details(self, project: ProjectMeta | None) -> None:
+        if self.mode in {Mode.NEW, Mode.SAVE_AS}:
+            return
+        if project is None:
+            self._clear_project_details()
+            return
+        self._set_detail_label(self._details_name_value, project.name)
+        self._set_detail_label(self._details_created_at_value, self._format_datetime(project.created_at))
+        self._set_detail_label(self._details_modified_at_value, self._format_datetime(project.modified_at))
+        self._set_detail_label(self._details_contact_name_value, project.contact_name)
+        self._set_detail_label(self._details_phone_value, project.phone)
+        self._set_detail_label(self._details_address_value, project.address)
+        self._set_detail_label(self._details_roof_plane_count_value, str(project.roof_plane_count))
+        self._set_detail_label(self._details_net_area_value, f"{project.net_area_m2:.2f} m²")
+        self._set_detail_label(self._details_notes_value, project.notes)
+
+    def _on_current_item_changed(self, current: QListWidgetItem | None, _previous: QListWidgetItem | None) -> None:
+        project = current.data(Qt.ItemDataRole.UserRole) if current is not None else None
+        self._update_project_details(project if isinstance(project, ProjectMeta) else None)
 
     def _change_projects_dir(self) -> None:
         target = QFileDialog.getExistingDirectory(
@@ -274,6 +376,9 @@ class ProjectManagerDialog(QDialog):
         item = self._project_list.currentItem()
         if item is None:
             return
-        self._selected_path = Path(item.data(Qt.ItemDataRole.UserRole))
+        project = self._current_project()
+        if project is None:
+            return
+        self._selected_path = project.path
         self._startup_action = "open"
         super().accept()

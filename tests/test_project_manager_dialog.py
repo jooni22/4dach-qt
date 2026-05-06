@@ -14,6 +14,7 @@ def _write_project(
     path,
     *,
     name: str,
+    created_at: datetime | None = None,
     modified_at: datetime,
     address: str = "",
     contact_name: str = "",
@@ -30,6 +31,7 @@ def _write_project(
                     "contact_name": contact_name,
                     "phone": phone,
                     "notes": notes,
+                    "created_at": (created_at or modified_at).isoformat(),
                     "modified_at": modified_at.isoformat(),
                 },
                 "project_state": {"roof_planes": roof_planes or []},
@@ -195,8 +197,83 @@ def test_project_list_displays_meta_and_statistics(qtbot, tmp_path):
     text = dialog._project_list.item(0).text()
 
     assert "Dach Kowalski" in text
-    assert "Ulica 1" in text
-    assert "Jan Kowalski" in text
-    assert "Pilne" in text
-    assert "Połacie: 1" in text
-    assert "Powierzchnia netto: 1.00 m²" in text
+    assert "Ostatnia modyfikacja:" in text
+    assert "Ulica 1" not in text
+    assert "Połacie: 1" not in text
+
+
+def test_project_manager_open_mode_builds_browser_split_view(qtbot, tmp_path):
+    _write_project(
+        tmp_path / "meta.4dach",
+        name="Dach Kowalski",
+        modified_at=datetime.now(UTC),
+    )
+    dialog = ProjectManagerDialog(mode=Mode.OPEN, projects_dir=tmp_path)
+    qtbot.addWidget(dialog)
+
+    assert dialog._browser_splitter.count() == 2
+    assert dialog._project_list.parentWidget() is not None
+    assert dialog._details_name_value.text() == "Dach Kowalski"
+
+
+def test_project_manager_preview_updates_when_selection_changes(qtbot, tmp_path):
+    first_created = datetime(2024, 1, 10, 8, 30, tzinfo=UTC)
+    first_modified = datetime(2024, 1, 12, 14, 15, tzinfo=UTC)
+    second_created = datetime(2024, 2, 5, 9, 0, tzinfo=UTC)
+    second_modified = datetime(2024, 2, 6, 16, 45, tzinfo=UTC)
+    _write_project(
+        tmp_path / "first.4dach",
+        name="Projekt A",
+        created_at=first_created,
+        modified_at=first_modified,
+        address="Ulica 1",
+        contact_name="Jan Kowalski",
+        phone="123 456 789",
+        notes="Pilny montaż",
+        roof_planes=[
+            {
+                "id": "p1",
+                "name": "1",
+                "outline": [[point.x, point.y] for point in build_rectangle_outline(100, 100).points],
+                "holes": [],
+            },
+        ],
+    )
+    _write_project(
+        tmp_path / "second.4dach",
+        name="Projekt B",
+        created_at=second_created,
+        modified_at=second_modified,
+        address="Ulica 2",
+        contact_name="Anna Nowak",
+        phone="987 654 321",
+        notes="Bez uwag",
+        roof_planes=[
+            {
+                "id": "p1",
+                "name": "1",
+                "outline": [[point.x, point.y] for point in build_rectangle_outline(200, 100).points],
+                "holes": [],
+            },
+            {
+                "id": "p2",
+                "name": "2",
+                "outline": [[point.x, point.y] for point in build_rectangle_outline(100, 100).points],
+                "holes": [],
+            },
+        ],
+    )
+    dialog = ProjectManagerDialog(mode=Mode.OPEN, projects_dir=tmp_path)
+    qtbot.addWidget(dialog)
+
+    dialog._project_list.setCurrentRow(1)
+
+    assert dialog._details_name_value.text() == "Projekt A"
+    assert dialog._details_address_value.text() == "Ulica 1"
+    assert dialog._details_contact_name_value.text() == "Jan Kowalski"
+    assert dialog._details_phone_value.text() == "123 456 789"
+    assert dialog._details_notes_value.text() == "Pilny montaż"
+    assert dialog._details_roof_plane_count_value.text() == "1"
+    assert dialog._details_net_area_value.text() == "1.00 m²"
+    assert dialog._details_created_at_value.text() == dialog._format_datetime(first_created.astimezone())
+    assert dialog._details_modified_at_value.text() == dialog._format_datetime(first_modified.astimezone())
