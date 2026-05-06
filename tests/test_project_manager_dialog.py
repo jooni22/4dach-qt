@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta
 
+from PySide6.QtWidgets import QMessageBox
+
 from core.geometry import build_rectangle_outline
 from core.models import Polygon2D
 from ui.dialogs.project_manager_dialog import Mode, ProjectManagerDialog, scan_projects_dir
@@ -277,3 +279,58 @@ def test_project_manager_preview_updates_when_selection_changes(qtbot, tmp_path)
     assert dialog._details_net_area_value.text() == "1.00 m²"
     assert dialog._details_created_at_value.text() == dialog._format_datetime(first_created.astimezone())
     assert dialog._details_modified_at_value.text() == dialog._format_datetime(first_modified.astimezone())
+
+
+def test_project_manager_delete_removes_selected_project_after_confirmation(qtbot, monkeypatch, tmp_path):
+    project_path = tmp_path / "delete-me.4dach"
+    _write_project(project_path, name="Usuń mnie", modified_at=datetime.now(UTC))
+    monkeypatch.setattr(
+        "ui.dialogs.project_manager_dialog.QMessageBox.question",
+        lambda *args, **kwargs: QMessageBox.StandardButton.Yes,
+    )
+    dialog = ProjectManagerDialog(mode=Mode.OPEN, projects_dir=tmp_path)
+    qtbot.addWidget(dialog)
+
+    dialog._delete_selected_project()
+
+    assert project_path.exists() is False
+    assert dialog._project_list.count() == 0
+    assert dialog._details_name_value.text() == "-"
+
+
+def test_project_manager_delete_is_cancelled_when_confirmation_rejected(qtbot, monkeypatch, tmp_path):
+    project_path = tmp_path / "keep-me.4dach"
+    _write_project(project_path, name="Zostaw mnie", modified_at=datetime.now(UTC))
+    monkeypatch.setattr(
+        "ui.dialogs.project_manager_dialog.QMessageBox.question",
+        lambda *args, **kwargs: QMessageBox.StandardButton.No,
+    )
+    dialog = ProjectManagerDialog(mode=Mode.OPEN, projects_dir=tmp_path)
+    qtbot.addWidget(dialog)
+
+    dialog._delete_selected_project()
+
+    assert project_path.exists() is True
+    assert dialog._project_list.count() == 1
+    assert dialog._details_name_value.text() == "Zostaw mnie"
+
+
+def test_project_manager_delete_blocks_currently_open_project(qtbot, monkeypatch, tmp_path):
+    project_path = tmp_path / "current.4dach"
+    _write_project(project_path, name="Bieżący", modified_at=datetime.now(UTC))
+    warnings: list[str] = []
+    monkeypatch.setattr(
+        "ui.dialogs.project_manager_dialog.QMessageBox.warning",
+        lambda _parent, _title, message: warnings.append(message),
+    )
+    dialog = ProjectManagerDialog(
+        mode=Mode.OPEN,
+        projects_dir=tmp_path,
+        current_project_path=project_path,
+    )
+    qtbot.addWidget(dialog)
+
+    dialog._delete_selected_project()
+
+    assert project_path.exists() is True
+    assert warnings == ["Nie można usunąć aktualnie otwartego projektu."]

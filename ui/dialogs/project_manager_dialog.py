@@ -107,11 +107,13 @@ class ProjectManagerDialog(QDialog):
         mode: Mode,
         projects_dir: Path | str,
         default_name: str = "Nowy projekt",
+        current_project_path: Path | None = None,
         parent=None,
     ) -> None:
         super().__init__(parent)
         self.mode = mode
         self._projects_dir = Path(projects_dir)
+        self._current_project_path = current_project_path
         self._selected_path: Path | None = None
         self._startup_action: str | None = None
         self.setWindowTitle(self._title_for_mode(mode))
@@ -253,6 +255,18 @@ class ProjectManagerDialog(QDialog):
                 QDialogButtonBox.ButtonRole.ActionRole,
             )
             self._new_button.clicked.connect(self._accept_new_from_startup)
+            self._delete_button = self._button_box.addButton(
+                "Usuń",
+                QDialogButtonBox.ButtonRole.ActionRole,
+            )
+            self._delete_button.clicked.connect(self._delete_selected_project)
+        elif self.mode == Mode.OPEN:
+            self._button_box.addButton("Otwórz", QDialogButtonBox.ButtonRole.AcceptRole)
+            self._delete_button = self._button_box.addButton(
+                "Usuń",
+                QDialogButtonBox.ButtonRole.ActionRole,
+            )
+            self._delete_button.clicked.connect(self._delete_selected_project)
         else:
             ok_text = "Otwórz" if self.mode == Mode.OPEN else "Zapisz"
             self._button_box.addButton(ok_text, QDialogButtonBox.ButtonRole.AcceptRole)
@@ -334,6 +348,29 @@ class ProjectManagerDialog(QDialog):
             return
         self._projects_dir = Path(target)
         self._dir_label.setText(str(self._projects_dir))
+        self._reload_projects()
+
+    def _delete_selected_project(self) -> None:
+        project = self._current_project()
+        if project is None:
+            return
+        if self._current_project_path is not None and project.path == self._current_project_path:
+            QMessageBox.warning(self, "Nie można usunąć projektu", "Nie można usunąć aktualnie otwartego projektu.")
+            return
+        answer = QMessageBox.question(
+            self,
+            "Usuń projekt",
+            f"Czy na pewno usunąć projekt '{project.name}'?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            project.path.unlink()
+        except OSError as exc:
+            QMessageBox.warning(self, "Nie można usunąć projektu", str(exc))
+            return
         self._reload_projects()
 
     def _accept_new_from_startup(self) -> None:
