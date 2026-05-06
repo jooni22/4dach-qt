@@ -138,7 +138,7 @@ def test_mainwindow_exposes_expected_ui_contract(qtbot):
     assert window.project_state.available_material_ids() == ["PD510"]
     assert "Przelicz aktywną połać" in sheets_actions
     file_actions = [action.text() for action in actions[0].menu().actions() if not action.isSeparator()]
-    assert file_actions[:4] == ["Nowy projekt", "Wczytaj projekt...", "Zapisz", "Zapisz jako..."]
+    assert file_actions[:5] == ["Nowy projekt", "Wczytaj projekt...", "Zapisz", "Zapisz jako...", "Edytuj projekt..."]
     assert "Drukuj raport" in file_actions
     assert "Drukuj raport ciągły" not in file_actions
     assert "Drukuj raport skrócony" not in file_actions
@@ -1527,6 +1527,41 @@ def test_mainwindow_save_as_updates_project_meta_name_and_window_title(qtbot, mo
     assert meta["notes"] == "Notatka"
     assert window._config["project_meta"]["name"] == "Nazwa z dialogu"
     assert window.windowTitle() == "4Dach — Nazwa z dialogu"
+
+
+def test_mainwindow_edit_project_updates_project_meta_and_marks_dirty(qtbot, monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        "ui.main_window.ProjectDetailsDialog",
+        _accepted_project_details_dialog(
+            selected_path=tmp_path / "istniejacy.4dach",
+            project_name="Projekt po edycji",
+            project_meta={
+                "name": "Projekt po edycji",
+                "address": "Nowy adres",
+                "contact_name": "Jan Kowalski",
+                "phone": "123 456 789",
+                "notes": "Uzupełnione dane",
+            },
+        ),
+    )
+    window = MainWindow(auto_startup=False)
+    qtbot.addWidget(window)
+    window._project_file_path = tmp_path / "istniejacy.4dach"
+    window._config["project_meta"] = {
+        "name": "Projekt przed edycją",
+        "address": "Stary adres",
+        "contact_name": "Stary kontakt",
+        "phone": "000",
+        "notes": "Stare notatki",
+    }
+    window._mark_saved_state()
+
+    window._edit_project_meta()
+
+    assert window._config["project_meta"]["name"] == "Projekt po edycji"
+    assert window._config["project_meta"]["address"] == "Nowy adres"
+    assert window.windowTitle() == "4Dach — Projekt po edycji *"
+    assert window._has_unsaved_changes is True
 
 
 def test_mainwindow_save_payload_contains_only_project_level_keys(qtbot, monkeypatch, tmp_path):

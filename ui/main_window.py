@@ -183,6 +183,7 @@ class MainWindow(QMainWindow):
         plik.addAction(act("Wczytaj projekt...", "Ctrl+O", self._open_project))
         plik.addAction(act("Zapisz", "Ctrl+S", self._save_project))
         plik.addAction(act("Zapisz jako...", "Ctrl+Shift+S", self._save_project_as))
+        plik.addAction(act("Edytuj projekt...", None, self._edit_project_meta))
         plik.addSeparator()
         plik.addAction(act("Nowa połać", None, self._add_new_roof_plane))
         plik.addAction(act("Duplikuj połać", "Ctrl+D", self._duplicate_active_roof_plane))
@@ -573,6 +574,29 @@ class MainWindow(QMainWindow):
         )
         self.statusBar().showMessage("Utworzono nowy projekt", 3000)
         return True
+
+    def _edit_project_meta(self) -> None:
+        dialog = ProjectDetailsDialog(
+            projects_dir=self._user_prefs.projects_dir,
+            default_name=self._project_display_name(),
+            initial_meta=copy.deepcopy(self._config.get("project_meta", {})),
+            project_path=self._project_file_path,
+            parent=self,
+        )
+        if not dialog_accepted(dialog):
+            return
+        self._persist_projects_dir(dialog.projects_dir())
+        before_snapshot = self._serialize_current_config()
+        self._config["project_meta"] = self._prepare_payload_for_save_with_meta(
+            {"project_meta": self._config.get("project_meta", {})},
+            self._project_file_path or dialog.selected_path() or Path(f"{self._project_display_name()}.4dach"),
+            self._project_meta_from_dialog(dialog),
+        )["project_meta"]
+        self._refresh_base_window_title()
+        after_snapshot = self._serialize_current_config()
+        self._push_history("Edycja danych projektu", before_snapshot, after_snapshot)
+        self._refresh_dirty_state()
+        self.statusBar().showMessage("Zaktualizowano dane projektu", 4000)
 
     def _confirm_discard_unsaved_changes(self, *, context: str) -> bool:
         if not self._has_unsaved_changes:
