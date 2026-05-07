@@ -7,11 +7,40 @@ Responsibilities:
 """
 from __future__ import annotations
 
-from PySide6.QtCore import QSize, Qt
-from PySide6.QtGui import QAction, QColor
+from PySide6.QtCore import QPointF, QSize, Qt
+from PySide6.QtGui import QAction, QColor, QPainter, QPen
 from PySide6.QtWidgets import QComboBox, QMainWindow, QToolBar
 
 from app_icons import build_icon
+
+
+class MaterialComboBox(QComboBox):
+    """Non-editable material selector with a style-independent chevron."""
+
+    draws_own_chevron = True
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setEditable(False)
+        self.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self.setFixedWidth(146)
+        self.setToolTip("Wybór aktywnej blachy")
+
+    def paintEvent(self, event) -> None:
+        super().paintEvent(event)
+        rect = self.rect()
+        x = rect.right() - 17
+        y = rect.center().y() - 2
+        color = self.palette().buttonText().color()
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        pen = QPen(color, 1.6)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        painter.setPen(pen)
+        painter.drawLine(QPointF(x, y), QPointF(x + 4, y + 4))
+        painter.drawLine(QPointF(x + 4, y + 4), QPointF(x + 8, y))
+        painter.end()
 
 
 class ToolbarController:
@@ -82,52 +111,53 @@ class ToolbarController:
     def _icon_color_for_kind(self, kind: str, fg: QColor, accent: QColor, muted: QColor) -> QColor:
         if kind in {"base_point_toggle", "sun", "moon"}:
             return accent
-        if kind in {"module_count", "grid", "snap_to_grid", "broom"}:
+        if kind in {"module_count", "grid", "snap_to_grid", "broom", "printer"}:
             return muted
         return fg
 
     def _build_actions(self) -> None:
         tb = self.toolbar
-        sep_after = {2, 4, 7, 11}
 
-        icon_rows: list[tuple[str, str, bool, object]] = [
+        project_rows: list[tuple[str, str, bool, object]] = [
             ("new_document",   "Nowy projekt",                                False, None),
             ("open_folder",    "Otwórz projekt",                              False, None),
             ("save_floppy",    "Zapisz projekt",                              False, None),
+            ("printer",        "Drukuj raport",                               False, None),
+        ]
+        draw_rows: list[tuple[str, str, bool, object]] = [
             ("roof_outline",   "Rysowanie krawędzi połaci",                   False, None),
+            ("roof_cutout",    "Rysowanie wycinka",                           False, None),
             ("base_point_toggle", "Ustaw punkt zerowy",                       True,  None),
             ("undo",           "Cofnij",                                       False, None),
+        ]
+        surface_rows: list[tuple[str, str, bool, object]] = [
             ("plus",           "Nowa połać",                                  False, None),
             ("duplicate_surface", "Duplikuj połać",                           False, None),
             ("trash",          "Usuń zaznaczone (Del)",                       False, None),
         ]
 
-        for index, (icon_kind, text, checkable, callback) in enumerate(icon_rows):
+        for icon_kind, text, checkable, callback in project_rows:
             self._add_action(icon_kind, text, checkable=checkable, callback=callback)
-            if index in sep_after:
-                tb.addSeparator()
+        tb.addSeparator()
+
+        for icon_kind, text, checkable, callback in draw_rows:
+            self._add_action(icon_kind, text, checkable=checkable, callback=callback)
+        tb.addSeparator()
 
         # Named action references that controllers need
         self.action_new_project = self._action("new_document")
         self.action_open_project = self._action("open_folder")
         self.action_save_project = self._action("save_floppy")
+        self.action_print_report = self._action("printer")
         self.action_draw_outline = self._action("roof_outline")
         self.action_draw_outline.setCheckable(True)
+        self.action_draw_cutout = self._action("roof_cutout")
+        self.action_draw_cutout.setCheckable(True)
         self.action_base_point_toggle = self._action("base_point_toggle")
         self.action_undo = self._action("undo")
-        self.action_new_surface = self._action("plus")
-        self.action_duplicate_surface = self._action("duplicate_surface")
-        self.action_trash = self._action("trash")
 
-        self.variant_combo = QComboBox(self._win)
+        self.variant_combo = MaterialComboBox(self._win)
         self.variant_combo.setObjectName("variant_combo")
-        self.variant_combo.setEditable(True)
-        self.variant_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
-        self.variant_combo.setFixedWidth(146)
-        line_edit = self.variant_combo.lineEdit()
-        if line_edit is not None:
-            line_edit.setReadOnly(True)
-        self.variant_combo.setToolTip("Wybór aktywnej blachy")
         tb.addWidget(self.variant_combo)
         tb.addSeparator()
 
@@ -135,7 +165,7 @@ class ToolbarController:
         trailing: list[tuple[str, str, bool, object]] = [
             ("overlay_sheet",    "Pokaż arkusze",                    True,  None),
             ("grid",             "Pokaż siatkę",                     True,  None),
-            ("snap_to_grid",     "Snap to Grid",                     True,  None),
+            ("snap_to_grid",     "Przyciągaj do siatki",             True,  None),
             ("from_left",        "Układaj od lewej",                  True,  None),
             ("from_right",       "Od prawej",                          True,  None),
         ]
@@ -148,3 +178,11 @@ class ToolbarController:
         self.action_snap_to_grid = self._action("snap_to_grid")
         self.action_from_left = self._action("from_left")
         self.action_from_right = self._action("from_right")
+        tb.addSeparator()
+
+        for icon_kind, text, checkable, callback in surface_rows:
+            self._add_action(icon_kind, text, checkable=checkable, callback=callback)
+
+        self.action_new_surface = self._action("plus")
+        self.action_duplicate_surface = self._action("duplicate_surface")
+        self.action_trash = self._action("trash")

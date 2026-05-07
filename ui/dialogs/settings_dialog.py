@@ -19,6 +19,7 @@ from core.app_settings import (
     LIVE_ANGLE_MODE_RELATIVE_TO_PREV,
     AppSettings,
 )
+from ui.dialogs.button_text import localize_button_box
 
 
 class SettingsDialog(QDialog):
@@ -101,7 +102,7 @@ class SettingsDialog(QDialog):
         grid_form.addRow("Kursor:", self._check_crosshair)
 
         self._check_snap_to_grid = QCheckBox("Przyciągaj do siatki")
-        grid_form.addRow("Snap:", self._check_snap_to_grid)
+        grid_form.addRow("Przyciąganie:", self._check_snap_to_grid)
 
         self._check_snap_to_axis = QCheckBox("Przyciągaj do osi 0°/90°")
         grid_form.addRow("Osie:", self._check_snap_to_axis)
@@ -154,6 +155,7 @@ class SettingsDialog(QDialog):
             QDialogButtonBox.StandardButton.Ok
             | QDialogButtonBox.StandardButton.Cancel
         )
+        localize_button_box(self._button_box)
         self._button_restore_defaults = self._button_box.addButton(
             "Domyślne",
             QDialogButtonBox.ButtonRole.ResetRole,

@@ -5,9 +5,10 @@ from dataclasses import dataclass, field
 from html import escape
 
 from core.layout_engine import LayoutResult
-from core.models import SheetPlacement, cm2_to_m2
+from core.models import Polygon2D, SheetPlacement, cm2_to_m2
 from core.project_state import ProjectState
 from core.rounding import ceil_cm
+from ui.canvas.sheet_geometry import build_sheet_render_items
 
 
 @dataclass(slots=True)
@@ -32,10 +33,7 @@ class LayoutReport:
 
 @dataclass(slots=True, frozen=True)
 class PreviewPlacement:
-    x_left_cm: float
-    x_right_cm: float
-    y_top_cm: float
-    y_bottom_cm: float
+    polygons: tuple[tuple[tuple[float, float], ...], ...]
     final_length_cm: float
     source: str
 
@@ -76,9 +74,9 @@ class ProjectTotals:
 @dataclass(slots=True)
 class ProjectReport:
     title: str
-    company_name: str
-    company_address_lines: list[str]
-    company_website: str
+    project_name: str
+    project_address_lines: list[str]
+    project_contact_lines: list[str]
     sheet_length_precision: int = 0
     plane_sections: list[RoofPlaneSection] = field(default_factory=list)
     aggregated_bom_rows: list[BomRow] = field(default_factory=list)
@@ -118,6 +116,34 @@ def _sheet_length_key(value_cm: float) -> int:
     return ceil_cm(value_cm)
 
 
+def _project_meta(project_meta: dict | None) -> dict:
+    payload = project_meta or {}
+    contact_lines = [
+        str(payload.get("contact_name") or "").strip(),
+        str(payload.get("phone") or "").strip(),
+        str(payload.get("notes") or "").strip(),
+    ]
+    return {
+        "name": str(payload.get("name") or "").strip(),
+        "address_lines": [
+            line.strip()
+            for line in str(payload.get("address") or "").splitlines()
+            if line.strip()
+        ],
+        "contact_lines": [line for line in contact_lines if line],
+    }
+
+
+def _project_meta_from_company(project_state: ProjectState) -> dict:
+    return {
+        "name": project_state.company_data.name,
+        "address": project_state.company_data.address,
+        "contact_name": "",
+        "phone": "",
+        "notes": project_state.company_data.website,
+    }
+
+
 def build_report(
     project_state: ProjectState,
     layout_result: LayoutResult,
@@ -150,7 +176,7 @@ def build_report(
     )
 
 
-def build_project_report(project_state: ProjectState) -> ProjectReport:
+def build_project_report(project_state: ProjectState, project_meta: dict | None = None) -> ProjectReport:
     plane_sections: list[RoofPlaneSection] = []
     aggregated_rows: dict[tuple[str, float], BomRow] = {}
 
@@ -212,15 +238,12 @@ def build_project_report(project_state: ProjectState) -> ProjectReport:
     if total_material_usage_area_cm2 > 0:
         total_waste_percent = (total_waste_area_cm2 / total_material_usage_area_cm2) * 100.0
 
+    meta = _project_meta(project_meta or _project_meta_from_company(project_state))
     return ProjectReport(
         title="Raport projektu 4Dach",
-        company_name=project_state.company_data.name,
-        company_address_lines=[
-            line.strip()
-            for line in project_state.company_data.address.splitlines()
-            if line.strip()
-        ],
-        company_website=project_state.company_data.website,
+        project_name=meta["name"],
+        project_address_lines=meta["address_lines"],
+        project_contact_lines=meta["contact_lines"],
         sheet_length_precision=_sheet_length_precision(project_state),
         plane_sections=plane_sections,
         aggregated_bom_rows=sorted(
@@ -271,13 +294,13 @@ def build_report_html(
         title = f"{title} ({title_suffix})"
     project_report = ProjectReport(
         title=title,
-        company_name=project_state.company_data.name,
-        company_address_lines=[
+        project_name=project_state.company_data.name,
+        project_address_lines=[
             line.strip()
             for line in project_state.company_data.address.splitlines()
             if line.strip()
         ],
-        company_website=project_state.company_data.website,
+        project_contact_lines=[project_state.company_data.website] if project_state.company_data.website else [],
         sheet_length_precision=_sheet_length_precision(project_state),
         plane_sections=[section],
         aggregated_bom_rows=list(report.bom_rows),
@@ -312,9 +335,9 @@ def build_project_report_html(
     resolved_sheet_length_precision = report.sheet_length_precision if sheet_length_precision is None else sheet_length_precision
     if title_suffix:
         title = f"{title} ({title_suffix})"
-    company_address_html = "<br>".join(escape(line) for line in report.company_address_lines) or "-"
-    company_name = escape(report.company_name or "-")
-    company_website = escape(report.company_website or "-")
+    project_address_html = "<br>".join(escape(line) for line in report.project_address_lines) or "-"
+    project_name = escape(report.project_name or "-")
+    project_contact_html = "<br>".join(escape(line) for line in report.project_contact_lines) or "-"
     plane_sections_html = "".join(
         _render_plane_section_html(
             section,
@@ -355,9 +378,9 @@ def build_project_report_html(
             '<main class="report">',
             '<header class="report-header">',
             f"<h1>{escape(title)}</h1>",
-            "<div class=\"company-card\">",
-            "<h2>Dane firmy</h2>",
-            f"<p><strong>{company_name}</strong><br>{company_address_html}<br>{company_website}</p>",
+            "<div class=\"project-card\">",
+            "<h2>Dane projektu</h2>",
+            f"<p><strong>{project_name}</strong><br>{project_address_html}<br>{project_contact_html}</p>",
             "</div>",
             "<div class=\"totals-card\">",
             "<h2>Podsumowanie projektu</h2>",
@@ -450,22 +473,24 @@ def _build_plane_preview(plane, placements: list[SheetPlacement]) -> PlanePrevie
         tuple((point.x, point.y) for point in hole.points)
         for hole in plane.holes
     )
+    render_items = build_sheet_render_items(getattr(plane, "layout_bands", []), placements)
     preview_placements = tuple(
         PreviewPlacement(
-            x_left_cm=placement.x_left_cm,
-            x_right_cm=placement.x_right_cm,
-            y_top_cm=placement.y_top_cm,
-            y_bottom_cm=placement.y_bottom_cm,
-            final_length_cm=placement.final_length_cm,
-            source=placement.source,
+            polygons=tuple(_polygon_points(polygon) for polygon in item.polygons),
+            final_length_cm=item.final_length_cm,
+            source=item.source,
         )
-        for placement in placements
+        for item in render_items
     )
     return PlanePreview(
         outline_points=outline_points,
         hole_points=hole_points,
         placements=preview_placements,
     )
+
+
+def _polygon_points(polygon: Polygon2D) -> tuple[tuple[float, float], ...]:
+    return tuple((point.x, point.y) for point in polygon.points)
 
 
 def _warnings_for_layout_result(layout_result: LayoutResult) -> list[str]:
@@ -539,15 +564,22 @@ def _render_plane_section_html(
             ]
         )
     css_class = "plane-section page-break" if page_break else "plane-section"
+    material_html = escape(section.material_name)
+    if section.material_id != section.material_name:
+        material_html += f" ({escape(section.material_id)})"
     return "".join(
         [
             f'<section class="{css_class}">',
             f"<h2>Połać: {escape(section.plane_name)}</h2>",
             '<div class="plane-meta">',
-            f"<p><strong>Materiał:</strong> {escape(section.material_name)} ({escape(section.material_id)})</p>",
+            f"<p><strong>Materiał:</strong> {material_html}</p>",
             "</div>",
-            '<div class="plane-grid">',
-            '<section class="plane-subsection">',
+            '<section class="plane-subsection plane-preview-section">',
+            "<h3>Podgląd geometrii</h3>",
+            preview_html,
+            "</section>",
+            '<div class="plane-detail-grid">',
+            '<section class="plane-subsection plane-summary-section">',
             "<h3>Podsumowanie połaci</h3>",
             "<table>",
             f"<tr><th>Powierzchnia efektywna [m2]</th><td>{_format_area_m2(section.effective_area_m2)}</td></tr>",
@@ -556,47 +588,55 @@ def _render_plane_section_html(
             f"<tr><th>Odpad [%]</th><td>{_format_percent(section.waste_percent)}</td></tr>",
             "</table>",
             "</section>",
-            '<section class="plane-subsection">',
-            "<h3>Podgląd geometrii</h3>",
-            preview_html,
-            "</section>",
-            "</div>",
-            sheet_table_html,
-            '<section class="plane-subsection">',
+            '<section class="plane-subsection plane-warnings-section">',
             "<h3>Ostrzeżenia</h3>",
             f"<ul>{warning_items}</ul>",
             "</section>",
+            "</div>",
+            sheet_table_html,
             "</section>",
         ]
     )
 
 
 def _render_bom_table(rows: list[BomRow], *, empty_label: str, sheet_length_precision: int) -> str:
+    show_id = any(row.material_id != (row.material_name or row.material_id) for row in rows)
+    header_cells = "<th>Materiał</th>"
+    if show_id:
+        header_cells += "<th>ID</th>"
+    header_cells += "<th>Długość arkusza [cm]</th><th>Ilość</th><th>Powierzchnia [m2]</th>"
+    empty_colspan = 5 if show_id else 4
     body_html = "".join(
         (
             "<tr>"
             f"<td>{escape(row.material_name or row.material_id)}</td>"
-            f"<td>{escape(row.material_id)}</td>"
-            f"<td>{_format_sheet_length_cm(row.sheet_length_cm, precision=sheet_length_precision)}</td>"
-            f"<td>{row.quantity}</td>"
-            f"<td>{_format_area_m2(row.total_area_m2)}</td>"
-            "</tr>"
+            + (f"<td>{escape(row.material_id)}</td>" if show_id else "")
+            + (
+                f"<td>{_format_sheet_length_cm(row.sheet_length_cm, precision=sheet_length_precision)}</td>"
+                f"<td>{row.quantity}</td>"
+                f"<td>{_format_area_m2(row.total_area_m2)}</td>"
+                "</tr>"
+            )
         )
         for row in rows
-    ) or f'<tr><td colspan="5">{escape(empty_label)}</td></tr>'
+    ) or f'<tr><td colspan="{empty_colspan}">{escape(empty_label)}</td></tr>'
     return "".join(
         [
             '<table class="bom-table">',
-            "<thead><tr><th>Materiał</th><th>ID</th><th>Długość arkusza [cm]</th><th>Ilość</th><th>Powierzchnia [m2]</th></tr></thead>",
+            f"<thead><tr>{header_cells}</tr></thead>",
             f"<tbody>{body_html}</tbody>",
             "</table>",
         ]
     )
 
 
-def _build_preview_svg(preview: PlanePreview, width: int = 720, height: int = 320) -> str:
-    xs = [point[0] for point in preview.outline_points]
-    ys = [point[1] for point in preview.outline_points]
+def _build_preview_svg(preview: PlanePreview, width: int = 840, height: int = 380) -> str:
+    all_points = list(preview.outline_points)
+    for placement in preview.placements:
+        for polygon in placement.polygons:
+            all_points.extend(polygon)
+    xs = [point[0] for point in all_points]
+    ys = [point[1] for point in all_points]
     min_x, max_x = min(xs), max(xs)
     min_y, max_y = min(ys), max(ys)
     domain_width = max(max_x - min_x, 1.0)
@@ -615,27 +655,89 @@ def _build_preview_svg(preview: PlanePreview, width: int = 720, height: int = 32
     def polygon_points(points: tuple[tuple[float, float], ...]) -> str:
         return " ".join(f"{px(x, y)[0]:.2f},{px(x, y)[1]:.2f}" for x, y in points)
 
+    def mapped_bounds(points: list[tuple[float, float]]) -> tuple[float, float, float, float]:
+        mapped = [px(x, y) for x, y in points]
+        xs_px = [point[0] for point in mapped]
+        ys_px = [point[1] for point in mapped]
+        return min(xs_px), max(xs_px), min(ys_px), max(ys_px)
+
     parts = [
         f'<svg class="plane-preview" width="{width}" height="{height}" viewBox="0 0 {width} {height}" xmlns="http://www.w3.org/2000/svg">',
         f'<rect x="0" y="0" width="{width}" height="{height}" fill="#f8fafc"/>',
-        f'<polygon points="{polygon_points(preview.outline_points)}" fill="#dbeafe" stroke="#0f172a" stroke-width="2"/>',
+        f'<polygon points="{polygon_points(preview.outline_points)}" fill="#eff6ff" stroke="#0f172a" stroke-width="2"/>',
     ]
     for hole in preview.hole_points:
         parts.append(
             f'<polygon points="{polygon_points(hole)}" fill="#ffffff" stroke="#475569" stroke-width="1.5" stroke-dasharray="5 4"/>'
         )
     for placement in preview.placements:
-        x1, y1 = px(placement.x_left_cm, placement.y_top_cm)
-        x2, y2 = px(placement.x_right_cm, placement.y_bottom_cm)
         fill = "#93c5fd" if placement.source == "auto" else "#fdba74"
+        label_points: list[tuple[float, float]] = []
+        for polygon in placement.polygons:
+            parts.append(
+                f'<polygon points="{polygon_points(polygon)}" fill="{fill}" stroke="#1e293b" stroke-width="1"/>'
+            )
+            if len(polygon) > len(label_points):
+                label_points = list(polygon)
+        label_x, label_y = _polygon_centroid(label_points)
+        mapped_label_x, mapped_label_y = px(label_x, label_y)
+        min_px_x, max_px_x, min_px_y, max_px_y = mapped_bounds(label_points)
+        label_rotation = ""
+        if (max_px_x - min_px_x) < 52 and (max_px_y - min_px_y) > 52:
+            label_rotation = f' transform="rotate(-90 {mapped_label_x:.2f} {mapped_label_y:.2f})"'
         parts.append(
-            f'<rect x="{x1:.2f}" y="{y1:.2f}" width="{max(x2 - x1, 1.0):.2f}" height="{max(y2 - y1, 1.0):.2f}" fill="{fill}" stroke="#1e293b" stroke-width="1"/>'
+            f'<text class="sheet-length-label" x="{mapped_label_x:.2f}" y="{mapped_label_y:.2f}"'
+            f'{label_rotation} font-size="13" font-weight="700" text-anchor="middle"'
+            ' dominant-baseline="middle" fill="#0f172a" stroke="#f8fafc"'
+            ' stroke-width="3" paint-order="stroke">'
+            f'{placement.final_length_cm:.0f}</text>'
         )
+    parts.append(
+        f'<polygon points="{polygon_points(preview.outline_points)}" fill="none" stroke="#0f172a" stroke-width="2.6"/>'
+    )
+    parts.extend(_outline_length_label_svg(preview.outline_points, px))
+    for hole in preview.hole_points:
         parts.append(
-            f'<text x="{((x1 + x2) / 2):.2f}" y="{((y1 + y2) / 2):.2f}" font-size="11" text-anchor="middle" dominant-baseline="middle" fill="#0f172a">{placement.final_length_cm:.0f}</text>'
+            f'<polygon points="{polygon_points(hole)}" fill="none" stroke="#334155" stroke-width="1.8" stroke-dasharray="5 4"/>'
         )
     parts.append("</svg>")
     return "".join(parts)
+
+
+def _outline_length_label_svg(
+    outline_points: tuple[tuple[float, float], ...],
+    map_point,
+) -> list[str]:
+    parts: list[str] = []
+    point_count = len(outline_points)
+    if point_count < 2:
+        return parts
+    for index, start in enumerate(outline_points):
+        end = outline_points[(index + 1) % point_count]
+        start_x, start_y = start
+        end_x, end_y = end
+        length_cm = ((end_x - start_x) ** 2 + (end_y - start_y) ** 2) ** 0.5
+        if length_cm <= 0:
+            continue
+        label_x = (start_x + end_x) / 2.0
+        label_y = (start_y + end_y) / 2.0
+        mapped_label_x, mapped_label_y = map_point(label_x, label_y)
+        parts.append(
+            f'<text class="outline-length-label" x="{mapped_label_x:.2f}" y="{mapped_label_y:.2f}"'
+            ' font-size="12" font-weight="700" text-anchor="middle" dominant-baseline="middle"'
+            ' fill="#0f172a" stroke="#ffffff" stroke-width="3" paint-order="stroke">'
+            f"{ceil_cm(length_cm)} cm</text>"
+        )
+    return parts
+
+
+def _polygon_centroid(points: list[tuple[float, float]]) -> tuple[float, float]:
+    if not points:
+        return 0.0, 0.0
+    return (
+        sum(point[0] for point in points) / len(points),
+        sum(point[1] for point in points) / len(points),
+    )
 
 
 _REPORT_CSS = """
@@ -663,10 +765,13 @@ h1, h2, h3, p {
     padding: 20px;
     margin-bottom: 20px;
 }
-.plane-grid {
+.plane-detail-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 16px;
+}
+.plane-preview-section {
+    width: 100%;
 }
 .plane-subsection {
     margin-bottom: 16px;

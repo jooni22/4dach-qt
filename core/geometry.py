@@ -196,13 +196,13 @@ def _cutout_origin(
     height_cm: float,
 ) -> tuple[float, float]:
     bounds = outline.bounds()
-    x_ratio = min(100.0, max(0.0, float(values.get("X", 50)))) / 100.0
-    y_ratio = min(100.0, max(0.0, float(values.get("Y", 50)))) / 100.0
     available_width = max(bounds.width - width_cm, 0.0)
     available_height = max(bounds.height - height_cm, 0.0)
+    x_cm = min(available_width, max(0.0, float(values.get("X", 0))))
+    y_cm = min(available_height, max(0.0, float(values.get("Y", 0))))
     return (
-        bounds.min_x + available_width * x_ratio,
-        bounds.min_y + available_height * y_ratio,
+        bounds.min_x + x_cm,
+        bounds.max_y - y_cm - height_cm,
     )
 
 

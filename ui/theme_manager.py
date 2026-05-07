@@ -53,7 +53,7 @@ def _build_dark_tokens() -> _ThemeTokens:
         border="#555d69", tab_selected="#171a20", tab_hover="#39414d",
         toolbar_bg="#2a2f38", button_hover="#454d59", canvas_border="#555d69",
         input_bg="#171a20", pressed_bg="#536071", disabled_text="#7d8794",
-        toggle_tip="Przełącz na light mode",
+        toggle_tip="Przełącz na tryb jasny",
         icon_fg=QColor("#f1efe7"), icon_accent=QColor("#8dc7ff"), icon_muted=QColor("#aeb7c4"),
         palette=palette,
     )
@@ -77,7 +77,7 @@ def _build_light_tokens() -> _ThemeTokens:
         border="#9e9e97", tab_selected="#fffdf4", tab_hover="#d7d3c7",
         toolbar_bg="#dedccf", button_hover="#d4d1c6", canvas_border="#9e9e97",
         input_bg="#fffdf4", pressed_bg="#cbc7bb", disabled_text="#8d8a80",
-        toggle_tip="Przełącz na night mode",
+        toggle_tip="Przełącz na tryb ciemny",
         icon_fg=QColor("#49453b"), icon_accent=QColor("#c74d3d"), icon_muted=QColor("#777367"),
         palette=palette,
     )

@@ -9,7 +9,6 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFormLayout,
     QLineEdit,
-    QMessageBox,
     QTextEdit,
     QVBoxLayout,
 )
@@ -19,6 +18,7 @@ from project_files import (
     project_dir_from_config_path,
     resolve_unique_project_dir,
 )
+from ui.dialogs.button_text import localize_button_box, show_warning
 
 
 class ProjectDetailsDialog(QDialog):
@@ -64,6 +64,7 @@ class ProjectDetailsDialog(QDialog):
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
             parent=self,
         )
+        localize_button_box(self._button_box)
         self._button_box.accepted.connect(self.accept)
         self._button_box.rejected.connect(self.reject)
         root.addWidget(self._button_box)
@@ -103,7 +104,7 @@ class ProjectDetailsDialog(QDialog):
     def accept(self) -> None:
         project_name = self.project_name()
         if not project_name:
-            QMessageBox.warning(self, "Brak nazwy projektu", "Nazwa projektu jest wymagana.")
+            show_warning(self, "Brak nazwy projektu", "Nazwa projektu jest wymagana.")
             return
         self._selected_path = self._resolve_selected_project_path(project_name)
         super().accept()

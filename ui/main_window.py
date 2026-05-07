@@ -52,6 +52,12 @@ from ui.dialogs import (
     TrapezDialog,
     TrojkatDialog,
 )
+from ui.dialogs.button_text import (
+    show_critical,
+    show_information,
+    show_question,
+    show_warning,
+)
 from ui.dialogs.project_manager_dialog import Mode, ProjectManagerDialog
 from ui.drawing_canvas import CommittedOutlineEdit, DrawingCanvas
 from ui.main_window_dialogs import (
@@ -70,9 +76,18 @@ from ui.workspace import WorkspaceController
 from user_preferences import UserPreferences
 
 
+def _localized_question(
+    parent,
+    title: str,
+    text: str,
+    buttons: QMessageBox.StandardButton,
+    default_button: QMessageBox.StandardButton,
+) -> QMessageBox.StandardButton:
+    return show_question(parent, title, text, buttons, default_button)
+
+
 def _show_warning(parent, title: str, msg: str) -> None:
-    from PySide6.QtWidgets import QMessageBox
-    QMessageBox.warning(parent, title, msg)
+    show_warning(parent, title, msg)
 
 
 @dataclass(slots=True)
@@ -111,7 +126,7 @@ class MainWindow(QMainWindow):
         self._last_autosave_error: str | None = None
 
         self._status_label = QLabel("")
-        self._mode_label = QLabel("Mode: IDLE")
+        self._mode_label = QLabel("Tryb: bezczynny")
         self.statusBar().addPermanentWidget(self._mode_label)
         self.statusBar().addPermanentWidget(self._status_label)
 
@@ -204,11 +219,9 @@ class MainWindow(QMainWindow):
 
         ksztalt = mb.addMenu("Kształt")
         ksztalt.addAction(act("Kreator połaci...", None, self._dlg_add_polac))
-        ksztalt.addAction(act("Dowolny", None, self._start_draw_outline))
 
         wyc = mb.addMenu("Wycinki")
         wyc.addAction(act("Dodaj prostokątny wycinek...", None, self._dlg_add_hole))
-        wyc.addAction(act("Rysuj wycinek", None, self._start_draw_cutout))
 
         kat = mb.addMenu("Katalog")
         kat.addAction(act("Blachy...", None, self._dlg_blachy))
@@ -233,6 +246,9 @@ class MainWindow(QMainWindow):
         self._tb_ctrl.action_new_project.triggered.connect(self._new_project)
         self._tb_ctrl.action_open_project.triggered.connect(self._open_project)
         self._tb_ctrl.action_save_project.triggered.connect(self._save_project)
+        self._tb_ctrl.action_print_report.triggered.connect(lambda: self._gen_report("standard", True))
+        self._tb_ctrl.action_draw_outline.triggered.connect(self._start_draw_outline)
+        self._tb_ctrl.action_draw_cutout.triggered.connect(self._start_draw_cutout)
         self._tb_ctrl.action_new_surface.triggered.connect(self._add_new_roof_plane)
         self._tb_ctrl.action_duplicate_surface.triggered.connect(self._duplicate_active_roof_plane)
         self._tb_ctrl.action_undo.triggered.connect(self._undo)
@@ -370,7 +386,7 @@ class MainWindow(QMainWindow):
                 pass
             return True
         except OSError as exc:
-            QMessageBox.critical(
+            show_critical(
                 self,
                 "Błąd katalogu projektu",
                 f"Nie można przygotować katalogu projektu:\n{parent}\n\n{exc}",
@@ -379,7 +395,7 @@ class MainWindow(QMainWindow):
 
     def _show_user_preferences_storage_error(self) -> None:
         candidates = "\n".join(str(path) for path in self._user_prefs.storage_candidates)
-        QMessageBox.critical(
+        show_critical(
             self,
             "Błąd katalogu 4Dach",
             "Nie można utworzyć katalogu danych użytkownika.\n\n"
@@ -492,18 +508,21 @@ class MainWindow(QMainWindow):
 
     def _set_mode_indicator(self, mode: str) -> None:
         display = {
-            DrawingCanvas.MODE_IDLE: "IDLE",
-            DrawingCanvas.MODE_DRAW_PLANE: "DRAW_PLANE",
-            DrawingCanvas.MODE_DRAW_CUT: "DRAW_CUT",
-            DrawingCanvas.MODE_EDIT: "EDIT",
-            DrawingCanvas.MODE_MOVE: "MOVE",
-            DrawingCanvas.MODE_SELECT_SHEET: "SELECT_SHEET",
+            DrawingCanvas.MODE_IDLE: "bezczynny",
+            DrawingCanvas.MODE_DRAW_PLANE: "rysowanie połaci",
+            DrawingCanvas.MODE_DRAW_CUT: "rysowanie wycinka",
+            DrawingCanvas.MODE_EDIT: "edycja",
+            DrawingCanvas.MODE_MOVE: "przesuwanie",
+            DrawingCanvas.MODE_SELECT_SHEET: "wybór arkusza",
         }.get(mode, str(mode).upper())
-        self._mode_label.setText(f"Mode: {display}")
+        self._mode_label.setText(f"Tryb: {display}")
         if hasattr(self, "_tb_ctrl"):
             self._tb_ctrl.action_draw_outline.blockSignals(True)
+            self._tb_ctrl.action_draw_cutout.blockSignals(True)
             self._tb_ctrl.action_draw_outline.setChecked(mode == DrawingCanvas.MODE_DRAW_PLANE)
+            self._tb_ctrl.action_draw_cutout.setChecked(mode == DrawingCanvas.MODE_DRAW_CUT)
             self._tb_ctrl.action_draw_outline.blockSignals(False)
+            self._tb_ctrl.action_draw_cutout.blockSignals(False)
 
     def _active_canvas_mode(self) -> str:
         canvas = getattr(self, "primary_canvas", None)
@@ -624,7 +643,7 @@ class MainWindow(QMainWindow):
         self._push_history("Edycja danych projektu", before_snapshot, after_snapshot)
         self._refresh_dirty_state()
         if rename_warning is not None:
-            QMessageBox.information(self, "Zmieniono nazwę projektu", rename_warning)
+            show_information(self, "Zmieniono nazwę projektu", rename_warning)
         self.statusBar().showMessage("Zaktualizowano dane projektu", 4000)
 
     def _start_autosave_timer(self) -> None:
@@ -657,7 +676,7 @@ class MainWindow(QMainWindow):
     def _confirm_discard_unsaved_changes(self, *, context: str) -> bool:
         if not self._has_unsaved_changes:
             return True
-        answer = QMessageBox.question(
+        answer = _localized_question(
             self,
             "Niezapisane zmiany",
             f"Projekt ma niezapisane zmiany. Czy chcesz zapisać przed {context}?",
@@ -755,7 +774,7 @@ class MainWindow(QMainWindow):
         try:
             fn()
         except (ValueError, IndexError) as e:
-            QMessageBox.warning(self, failure_title, str(e))
+            show_warning(self, failure_title, str(e))
             return False
 
         for plane in self.project_state.roof_planes:
@@ -842,15 +861,29 @@ class MainWindow(QMainWindow):
     def _refresh_material_combo(self) -> None:
         combo = self._tb_ctrl.variant_combo
         ids = self.project_state.available_material_ids()
+        display_by_id = {material.id: material.display_name for material in self.project_state.materials}
         combo.blockSignals(True)
         combo.clear()
         if ids:
-            combo.addItems(ids)
+            combo.addItems([display_by_id.get(material_id, material_id) for material_id in ids])
             plane = self.project_state.active_roof_plane()
             preferred = (plane.selected_material_id if plane else None) or ids[0]
-            combo.setCurrentText(preferred if preferred in ids else ids[0])
+            preferred_id = preferred if preferred in ids else ids[0]
+            combo.setCurrentText(display_by_id.get(preferred_id, preferred_id))
         combo.blockSignals(False)
         self._sync_layout_direction_actions()
+
+    def _selected_material_id_from_combo(self) -> str | None:
+        selected_text = self._tb_ctrl.variant_combo.currentText()
+        if not selected_text:
+            return None
+        return self._material_id_from_display_text(selected_text)
+
+    def _material_id_from_display_text(self, selected_text: str) -> str:
+        for material in self.project_state.materials:
+            if selected_text == material.display_name or selected_text == material.id:
+                return material.id
+        return selected_text
 
     def _active_or_warn(self):
         return self._require_active_plane("Brak połaci", "Brak aktywnej połaci")
@@ -860,7 +893,7 @@ class MainWindow(QMainWindow):
         if plane is None:
             return None
         if plane.outline is None:
-            QMessageBox.information(self, "Brak obrysu", "Aktywna połać nie ma jeszcze obrysu")
+            show_information(self, "Brak obrysu", "Aktywna połać nie ma jeszcze obrysu")
             return None
         return plane
 
@@ -869,7 +902,7 @@ class MainWindow(QMainWindow):
         if plane is None:
             return None
         if not plane.holes:
-            QMessageBox.information(self, "Brak wycinków", "Aktywna połać nie ma wycinków")
+            show_information(self, "Brak wycinków", "Aktywna połać nie ma wycinków")
             return None
         return plane
 
@@ -889,7 +922,7 @@ class MainWindow(QMainWindow):
     def _require_active_plane(self, title: str, message: str):
         plane = self.project_state.active_roof_plane()
         if plane is None:
-            QMessageBox.information(self, title, message)
+            show_information(self, title, message)
         return plane
 
     def _focus_active_plane_tab(self) -> None:
@@ -901,7 +934,7 @@ class MainWindow(QMainWindow):
             self._workspace.tabs.setCurrentIndex(index)
 
     def _confirm_yes_no(self, title: str, message: str, *, default=QMessageBox.StandardButton.No) -> bool:
-        answer = QMessageBox.question(
+        answer = _localized_question(
             self,
             title,
             message,
@@ -922,7 +955,7 @@ class MainWindow(QMainWindow):
             try:
                 self._recalculate_plane(plane_id)
             except ValueError as e:
-                QMessageBox.warning(self, "Błąd przeliczania", str(e))
+                show_warning(self, "Błąd przeliczania", str(e))
                 return False
         return True
 
@@ -971,15 +1004,23 @@ class MainWindow(QMainWindow):
 
     def _select_material_id(self, plane, material_ids: list[str]) -> str | None:
         current = plane.selected_material_id or material_ids[0]
+        display_by_id = {
+            material.id: material.display_name
+            for material in self.project_state.materials
+            if material.id in material_ids
+        }
+        display_items = [display_by_id.get(material_id, material_id) for material_id in material_ids]
         selected, ok = QInputDialog.getItem(
             self,
             "Zmień materiał",
             "Materiał:",
-            material_ids,
+            display_items,
             material_ids.index(current) if current in material_ids else 0,
             False,
         )
-        return selected if ok else None
+        if not ok:
+            return None
+        return material_ids[display_items.index(selected)]
 
     def _sheet_preview_text(self, sheets: list[SheetPlacement]) -> str:
         return "\n".join(
@@ -1068,7 +1109,7 @@ class MainWindow(QMainWindow):
 
     def _set_active_plane_geometry(self, outline: Polygon2D, message: str) -> bool:
         plane = self.project_state.active_roof_plane()
-        selected_material_id = self._tb_ctrl.variant_combo.currentText() or None
+        selected_material_id = self._selected_material_id_from_combo()
         if plane is None:
             return self._edit(
                 lambda: self.project_state.add_roof_plane(outline, selected_material_id=selected_material_id),
@@ -1083,7 +1124,7 @@ class MainWindow(QMainWindow):
         return success
 
     def _add_new_roof_plane(self) -> None:
-        selected_material_id = self._tb_ctrl.variant_combo.currentText() or None
+        selected_material_id = self._selected_material_id_from_combo()
         if self._edit(
             lambda: self.project_state.add_empty_roof_plane(selected_material_id=selected_material_id),
             "Dodano nową połacię",
@@ -1207,11 +1248,14 @@ class MainWindow(QMainWindow):
         plane = self.project_state.active_roof_plane()
         if plane is None:
             return
-        if plane.selected_material_id == text:
+        material_id = self._material_id_from_display_text(text)
+        if not material_id:
+            return
+        if plane.selected_material_id == material_id:
             self.statusBar().showMessage(f"Aktywna blacha: {text}", 2500)
             return
         self._edit(
-            lambda: self.project_state.set_active_material_for_plane(text, plane.id),
+            lambda: self.project_state.set_active_material_for_plane(material_id, plane.id),
             f"Ustawiono materiał {text}",
             label=f"Zmiana materiału połaci {plane.name}",
         )
@@ -1255,7 +1299,7 @@ class MainWindow(QMainWindow):
         )
 
     def _on_outline_edit_rejected(self, message: str) -> None:
-        QMessageBox.warning(self, "Nieprawidłowa geometria", message)
+        show_warning(self, "Nieprawidłowa geometria", message)
         self.statusBar().showMessage("Odrzucono zmianę geometrii połaci", 4000)
 
     def _on_grid_toggled(self, checked: bool) -> None:
@@ -1402,11 +1446,11 @@ class MainWindow(QMainWindow):
     # Report generation
     def _gen_report(self, variant: str, open_external: bool = False) -> bool:
         if not self.project_state.roof_planes:
-            QMessageBox.information(self, "Brak połaci", "Brak połaci do raportu")
+            show_information(self, "Brak połaci", "Brak połaci do raportu")
             return False
         dirty_plane_ids = [plane.id for plane in self.project_state.roof_planes if plane.layout_dirty_reason]
         if dirty_plane_ids:
-            answer = QMessageBox.question(
+            answer = _localized_question(
                 self,
                 "Nieaktualny layout",
                 "Niektóre połacie wymagają przeliczenia. Przeliczyć teraz tylko nieaktualne połacie?",
@@ -1418,7 +1462,7 @@ class MainWindow(QMainWindow):
             if answer == QMessageBox.StandardButton.Yes and not self._recalculate_planes_or_warn(dirty_plane_ids):
                 return False
         try:
-            report = build_project_report(self.project_state)
+            report = build_project_report(self.project_state, self._config.get("project_meta"))
             html = build_project_report_html(
                 report,
                 title_suffix={"continuous": "ciągły", "short": "skrócony"}.get(variant, ""),
@@ -1427,7 +1471,7 @@ class MainWindow(QMainWindow):
                 page_break_between_planes=(variant != "continuous"),
             )
         except ValueError as e:
-            QMessageBox.warning(self, "Błąd raportu", str(e))
+            show_warning(self, "Błąd raportu", str(e))
             return False
         self._latest_report_html = html
         self._latest_report_plane_id = None
@@ -1440,11 +1484,11 @@ class MainWindow(QMainWindow):
             try:
                 report_path.write_text(html, encoding="utf-8")
             except OSError as exc:
-                QMessageBox.warning(self, "Błąd raportu", f"Nie można zapisać raportu HTML:\n{exc}")
+                show_warning(self, "Błąd raportu", f"Nie można zapisać raportu HTML:\n{exc}")
                 return False
         if open_external:
             if report_path is None:
-                QMessageBox.information(
+                show_information(
                     self,
                     "Zapisz projekt",
                     "Aby otworzyć raport w przeglądarce, najpierw zapisz projekt.",
@@ -1490,12 +1534,12 @@ class MainWindow(QMainWindow):
             )
             cutout = build_add_polac_cutout(result.cutout_kind, result.cutout_values, outline)
         except ValueError as exc:
-            QMessageBox.warning(self, "Błąd edycji", str(exc))
+            show_warning(self, "Błąd edycji", str(exc))
             return
 
         holes = [] if cutout is None else [cutout]
         plane = self.project_state.active_roof_plane()
-        selected_material_id = self._tb_ctrl.variant_combo.currentText() or None
+        selected_material_id = self._selected_material_id_from_combo()
 
         def _apply_wizard_geometry() -> None:
             if plane is None:
@@ -1536,7 +1580,7 @@ class MainWindow(QMainWindow):
         try:
             outline = make_triangle(values["typ"], values["podstawa"], values["wysokosc"], side)
         except ValueError as e:
-            QMessageBox.warning(self, "Błąd edycji", str(e))
+            show_warning(self, "Błąd edycji", str(e))
             return
         remember_shape_config(self._config, "trojkat", values)
         self._persist_user_preferences("ksztalty")
@@ -1629,7 +1673,7 @@ class MainWindow(QMainWindow):
             return
         sheets = self._active_plane_sheets(plane)
         if not sheets:
-            QMessageBox.information(self, "Brak arkuszy", "Brak arkuszy do usunięcia")
+            show_information(self, "Brak arkuszy", "Brak arkuszy do usunięcia")
             return
         idx = self._select_index("Usuń arkusz", len(sheets) - 1)
         if idx is not None:
@@ -1640,14 +1684,14 @@ class MainWindow(QMainWindow):
         if plane is None:
             return
         sheets = self._active_plane_sheets(plane)
-        QMessageBox.information(self, f"Arkusze — {plane.name}", self._sheet_preview_text(sheets))
+        show_information(self, f"Arkusze — {plane.name}", self._sheet_preview_text(sheets))
 
     def _dlg_active_sheets(self) -> None:
         plane = self._active_or_warn()
         if plane is None:
             return
         sheets = self._active_plane_sheets(plane)
-        QMessageBox.information(
+        show_information(
             self,
             f"Aktywne arkusze — {plane.name}",
             self._active_sheet_summary_text(plane, sheets),
@@ -1659,7 +1703,7 @@ class MainWindow(QMainWindow):
             return
         ids = self.project_state.available_material_ids()
         if not ids:
-            QMessageBox.warning(self, "Brak materiałów", "Brak materiałów w katalogu")
+            show_warning(self, "Brak materiałów", "Brak materiałów w katalogu")
             return
         selected_material_id = self._select_material_id(plane, ids)
         if selected_material_id and selected_material_id != plane.selected_material_id:

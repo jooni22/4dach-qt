@@ -10,6 +10,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from ui.dialogs.button_text import localize_button_box
+
 
 class DaneFirmyDialog(QDialog):
     def __init__(self, config_data: dict, parent=None) -> None:
@@ -44,6 +46,7 @@ class DaneFirmyDialog(QDialog):
         button_box = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Ok
         )
+        localize_button_box(button_box)
         button_box.rejected.connect(self.reject)
         button_box.accepted.connect(self.accept)
         layout.addWidget(button_box)

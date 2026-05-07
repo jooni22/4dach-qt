@@ -131,7 +131,7 @@ def default_shape_values(shape_key: str) -> dict[str, int]:
 def default_cutout_values(cutout_key: str) -> dict[str, int]:
     values = {field.key: field.default for field in CUTOUT_CATALOG_BY_KEY[cutout_key].fields}
     if cutout_key != "none":
-        values.update({"X": 50, "Y": 50})
+        values.update({"X": 0, "Y": 0})
     return values
 
 

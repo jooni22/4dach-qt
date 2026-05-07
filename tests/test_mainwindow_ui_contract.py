@@ -17,6 +17,7 @@ pytest.importorskip("pytestqt")
 
 from PySide6.QtCore import QPointF, QUrl
 from PySide6.QtWidgets import (
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QInputDialog,
@@ -111,6 +112,10 @@ def _default_question_response(monkeypatch):
         "question",
         staticmethod(lambda *args, **kwargs: QMessageBox.StandardButton.Discard),
     )
+    monkeypatch.setattr(
+        "ui.main_window._localized_question",
+        lambda *args, **kwargs: QMessageBox.StandardButton.Discard,
+    )
 
 
 def test_mainwindow_exposes_expected_ui_contract(qtbot):
@@ -131,8 +136,8 @@ def test_mainwindow_exposes_expected_ui_contract(qtbot):
     sheets_actions = [action.text() for action in sheets_menu.actions() if not action.isSeparator()]
 
     assert menu_titles == ["Plik", "Kształt", "Wycinki", "Katalog", "Arkusze", "Ustawienia"]
-    assert shape_actions == ["Kreator połaci...", "Dowolny"]
-    assert cutout_actions == ["Dodaj prostokątny wycinek...", "Rysuj wycinek"]
+    assert shape_actions == ["Kreator połaci..."]
+    assert cutout_actions == ["Dodaj prostokątny wycinek..."]
     assert window.workspace_tabs.count() >= 2
     assert window.variant_combo.count() >= 1
     assert window.variant_combo.currentText() == "PD510"
@@ -147,7 +152,79 @@ def test_mainwindow_exposes_expected_ui_contract(qtbot):
     assert window._tb_ctrl.action_duplicate_surface.text() == "Duplikuj połać"
     assert window._tb_ctrl.action_overlay_sheet.isCheckable() is True
     assert window._tb_ctrl.action_overlay_sheet.isChecked() is False
-    assert window._mode_label.text() == "Mode: IDLE"
+    assert window._mode_label.text() == "Tryb: bezczynny"
+
+
+def test_mainwindow_toolbar_orders_actions_and_material_combo_after_draw_tools(qtbot):
+    window = MainWindow(auto_startup=False)
+    qtbot.addWidget(window)
+
+    toolbar_actions = window._tb_ctrl.toolbar.actions()
+    visible_items = [
+        "|"
+        if action.isSeparator()
+        else "combo"
+        if window._tb_ctrl.toolbar.widgetForAction(action) is window.variant_combo
+        else action.text()
+        for action in toolbar_actions
+    ]
+
+    assert visible_items == [
+        "Nowy projekt",
+        "Otwórz projekt",
+        "Zapisz projekt",
+        "Drukuj raport",
+        "|",
+        "Rysowanie krawędzi połaci",
+        "Rysowanie wycinka",
+        "Ustaw punkt zerowy",
+        "Cofnij",
+        "|",
+        "combo",
+        "|",
+        "Pokaż arkusze",
+        "Pokaż siatkę",
+        "Przyciągaj do siatki",
+        "Układaj od lewej",
+        "Od prawej",
+        "|",
+        "Nowa połać",
+        "Duplikuj połać",
+        "Usuń zaznaczone (Del)",
+    ]
+
+
+def test_mainwindow_toolbar_draw_actions_start_modes_and_sync_checked_state(qtbot):
+    window = MainWindow(auto_startup=False)
+    qtbot.addWidget(window)
+
+    plane = window.project_state.add_roof_plane(build_rectangle_outline(320, 180), selected_material_id="PD510")
+    window._refresh_canvas_from_state()
+
+    window._tb_ctrl.action_draw_outline.trigger()
+    assert window.primary_canvas.mode() == window.primary_canvas.MODE_DRAW_PLANE
+    assert window._tb_ctrl.action_draw_outline.isChecked() is True
+    assert window._tb_ctrl.action_draw_cutout.isChecked() is False
+
+    window._tb_ctrl.action_draw_cutout.trigger()
+    assert window.primary_canvas.roof_plane is plane
+    assert window.primary_canvas.mode() == window.primary_canvas.MODE_DRAW_CUT
+    assert window._tb_ctrl.action_draw_outline.isChecked() is False
+    assert window._tb_ctrl.action_draw_cutout.isChecked() is True
+
+    window.primary_canvas.set_mode(window.primary_canvas.MODE_IDLE)
+    assert window._tb_ctrl.action_draw_outline.isChecked() is False
+    assert window._tb_ctrl.action_draw_cutout.isChecked() is False
+
+
+def test_mainwindow_material_combo_is_non_editable_and_draws_own_chevron(qtbot):
+    window = MainWindow(auto_startup=False)
+    qtbot.addWidget(window)
+
+    assert isinstance(window.variant_combo, QComboBox)
+    assert window.variant_combo.isEditable() is False
+    assert window.variant_combo.lineEdit() is None
+    assert getattr(window.variant_combo, "draws_own_chevron", False) is True
 
 
 def test_mainwindow_toolbar_hides_removed_actions_after_cleanup(qtbot):
@@ -241,7 +318,6 @@ def test_dane_blachy_dialog_exposes_only_trapez_minimal_fields_after_cleanup(qtb
     dialog = DaneBlachyDialog(None)
     qtbot.addWidget(dialog)
 
-    assert hasattr(dialog, "id_edit") is True
     assert hasattr(dialog, "nazwa_edit") is True
     assert hasattr(dialog, "szerokosc_efektywna_spin") is True
     assert hasattr(dialog, "min_dlugosc_spin") is True
@@ -262,7 +338,6 @@ def test_blachy_dialog_hides_legacy_material_detail_labels_after_cleanup(qtbot):
 
     label_texts = {label.text() for label in dialog.findChildren(QLabel)}
 
-    assert "Id:" in label_texts
     assert "Nazwa:" in label_texts
     assert "Szerokość efektywna arkusza:" in label_texts
     assert "Min. długość arkusza:" in label_texts
@@ -279,10 +354,10 @@ def test_mainwindow_mode_indicator_tracks_draw_and_idle_transitions(qtbot):
     qtbot.addWidget(window)
 
     window._start_draw_outline()
-    assert window._mode_label.text() == "Mode: DRAW_PLANE"
+    assert window._mode_label.text() == "Tryb: rysowanie połaci"
 
     window.primary_canvas.set_mode(window.primary_canvas.MODE_IDLE)
-    assert window._mode_label.text() == "Mode: IDLE"
+    assert window._mode_label.text() == "Tryb: bezczynny"
 
 
 def test_mainwindow_refreshes_active_plane_on_primary_canvas(qtbot):
@@ -352,6 +427,10 @@ def test_mainwindow_adds_renames_and_deletes_roof_plane_tabs(qtbot, monkeypatch)
         QMessageBox,
         "question",
         staticmethod(lambda *args, **kwargs: QMessageBox.StandardButton.Yes),
+    )
+    monkeypatch.setattr(
+        "ui.main_window._localized_question",
+        lambda *args, **kwargs: QMessageBox.StandardButton.Yes,
     )
     window._delete_active_roof_plane()
 
@@ -534,11 +613,11 @@ def test_mainwindow_wizard_commits_outline_and_cutout_as_single_undo_entry(qtbot
     updated_plane = window.project_state.roof_plane_by_id(plane.id)
     expected_hole = Polygon2D(
         [
-            Point2D(250, 105),
-            Point2D(320, 155),
-            Point2D(320, 195),
-            Point2D(180, 195),
-            Point2D(180, 155),
+            Point2D(70.0, 210.0),
+            Point2D(140.0, 260.0),
+            Point2D(140.0, 300.0),
+            Point2D(0.0, 300.0),
+            Point2D(0.0, 260.0),
         ]
     )
 
@@ -759,6 +838,7 @@ def test_mainwindow_commits_whole_plane_move_outline_and_holes_to_project_state(
 def test_mainwindow_allows_canvas_outline_edit_even_when_cutout_moves_outside_outline(qtbot, monkeypatch):
     messages: list[str] = []
     monkeypatch.setattr(QMessageBox, "warning", staticmethod(lambda *args: messages.append(args[2])))
+    monkeypatch.setattr("ui.main_window.show_warning", lambda *args: messages.append(args[2]))
 
     window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
@@ -954,7 +1034,7 @@ def test_mainwindow_toolbar_grid_toggle_updates_canvas_grid_visibility_only(qtbo
     assert window._tb_ctrl.action_grid.text() == "Pokaż siatkę"
     assert window._tb_ctrl.action_grid.isCheckable() is True
     assert window._tb_ctrl.action_grid.isChecked() is True
-    assert window._tb_ctrl.action_snap_to_grid.text() == "Snap to Grid"
+    assert window._tb_ctrl.action_snap_to_grid.text() == "Przyciągaj do siatki"
     assert window._tb_ctrl.action_snap_to_grid.isCheckable() is True
     assert window._tb_ctrl.action_snap_to_grid.isChecked() is True
     assert canvas._show_grid is True
@@ -971,7 +1051,7 @@ def test_mainwindow_toolbar_grid_toggle_updates_canvas_grid_visibility_only(qtbo
     assert window.project_state.app_settings.snap_to_grid is True
 
 
-def test_mainwindow_cutout_menu_exposes_only_add_and_draw_actions(qtbot):
+def test_mainwindow_cutout_menu_exposes_only_rectangular_cutout_action(qtbot):
     window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
     window.show()
@@ -981,7 +1061,7 @@ def test_mainwindow_cutout_menu_exposes_only_add_and_draw_actions(qtbot):
 
     assert isinstance(cutouts_menu, QMenu)
     cutout_actions = [action.text() for action in cutouts_menu.actions() if not action.isSeparator()]
-    assert cutout_actions == ["Dodaj prostokątny wycinek...", "Rysuj wycinek"]
+    assert cutout_actions == ["Dodaj prostokątny wycinek..."]
 
 
 def test_mainwindow_toolbar_sheet_toggle_switches_wireframe_mode_without_recalc(qtbot, monkeypatch):
@@ -1858,6 +1938,7 @@ def test_mainwindow_unsaved_close_confirmation_can_cancel_or_discard(qtbot, monk
         ]
     )
     monkeypatch.setattr(QMessageBox, "question", staticmethod(lambda *args, **kwargs: next(responses)))
+    monkeypatch.setattr("ui.main_window._localized_question", lambda *args, **kwargs: next(responses))
 
     window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
@@ -1966,6 +2047,10 @@ def test_mainwindow_report_generation_recalculates_only_dirty_planes(qtbot, monk
         "question",
         staticmethod(lambda *args, **kwargs: QMessageBox.StandardButton.Yes),
     )
+    monkeypatch.setattr(
+        "ui.main_window._localized_question",
+        lambda *args, **kwargs: QMessageBox.StandardButton.Yes,
+    )
 
     window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
@@ -1985,7 +2070,7 @@ def test_mainwindow_report_generation_recalculates_only_dirty_planes(qtbot, monk
         return object()
 
     monkeypatch.setattr(ProjectState, "generate_layout_for_plane", lambda self, plane_id: _generate_layout_for_plane(plane_id))
-    monkeypatch.setattr("ui.main_window.build_project_report", lambda state: object())
+    monkeypatch.setattr("ui.main_window.build_project_report", lambda *args, **kwargs: object())
     monkeypatch.setattr("ui.main_window.build_project_report_html", lambda *args, **kwargs: "<html>ok</html>")
 
     assert window._gen_report("standard") is True
@@ -2004,6 +2089,7 @@ def test_blachy_dialog_exposes_save_button(qtbot):
 def test_mainwindow_triangle_dialog_shows_validation_error_without_mutating_state(qtbot, monkeypatch):
     messages: list[str] = []
     monkeypatch.setattr(QMessageBox, "warning", staticmethod(lambda *args: messages.append(args[2])))
+    monkeypatch.setattr("ui.main_window.show_warning", lambda *args: messages.append(args[2]))
 
     window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)

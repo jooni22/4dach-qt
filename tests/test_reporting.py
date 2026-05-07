@@ -102,7 +102,7 @@ def test_build_report_html_contains_summary_bom_and_warnings():
     assert "podziału poprzecznego" not in html
 
 
-def test_build_report_html_contains_svg_with_sheet_rects():
+def test_build_report_html_contains_svg_with_sheet_polygons():
     config_dict = {
         "company_data": {"name": "Test", "nip": "123", "address": "Addr", "website": "web.test", "logo": "logo.png"},
         "blachy": [
@@ -118,8 +118,88 @@ def test_build_report_html_contains_svg_with_sheet_rects():
 
     assert "<svg" in html
     assert "</svg>" in html
-    assert html.count("<rect") >= len(layout_result.placements)
+    assert html.count('fill="#93c5fd"') >= len(layout_result.placements)
     assert "Ostrzeżenia" in html
+
+
+def test_build_report_html_labels_only_outer_outline_edges_in_preview_svg():
+    material = Material(
+        id="MAT1",
+        nazwa="Material 1",
+        type="trapezowa",
+        effective_width_cm=50,
+        module_length_cm=0,
+        bottom_margin_cm=0,
+        top_margin_cm=0,
+        min_sheet_length_cm=20,
+        max_sheet_length_cm=500,
+    )
+    state = ProjectState(materials=[material])
+    plane = state.add_roof_plane(Polygon2D.rectangle(300, 200), selected_material_id="MAT1")
+    state.add_hole_to_plane(Polygon2D.rectangle(50, 40, origin_x=80, origin_y=70), plane.id)
+    layout_result = state.generate_layout_for_plane(plane.id)
+    report = build_report(state, layout_result, "MAT1", plane.id)
+
+    html = build_report_html(state, report, "MAT1", plane.id)
+
+    assert html.count('class="outline-length-label"') == 4
+    assert ">300 cm</text>" in html
+    assert ">200 cm</text>" in html
+    assert ">50 cm</text>" not in html
+    assert ">40 cm</text>" not in html
+
+
+def test_build_report_html_uses_readable_sheet_length_label_style():
+    material = Material(
+        id="MAT1",
+        nazwa="Material 1",
+        type="trapezowa",
+        effective_width_cm=25,
+        module_length_cm=0,
+        bottom_margin_cm=0,
+        top_margin_cm=0,
+        min_sheet_length_cm=20,
+        max_sheet_length_cm=500,
+    )
+    state = ProjectState(materials=[material])
+    plane = state.add_roof_plane(Polygon2D.rectangle(50, 240), selected_material_id="MAT1")
+    layout_result = state.generate_layout_for_plane(plane.id)
+    report = build_report(state, layout_result, "MAT1", plane.id)
+
+    html = build_report_html(state, report, "MAT1", plane.id)
+
+    assert 'class="sheet-length-label"' in html
+    assert 'paint-order="stroke"' in html
+    assert 'stroke="#f8fafc"' in html
+    assert "rotate(" in html
+
+
+def test_build_project_report_html_places_full_width_preview_before_summary_warnings_and_table():
+    material = Material(
+        id="MAT",
+        nazwa="Blacha testowa",
+        type="trapezowa",
+        effective_width_cm=50,
+        module_length_cm=0,
+        bottom_margin_cm=0,
+        top_margin_cm=0,
+        min_sheet_length_cm=1,
+        max_sheet_length_cm=500,
+    )
+    state = ProjectState(materials=[material])
+    state.add_roof_plane(Polygon2D.rectangle(100, 100), name="Połać A", selected_material_id=material.id)
+
+    report = build_project_report(state)
+    html = build_project_report_html(report)
+
+    preview_index = html.index("plane-preview-section")
+    summary_index = html.index("<h3>Podsumowanie połaci</h3>")
+    warnings_index = html.index("<h3>Ostrzeżenia</h3>")
+    table_index = html.index("<h3>Lista arkuszy</h3>")
+
+    assert preview_index < summary_index < table_index
+    assert preview_index < warnings_index < table_index
+    assert 'class="plane-detail-grid"' in html
 
 
 def test_build_report_html_uses_supplied_report_when_project_state_has_no_saved_placements():
@@ -274,8 +354,8 @@ def test_build_project_report_aggregates_multiple_roof_planes_and_groups_lengths
         price_value=10.0,
     )
     state = ProjectState(materials=[material])
-    first_plane = state.add_roof_plane(Polygon2D.rectangle(100, 100), name="Front", selected_material_id=material.id)
-    second_plane = state.add_roof_plane(Polygon2D.rectangle(50, 100), name="Back", selected_material_id=material.id)
+    state.add_roof_plane(Polygon2D.rectangle(100, 100), name="Front", selected_material_id=material.id)
+    state.add_roof_plane(Polygon2D.rectangle(50, 100), name="Back", selected_material_id=material.id)
 
     report = build_project_report(state)
 
@@ -307,8 +387,8 @@ def test_build_project_report_html_contains_all_plane_sections_and_global_summar
     )
     state = ProjectState(materials=[material])
     state.company_data.name = "Firma Test"
-    first_plane = state.add_roof_plane(Polygon2D.rectangle(100, 100), name="Połać A", selected_material_id=material.id)
-    second_plane = state.add_roof_plane(Polygon2D.rectangle(50, 100), name="Połać B", selected_material_id=material.id)
+    state.add_roof_plane(Polygon2D.rectangle(100, 100), name="Połać A", selected_material_id=material.id)
+    state.add_roof_plane(Polygon2D.rectangle(50, 100), name="Połać B", selected_material_id=material.id)
 
     report = build_project_report(state)
     html = build_project_report_html(report)

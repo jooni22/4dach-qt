@@ -7,10 +7,15 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFormLayout,
     QGroupBox,
+    QHBoxLayout,
+    QLabel,
     QRadioButton,
     QSpinBox,
     QVBoxLayout,
+    QWidget,
 )
+
+from ui.dialogs.button_text import localize_button_box
 
 
 class ProstokatDialog(QDialog):
@@ -27,22 +32,34 @@ class ProstokatDialog(QDialog):
 
         self.szerokosc_spin = QSpinBox()
         self.szerokosc_spin.setRange(1, 9999)
-        self.szerokosc_spin.setSuffix(" cm")
-        form_layout.addRow("Szerokość:", self.szerokosc_spin)
+        self.szerokosc_spin.setFixedWidth(86)
+        form_layout.addRow("Szerokość:", self._spin_with_unit(self.szerokosc_spin))
 
         self.wysokosc_spin = QSpinBox()
         self.wysokosc_spin.setRange(1, 9999)
-        self.wysokosc_spin.setSuffix(" cm")
-        form_layout.addRow("Wysokość:", self.wysokosc_spin)
+        self.wysokosc_spin.setFixedWidth(86)
+        form_layout.addRow("Wysokość:", self._spin_with_unit(self.wysokosc_spin))
 
         layout.addLayout(form_layout)
 
         button_box = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Ok
         )
+        localize_button_box(button_box)
         button_box.rejected.connect(self.reject)
         button_box.accepted.connect(self.accept)
         layout.addWidget(button_box)
+
+    @staticmethod
+    def _spin_with_unit(spin: QSpinBox) -> QWidget:
+        row = QWidget(spin.parentWidget())
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+        layout.addWidget(spin)
+        layout.addWidget(QLabel("cm", row))
+        layout.addStretch(1)
+        return row
 
     def _load_values(self) -> None:
         values = self.config_data.get("ksztalty", {}).get("prostokat", {})
@@ -90,22 +107,22 @@ class TrojkatDialog(QDialog):
 
         self.podstawa_spin = QSpinBox()
         self.podstawa_spin.setRange(1, 9999)
-        self.podstawa_spin.setSuffix(" cm")
-        form_layout.addRow("Podstawa:", self.podstawa_spin)
+        self.podstawa_spin.setFixedWidth(86)
+        form_layout.addRow("Podstawa:", ProstokatDialog._spin_with_unit(self.podstawa_spin))
 
         self.wysokosc_spin = QSpinBox()
         self.wysokosc_spin.setRange(1, 9999)
-        self.wysokosc_spin.setSuffix(" cm")
-        form_layout.addRow("Wysokość:", self.wysokosc_spin)
+        self.wysokosc_spin.setFixedWidth(86)
+        form_layout.addRow("Wysokość:", ProstokatDialog._spin_with_unit(self.wysokosc_spin))
 
         self.ramie_checkbox = QCheckBox("Ramię")
         self.ramie_spin = QSpinBox()
         self.ramie_spin.setRange(1, 9999)
-        self.ramie_spin.setSuffix(" cm")
+        self.ramie_spin.setFixedWidth(86)
         self.ramie_spin.setEnabled(False)
         ramie_layout = QVBoxLayout()
         ramie_layout.addWidget(self.ramie_checkbox)
-        ramie_layout.addWidget(self.ramie_spin)
+        ramie_layout.addWidget(ProstokatDialog._spin_with_unit(self.ramie_spin))
         form_layout.addRow("", ramie_layout)
 
         layout.addLayout(form_layout)
@@ -113,6 +130,7 @@ class TrojkatDialog(QDialog):
         button_box = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Ok
         )
+        localize_button_box(button_box)
         button_box.rejected.connect(self.reject)
         button_box.accepted.connect(self.accept)
         layout.addWidget(button_box)
@@ -182,24 +200,25 @@ class TrapezDialog(QDialog):
 
         self.podstawa_dolna_spin = QSpinBox()
         self.podstawa_dolna_spin.setRange(1, 9999)
-        self.podstawa_dolna_spin.setSuffix(" cm")
-        form_layout.addRow("Podstawa dolna:", self.podstawa_dolna_spin)
+        self.podstawa_dolna_spin.setFixedWidth(86)
+        form_layout.addRow("Podstawa dolna:", ProstokatDialog._spin_with_unit(self.podstawa_dolna_spin))
 
         self.podstawa_gorna_spin = QSpinBox()
         self.podstawa_gorna_spin.setRange(1, 9999)
-        self.podstawa_gorna_spin.setSuffix(" cm")
-        form_layout.addRow("górna:", self.podstawa_gorna_spin)
+        self.podstawa_gorna_spin.setFixedWidth(86)
+        form_layout.addRow("górna:", ProstokatDialog._spin_with_unit(self.podstawa_gorna_spin))
 
         self.wysokosc_spin = QSpinBox()
         self.wysokosc_spin.setRange(1, 9999)
-        self.wysokosc_spin.setSuffix(" cm")
-        form_layout.addRow("Wysokość:", self.wysokosc_spin)
+        self.wysokosc_spin.setFixedWidth(86)
+        form_layout.addRow("Wysokość:", ProstokatDialog._spin_with_unit(self.wysokosc_spin))
 
         layout.addLayout(form_layout)
 
         button_box = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Ok
         )
+        localize_button_box(button_box)
         button_box.rejected.connect(self.reject)
         button_box.accepted.connect(self.accept)
         layout.addWidget(button_box)

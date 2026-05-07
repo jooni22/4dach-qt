@@ -30,6 +30,11 @@ from PySide6.QtWidgets import (
 
 from core.project_state import ProjectState
 from project_files import project_config_path, project_report_path, resolve_unique_project_dir
+from ui.dialogs.button_text import (
+    localize_button_box,
+    show_question,
+    show_warning,
+)
 
 
 class Mode(Enum):
@@ -276,6 +281,7 @@ class ProjectManagerDialog(QDialog):
             ok_text = "Otwórz" if self.mode == Mode.OPEN else "Zapisz"
             self._button_box.addButton(ok_text, QDialogButtonBox.ButtonRole.AcceptRole)
         self._button_box.addButton(QDialogButtonBox.StandardButton.Cancel)
+        localize_button_box(self._button_box)
         self._button_box.accepted.connect(self.accept)
         self._button_box.rejected.connect(self.reject)
         root.addWidget(self._button_box)
@@ -370,9 +376,9 @@ class ProjectManagerDialog(QDialog):
         if project is None:
             return
         if self._current_project_path is not None and project.config_path == self._current_project_path:
-            QMessageBox.warning(self, "Nie można usunąć projektu", "Nie można usunąć aktualnie otwartego projektu.")
+            show_warning(self, "Nie można usunąć projektu", "Nie można usunąć aktualnie otwartego projektu.")
             return
-        answer = QMessageBox.question(
+        answer = show_question(
             self,
             "Usuń projekt",
             f"Czy na pewno usunąć projekt '{project.name}'?",
@@ -385,10 +391,10 @@ class ProjectManagerDialog(QDialog):
             project.project_dir.relative_to(self._projects_dir)
             shutil.rmtree(project.project_dir)
         except OSError as exc:
-            QMessageBox.warning(self, "Nie można usunąć projektu", str(exc))
+            show_warning(self, "Nie można usunąć projektu", str(exc))
             return
         except ValueError:
-            QMessageBox.warning(self, "Nie można usunąć projektu", "Nieprawidłowa ścieżka katalogu projektu.")
+            show_warning(self, "Nie można usunąć projektu", "Nieprawidłowa ścieżka katalogu projektu.")
             return
         self._reload_projects()
 
@@ -427,7 +433,7 @@ class ProjectManagerDialog(QDialog):
         if self.mode in {Mode.NEW, Mode.SAVE_AS}:
             project_name = self.project_name()
             if not project_name:
-                QMessageBox.warning(self, "Brak nazwy projektu", "Nazwa projektu jest wymagana.")
+                show_warning(self, "Brak nazwy projektu", "Nazwa projektu jest wymagana.")
                 return
             self._selected_path = self._project_path_for_name(project_name)
             super().accept()

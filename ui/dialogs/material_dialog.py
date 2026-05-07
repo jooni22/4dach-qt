@@ -10,13 +10,14 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QListWidget,
-    QMessageBox,
     QPushButton,
     QSpinBox,
     QVBoxLayout,
+    QWidget,
 )
 
 from core.models import Material
+from ui.dialogs.button_text import localize_button_box, show_warning
 
 
 class BlachyDialog(QDialog):
@@ -38,8 +39,6 @@ class BlachyDialog(QDialog):
         self.params_group = QGroupBox("Parametry wybranego materiału")
         params_layout = QFormLayout()
 
-        self.id_label = QLabel()
-        params_layout.addRow("Id:", self.id_label)
         self.nazwa_label = QLabel()
         params_layout.addRow("Nazwa:", self.nazwa_label)
         self.szerokosc_efektywna_label = QLabel()
@@ -65,6 +64,7 @@ class BlachyDialog(QDialog):
         button_box = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
         )
+        localize_button_box(button_box)
         button_box.accepted.connect(self.accept)
         button_box.rejected.connect(self.reject)
         layout.addWidget(button_box)
@@ -79,7 +79,7 @@ class BlachyDialog(QDialog):
         current_row = self.blachy_list.currentRow()
         self.blachy_list.clear()
         for material in self._materials:
-            self.blachy_list.addItem(f"{material.id} — {material.display_name}")
+            self.blachy_list.addItem(material.display_name)
         if self.blachy_list.count() > 0:
             self.blachy_list.setCurrentRow(min(max(current_row, 0), self.blachy_list.count() - 1))
         else:
@@ -87,7 +87,6 @@ class BlachyDialog(QDialog):
 
     def _clear_details(self) -> None:
         for label in (
-            self.id_label,
             self.nazwa_label,
             self.szerokosc_efektywna_label,
             self.min_dlugosc_label,
@@ -98,7 +97,6 @@ class BlachyDialog(QDialog):
     def _on_blacha_selected(self, index: int) -> None:
         if 0 <= index < len(self._materials):
             material = self._materials[index]
-            self.id_label.setText(material.id)
             self.nazwa_label.setText(material.display_name)
             self.szerokosc_efektywna_label.setText(f"{int(material.effective_width_cm)} cm")
             self.min_dlugosc_label.setText(f"{int(material.min_sheet_length_cm)} cm")
@@ -113,7 +111,7 @@ class BlachyDialog(QDialog):
             None,
         )
         if duplicate_index is not None:
-            QMessageBox.warning(self, "Duplikat", "Materiał o podanym identyfikatorze już istnieje")
+            show_warning(self, "Duplikat", "Materiał o podanej nazwie już istnieje")
             return
         if existing_index is None:
             self._materials.append(material)
@@ -158,57 +156,62 @@ class DaneBlachyDialog(QDialog):
 
         form_layout = QFormLayout()
 
-        self.id_edit = QLineEdit()
-        form_layout.addRow("Id:", self.id_edit)
-
         self.nazwa_edit = QLineEdit()
         form_layout.addRow("Nazwa:", self.nazwa_edit)
 
         self.szerokosc_efektywna_spin = QSpinBox()
         self.szerokosc_efektywna_spin.setRange(1, 9999)
-        self.szerokosc_efektywna_spin.setSuffix(" cm")
-        form_layout.addRow("Szerokość efektywna arkusza:", self.szerokosc_efektywna_spin)
+        self.szerokosc_efektywna_spin.setFixedWidth(86)
+        form_layout.addRow("Szerokość efektywna arkusza:", self._spin_with_unit(self.szerokosc_efektywna_spin))
 
         self.min_dlugosc_spin = QSpinBox()
         self.min_dlugosc_spin.setRange(0, 9999)
-        self.min_dlugosc_spin.setSuffix(" cm")
-        form_layout.addRow("Minimalna długość arkusza:", self.min_dlugosc_spin)
+        self.min_dlugosc_spin.setFixedWidth(86)
+        form_layout.addRow("Minimalna długość arkusza:", self._spin_with_unit(self.min_dlugosc_spin))
 
         self.max_dlugosc_spin = QSpinBox()
         self.max_dlugosc_spin.setRange(0, 9999)
         self.max_dlugosc_spin.setValue(900)
-        self.max_dlugosc_spin.setSuffix(" cm")
-        form_layout.addRow("Maksymalna długość arkusza:", self.max_dlugosc_spin)
+        self.max_dlugosc_spin.setFixedWidth(86)
+        form_layout.addRow("Maksymalna długość arkusza:", self._spin_with_unit(self.max_dlugosc_spin))
 
         layout.addLayout(form_layout)
 
         button_box = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Ok
         )
+        localize_button_box(button_box)
         button_box.rejected.connect(self.reject)
         button_box.accepted.connect(self._accept_if_valid)
         layout.addWidget(button_box)
+
+    @staticmethod
+    def _spin_with_unit(spin: QSpinBox) -> QWidget:
+        row = QWidget(spin.parentWidget())
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+        layout.addWidget(spin)
+        layout.addWidget(QLabel("cm", row))
+        layout.addStretch(1)
+        return row
 
     def _load_values(self) -> None:
         material = self.material_data
         if material is None:
             return
 
-        self.id_edit.setText(material.id)
         self.nazwa_edit.setText(material.display_name)
         self.szerokosc_efektywna_spin.setValue(round(material.effective_width_cm))
         self.min_dlugosc_spin.setValue(round(material.min_sheet_length_cm))
         self.max_dlugosc_spin.setValue(round(material.max_sheet_length_cm))
 
     def _accept_if_valid(self) -> None:
-        if not self.id_edit.text().strip():
-            QMessageBox.warning(self, "Brak id", "Id materiału nie może być puste")
-            return
         if not self.nazwa_edit.text().strip():
-            QMessageBox.warning(self, "Brak nazwy", "Nazwa materiału nie może być pusta")
+            show_warning(self, "Brak nazwy", "Nazwa materiału nie może być pusta")
             return
         if self.max_dlugosc_spin.value() < self.min_dlugosc_spin.value():
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Nieprawidłowy zakres",
                 "Maksymalna długość arkusza nie może być mniejsza od minimalnej",
@@ -217,9 +220,10 @@ class DaneBlachyDialog(QDialog):
         self.accept()
 
     def get_values(self) -> Material:
+        name = self.nazwa_edit.text().strip()
         return Material(
-            id=self.id_edit.text().strip(),
-            display_name=self.nazwa_edit.text().strip(),
+            id=name,
+            display_name=name,
             type="trapezowa",
             effective_width_cm=self.szerokosc_efektywna_spin.value(),
             min_sheet_length_cm=self.min_dlugosc_spin.value(),

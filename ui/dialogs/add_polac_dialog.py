@@ -36,6 +36,7 @@ from ui.dialogs.add_polac_catalog import (
     merge_add_polac_dialog_cache,
     seed_add_polac_dialog_cache,
 )
+from ui.dialogs.button_text import localize_button_box
 
 
 @dataclass(slots=True)
@@ -291,6 +292,7 @@ class AddPolacDialog(QDialog):
         self.cutout_buttons: dict[str, QToolButton] = {}
         self.shape_form_fields: dict[str, QSpinBox] = {}
         self.cutout_form_fields: dict[str, QSpinBox] = {}
+        self.cutout_position_fields: dict[str, QSpinBox] = {}
         self.cutout_position_sliders: dict[str, QSlider] = {}
         self._focused_shape_field_key: str | None = None
 
@@ -316,6 +318,7 @@ class AddPolacDialog(QDialog):
         self.button_box = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Ok
         )
+        localize_button_box(self.button_box)
         self.back_button = self.button_box.addButton(
             "Wstecz", QDialogButtonBox.ButtonRole.ActionRole
         )
@@ -522,6 +525,7 @@ class AddPolacDialog(QDialog):
 
     def _rebuild_cutout_form(self, cutout_key: str) -> None:
         self.cutout_form_fields = {}
+        self.cutout_position_fields = {}
         self.cutout_position_sliders = {}
         self._clear_layout(self.cutout_form_host_layout)
 
@@ -540,30 +544,62 @@ class AddPolacDialog(QDialog):
             spin = self._build_spin_box(form_group, field.max_value, values[field.key])
             spin.valueChanged.connect(self._on_cutout_value_changed)
             self.cutout_form_fields[field.key] = spin
-            form_layout.addRow(field.label, spin)
+            form_layout.addRow(field.label, self._value_row_widget(form_group, spin))
         for key in ("X", "Y"):
-            slider = self._build_position_slider(form_group, values.get(key, 50))
+            spin = self._build_position_spin_box(form_group, key, values.get(key, 0))
+            slider = self._build_position_slider(form_group, values.get(key, 0))
+            spin.valueChanged.connect(self._on_cutout_value_changed)
             slider.valueChanged.connect(self._on_cutout_value_changed)
+            self.cutout_position_fields[key] = spin
             self.cutout_position_sliders[key] = slider
-            form_layout.addRow(f"{key}:", slider)
+            form_layout.addRow(f"{key}:", self._position_row_widget(form_group, spin, slider))
         self.cutout_form_host_layout.addWidget(form_group)
         self.cutout_form_host_layout.addStretch(1)
+        self._update_cutout_position_ranges()
 
     def _build_spin_box(self, parent: QWidget, max_value: int, value: int) -> QSpinBox:
         spin = QSpinBox(parent)
         spin.setRange(1, max_value)
-        spin.setSuffix(" cm")
         spin.setValue(value)
+        spin.setFixedWidth(86)
         spin.installEventFilter(self)
+        return spin
+
+    def _build_position_spin_box(self, parent: QWidget, key: str, value: int) -> QSpinBox:
+        spin = QSpinBox(parent)
+        spin.setRange(0, 9999)
+        spin.setValue(max(0, int(value)))
+        spin.setFixedWidth(86)
+        spin.setToolTip(f"{key} lewego dolnego rogu wycinka")
         return spin
 
     def _build_position_slider(self, parent: QWidget, value: int) -> QSlider:
         slider = QSlider(Qt.Orientation.Horizontal, parent)
-        slider.setRange(0, 100)
+        slider.setRange(0, 9999)
         slider.setSingleStep(1)
         slider.setPageStep(5)
-        slider.setValue(max(0, min(100, int(value))))
+        slider.setValue(max(0, int(value)))
         return slider
+
+    def _value_row_widget(self, parent: QWidget, spin: QSpinBox) -> QWidget:
+        row = QWidget(parent)
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+        layout.addWidget(spin)
+        layout.addWidget(QLabel("cm", row))
+        layout.addStretch(1)
+        return row
+
+    def _position_row_widget(self, parent: QWidget, spin: QSpinBox, slider: QSlider) -> QWidget:
+        row = QWidget(parent)
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+        layout.addWidget(spin)
+        layout.addWidget(QLabel("cm", row))
+        layout.addWidget(slider, 1)
+        return row
 
     def eventFilter(self, watched, event) -> bool:
         if event.type() in (QEvent.Type.FocusIn, QEvent.Type.FocusOut):
@@ -578,9 +614,12 @@ class AddPolacDialog(QDialog):
         return super().eventFilter(watched, event)
 
     def _on_shape_value_changed(self) -> None:
+        self._update_cutout_position_ranges()
         self._refresh_shape_preview()
 
     def _on_cutout_value_changed(self) -> None:
+        self._sync_cutout_position_controls()
+        self._update_cutout_position_ranges()
         self._refresh_cutout_preview()
 
     def _store_current_shape_values(self) -> None:
@@ -599,9 +638,61 @@ class AddPolacDialog(QDialog):
     def _current_cutout_values(self) -> dict:
         values = {key: field.value() for key, field in self.cutout_form_fields.items()}
         values.update(
-            {key: slider.value() for key, slider in self.cutout_position_sliders.items()}
+            {key: field.value() for key, field in self.cutout_position_fields.items()}
         )
         return values
+
+    def _sync_cutout_position_controls(self) -> None:
+        sender = self.sender()
+        if sender in self.cutout_position_fields.values():
+            for key, field in self.cutout_position_fields.items():
+                if sender is field:
+                    slider = self.cutout_position_sliders[key]
+                    if slider.value() != field.value():
+                        slider.blockSignals(True)
+                        slider.setValue(field.value())
+                        slider.blockSignals(False)
+                    return
+        if sender in self.cutout_position_sliders.values():
+            for key, slider in self.cutout_position_sliders.items():
+                if sender is slider:
+                    field = self.cutout_position_fields[key]
+                    if field.value() != slider.value():
+                        field.blockSignals(True)
+                        field.setValue(slider.value())
+                        field.blockSignals(False)
+                    return
+
+    def _update_cutout_position_ranges(self) -> None:
+        if not self.cutout_position_fields or not self.cutout_form_fields:
+            return
+        outline_bounds = self._current_outline().bounds()
+        values = {key: field.value() for key, field in self.cutout_form_fields.items()}
+        width_cm, height_cm = self._cutout_size(values)
+        ranges = {
+            "X": max(0, int(round(outline_bounds.width - width_cm))),
+            "Y": max(0, int(round(outline_bounds.height - height_cm))),
+        }
+        for key, field in self.cutout_position_fields.items():
+            current = field.value()
+            slider = self.cutout_position_sliders[key]
+            field.blockSignals(True)
+            slider.blockSignals(True)
+            field.setRange(0, ranges[key])
+            field.setValue(min(current, ranges[key]))
+            slider.setRange(0, ranges[key])
+            slider.setValue(field.value())
+            field.blockSignals(False)
+            slider.blockSignals(False)
+
+    def _cutout_size(self, values: dict) -> tuple[float, float]:
+        if self.selected_cutout_kind == "lukarna1":
+            return float(values["A"]), float(values["H1"])
+        if self.selected_cutout_kind == "lukarna2":
+            return float(values["A"]), float(values["H"])
+        if self.selected_cutout_kind == "lukarna3":
+            return float(values["A"]), float(values["H"])
+        return 0.0, 0.0
 
     def _current_outline(self) -> Polygon2D:
         outline = build_add_polac_outline(self.selected_shape_key, self._current_shape_values())

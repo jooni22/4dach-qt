@@ -61,7 +61,8 @@ from core.models import Bounds2D, Point2D, Polygon2D
 from core.rounding import ceil_cm
 from ui.canvas import sheet_geometry, snap_helpers
 from ui.canvas.sheet_geometry import SheetRenderItem as _SheetRenderItem
-from ui.canvas.snap_helpers import DrawSnapState as _DrawSnapState, InferenceLine as _InferenceLine
+from ui.canvas.snap_helpers import DrawSnapState as _DrawSnapState
+from ui.canvas.snap_helpers import InferenceLine as _InferenceLine
 
 SNAP_RADIUS = 10
 VERTEX_HANDLE_RADIUS = 6
@@ -337,10 +338,6 @@ class _DrawingCanvasInteractionMixin:
         return None
 
     def _hit_test_hole_edge_midpoint(self, pos: QPointF, mapper: CanvasMapper) -> tuple[int, int] | None:
-        for hole_index, hole in enumerate(self.display_holes()):
-            edge_index = self._hit_test_edge_midpoint(pos, mapper, hole)
-            if edge_index is not None:
-                return hole_index, edge_index
         return None
 
     def _set_active_midpoint_handle(
@@ -2348,9 +2345,9 @@ class _DrawingCanvasPaintingMixin:
         painter.setFont(font)
         metrics = QFontMetricsF(font)
         viewport = self.rect().adjusted(6, 6, -6, -6)
-        label_border = QColor(166, 226, 240, 80)
-        label_text_color = QColor(225, 241, 245, 190)
-        label_background = QColor(10, 18, 24, 136)
+        label_border = QColor(166, 226, 240, 150)
+        label_text_color = QColor(255, 255, 255, 245)
+        label_background = QColor(10, 18, 24, 215)
 
         span = overlay.horizontal_span
         raw_start = mapper.map_point(span.start)
@@ -2395,6 +2392,8 @@ class _DrawingCanvasPaintingMixin:
             label_rect,
             span.label_text,
             text_color=QColor(label_text_color),
+            background_color=QColor(label_background),
+            border_color=QColor(label_border),
             font_point_size=self._scaled_font_point_size(7, minimum=9),
         )
 
@@ -2570,17 +2569,6 @@ class _DrawingCanvasPaintingMixin:
             outline_color,
             active_edge_index=self._active_edge_index,
         )
-        for hole_index, hole in enumerate(holes):
-            active_edge_index = None
-            if self._active_hole_edge is not None and self._active_hole_edge[0] == hole_index:
-                active_edge_index = self._active_hole_edge[1]
-            self._draw_midpoint_handles(
-                painter,
-                mapper,
-                hole,
-                selected_hole_color if hole_index == self._selected_hole_index else hole_color,
-                active_edge_index=active_edge_index,
-            )
         if self._plane_selected:
             self._draw_vertex_handles(
                 painter,
@@ -2662,6 +2650,14 @@ class _DrawingCanvasPaintingMixin:
         hole_index: int | None = None,
     ) -> None:
         is_light = self.palette().color(QPalette.ColorRole.Base).lightness() > 128
+        if is_light:
+            badge_text = QColor(200, 45, 45)
+            badge_background = QColor(255, 255, 255, 235)
+            badge_border = QColor(200, 45, 45, 140)
+        else:
+            badge_text = QColor(245, 247, 250)
+            badge_background = QColor(25, 30, 38, 235)
+            badge_border = QColor(141, 199, 255, 180)
         guide_pen = QPen(outline_color)
         guide_pen.setStyle(Qt.PenStyle.DotLine)
         guide_pen.setWidthF(1.0)
@@ -2701,9 +2697,9 @@ class _DrawingCanvasPaintingMixin:
                 painter,
                 label_rect,
                 self._format_edge_length(length_cm),
-                text_color=QColor(200, 45, 45) if is_light else text_color,
-                background_color=QColor(255, 255, 255, 235),
-                border_color=QColor(200, 45, 45, 140),
+                text_color=badge_text,
+                background_color=badge_background,
+                border_color=badge_border,
                 font_point_size=self._scaled_font_point_size(max(font.pointSize(), 8), minimum=9),
             )
 
