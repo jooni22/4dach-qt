@@ -373,10 +373,12 @@ def test_project_manager_report_button_state_follows_report_file(qtbot, tmp_path
     qtbot.addWidget(dialog)
 
     assert dialog._report_button.isEnabled() is True
+    assert dialog._report_button.toolTip() == "Otwórz ostatnio wygenerowany raport HTML."
 
     dialog._project_list.setCurrentRow(1)
 
     assert dialog._report_button.isEnabled() is False
+    assert dialog._report_button.toolTip() == "Brak zapisanego raportu dla tego projektu."
 
 
 def test_project_manager_report_button_opens_existing_report(qtbot, monkeypatch, tmp_path):

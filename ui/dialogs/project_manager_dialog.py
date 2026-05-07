@@ -239,7 +239,7 @@ class ProjectManagerDialog(QDialog):
         details_form.addRow("Notatki:", self._details_notes_value)
         details_layout.addLayout(details_form)
         self._report_button = QPushButton("Raport", details_panel)
-        self._report_button.setEnabled(False)
+        self._set_report_button_enabled(False)
         self._report_button.clicked.connect(self._open_selected_report)
         details_layout.addWidget(self._report_button)
         details_layout.addStretch(1)
@@ -307,6 +307,14 @@ class ProjectManagerDialog(QDialog):
     def _set_detail_label(self, label: QLabel, value: str) -> None:
         label.setText(value or "-")
 
+    def _set_report_button_enabled(self, enabled: bool) -> None:
+        self._report_button.setEnabled(enabled)
+        self._report_button.setToolTip(
+            "Otwórz ostatnio wygenerowany raport HTML."
+            if enabled
+            else "Brak zapisanego raportu dla tego projektu."
+        )
+
     def _clear_project_details(self) -> None:
         if self.mode in {Mode.NEW, Mode.SAVE_AS}:
             return
@@ -322,7 +330,7 @@ class ProjectManagerDialog(QDialog):
             self._details_notes_value,
         ):
             label.setText("-")
-        self._report_button.setEnabled(False)
+        self._set_report_button_enabled(False)
 
     def _update_project_details(self, project: ProjectMeta | None) -> None:
         if self.mode in {Mode.NEW, Mode.SAVE_AS}:
@@ -339,7 +347,7 @@ class ProjectManagerDialog(QDialog):
         self._set_detail_label(self._details_roof_plane_count_value, str(project.roof_plane_count))
         self._set_detail_label(self._details_net_area_value, f"{project.net_area_m2:.2f} m²")
         self._set_detail_label(self._details_notes_value, project.notes)
-        self._report_button.setEnabled(project.has_report)
+        self._set_report_button_enabled(project.has_report)
 
     def _on_current_item_changed(self, current: QListWidgetItem | None, _previous: QListWidgetItem | None) -> None:
         project = current.data(Qt.ItemDataRole.UserRole) if current is not None else None
