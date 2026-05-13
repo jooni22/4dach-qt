@@ -33,6 +33,7 @@ dev = [
     "pytest-qt>=4.5.0",
     "ruff>=0.15.12",
     "vulture>=2.16",
+    "inference-sdk>=1.2.7",
 ]
 
 # === Ruff: all-in-one linter & formatter ===================================

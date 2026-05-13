@@ -1,4 +1,4 @@
-.PHONY: test test-ui test-unit test-review test-expectations run lint clean install help
+.PHONY: test test-ui test-unit test-review test-expectations run roboflow-project lint clean install help
 
 # Domyślny target
 .DEFAULT_GOAL := help
@@ -7,6 +7,10 @@
 PYTHON := uv run python3
 UV := uv
 PYTEST := uv run pytest
+ROBOFLOW_IMAGE ?= inference-roboflow/1.jpg
+ROBOFLOW_OUTPUT ?=
+ROBOFLOW_SIMPLIFY_TOLERANCE ?= 2.0
+ROBOFLOW_EXTRA_ARGS ?=
 
 # Target: help - wyświetla dostępne targety
 help:
@@ -17,6 +21,7 @@ help:
 	@echo "  make test-review      - pokazuje oczekiwania testów i uruchamia wszystkie testy"
 	@echo "  make test-expectations - pokazuje tylko oczekiwane dane/wyniki wszystkich testów"
 	@echo "  make run              - uruchamia aplikację"
+	@echo "  make roboflow-project - uruchamia Roboflow dla obrazu i zapisuje projekt .4dach"
 	@echo "  make lint             - uruchamia lintowanie (jeśli dostępne)"
 	@echo "  make clean            - czyści pliki tymczasowe i cache"
 	@echo "  make install          - instaluje zależności"
@@ -51,6 +56,11 @@ test-expectations:
 run:
 	@echo "Uruchamianie aplikacji..."
 	$(PYTHON) __main__.py
+
+# Target: roboflow-project - uruchamia inferencję Roboflow i zapisuje projekt .4dach
+roboflow-project:
+	@echo "Uruchamianie Roboflow -> projekt 4dach..."
+	$(UV) run --no-project --with-requirements inference-roboflow/requirements.txt python inference-roboflow/infer_roboflow_svg.py "$(ROBOFLOW_IMAGE)" --simplify-tolerance "$(ROBOFLOW_SIMPLIFY_TOLERANCE)" $(if $(ROBOFLOW_OUTPUT),--output "$(ROBOFLOW_OUTPUT)",) $(ROBOFLOW_EXTRA_ARGS)
 
 # Target: lint - uruchamia lintowanie
 lint:
