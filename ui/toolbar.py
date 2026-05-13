@@ -156,6 +156,14 @@ class ToolbarController:
         self.action_base_point_toggle = self._action("base_point_toggle")
         self.action_undo = self._action("undo")
 
+        for icon_kind, text, checkable, callback in surface_rows:
+            self._add_action(icon_kind, text, checkable=checkable, callback=callback)
+        tb.addSeparator()
+
+        self.action_new_surface = self._action("plus")
+        self.action_duplicate_surface = self._action("duplicate_surface")
+        self.action_trash = self._action("trash")
+
         self.variant_combo = MaterialComboBox(self._win)
         self.variant_combo.setObjectName("variant_combo")
         tb.addWidget(self.variant_combo)
@@ -178,11 +186,3 @@ class ToolbarController:
         self.action_snap_to_grid = self._action("snap_to_grid")
         self.action_from_left = self._action("from_left")
         self.action_from_right = self._action("from_right")
-        tb.addSeparator()
-
-        for icon_kind, text, checkable, callback in surface_rows:
-            self._add_action(icon_kind, text, checkable=checkable, callback=callback)
-
-        self.action_new_surface = self._action("plus")
-        self.action_duplicate_surface = self._action("duplicate_surface")
-        self.action_trash = self._action("trash")

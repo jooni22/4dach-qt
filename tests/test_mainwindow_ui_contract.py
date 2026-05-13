@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from app_icons import _ICON_SVGS
 from core.app_settings import AppSettings
 from core.geometry import build_rectangle_outline
 from core.models import Material, Point2D, Polygon2D
@@ -180,6 +181,10 @@ def test_mainwindow_toolbar_orders_actions_and_material_combo_after_draw_tools(q
         "Ustaw punkt zerowy",
         "Cofnij",
         "|",
+        "Nowa połać",
+        "Duplikuj połać",
+        "Usuń zaznaczone (Del)",
+        "|",
         "combo",
         "|",
         "Pokaż arkusze",
@@ -187,11 +192,13 @@ def test_mainwindow_toolbar_orders_actions_and_material_combo_after_draw_tools(q
         "Przyciągaj do siatki",
         "Układaj od lewej",
         "Od prawej",
-        "|",
-        "Nowa połać",
-        "Duplikuj połać",
-        "Usuń zaznaczone (Del)",
     ]
+
+
+def test_mainwindow_toolbar_cutout_icon_is_distinct_from_outline_icon():
+    assert _ICON_SVGS["roof_cutout"] != _ICON_SVGS["roof_outline"]
+    assert 'id="roof-cutout"' in _ICON_SVGS["roof_cutout"]
+    assert "<rect" in _ICON_SVGS["roof_cutout"]
 
 
 def test_mainwindow_toolbar_draw_actions_start_modes_and_sync_checked_state(qtbot):
