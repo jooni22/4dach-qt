@@ -641,7 +641,7 @@ def _build_preview_svg(preview: PlanePreview, width: int = 840, height: int = 38
     min_y, max_y = min(ys), max(ys)
     domain_width = max(max_x - min_x, 1.0)
     domain_height = max(max_y - min_y, 1.0)
-    margin = 24.0
+    margin = 52.0
     scale = min((width - 2 * margin) / domain_width, (height - 2 * margin) / domain_height)
     offset_x = margin + ((width - 2 * margin) - domain_width * scale) / 2.0
     offset_y = margin + ((height - 2 * margin) - domain_height * scale) / 2.0
@@ -712,6 +712,8 @@ def _outline_length_label_svg(
     point_count = len(outline_points)
     if point_count < 2:
         return parts
+    center_x, center_y = map_point(*_polygon_centroid(list(outline_points)))
+    label_offset_px = 18.0
     for index, start in enumerate(outline_points):
         end = outline_points[(index + 1) % point_count]
         start_x, start_y = start
@@ -719,9 +721,24 @@ def _outline_length_label_svg(
         length_cm = ((end_x - start_x) ** 2 + (end_y - start_y) ** 2) ** 0.5
         if length_cm <= 0:
             continue
-        label_x = (start_x + end_x) / 2.0
-        label_y = (start_y + end_y) / 2.0
-        mapped_label_x, mapped_label_y = map_point(label_x, label_y)
+        mapped_start_x, mapped_start_y = map_point(start_x, start_y)
+        mapped_end_x, mapped_end_y = map_point(end_x, end_y)
+        edge_dx = mapped_end_x - mapped_start_x
+        edge_dy = mapped_end_y - mapped_start_y
+        edge_length_px = (edge_dx**2 + edge_dy**2) ** 0.5
+        if edge_length_px <= 0:
+            continue
+        mapped_label_x = (mapped_start_x + mapped_end_x) / 2.0
+        mapped_label_y = (mapped_start_y + mapped_end_y) / 2.0
+        normal_x = -edge_dy / edge_length_px
+        normal_y = edge_dx / edge_length_px
+        outward_x = mapped_label_x - center_x
+        outward_y = mapped_label_y - center_y
+        if normal_x * outward_x + normal_y * outward_y < 0:
+            normal_x = -normal_x
+            normal_y = -normal_y
+        mapped_label_x += normal_x * label_offset_px
+        mapped_label_y += normal_y * label_offset_px
         parts.append(
             f'<text class="outline-length-label" x="{mapped_label_x:.2f}" y="{mapped_label_y:.2f}"'
             ' font-size="12" font-weight="700" text-anchor="middle" dominant-baseline="middle"'

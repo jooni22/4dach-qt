@@ -219,9 +219,15 @@ class MainWindow(QMainWindow):
 
         ksztalt = mb.addMenu("Kształt")
         ksztalt.addAction(act("Kreator połaci...", None, self._dlg_add_polac))
+        self.action_menu_draw_outline = act("Rysuj połać", None, self._start_draw_outline)
+        self.action_menu_draw_outline.setCheckable(True)
+        ksztalt.addAction(self.action_menu_draw_outline)
 
         wyc = mb.addMenu("Wycinki")
         wyc.addAction(act("Dodaj prostokątny wycinek...", None, self._dlg_add_hole))
+        self.action_menu_draw_cutout = act("Rysuj wycinek", None, self._start_draw_cutout)
+        self.action_menu_draw_cutout.setCheckable(True)
+        wyc.addAction(self.action_menu_draw_cutout)
 
         kat = mb.addMenu("Katalog")
         kat.addAction(act("Blachy...", None, self._dlg_blachy))
@@ -523,6 +529,13 @@ class MainWindow(QMainWindow):
             self._tb_ctrl.action_draw_cutout.setChecked(mode == DrawingCanvas.MODE_DRAW_CUT)
             self._tb_ctrl.action_draw_outline.blockSignals(False)
             self._tb_ctrl.action_draw_cutout.blockSignals(False)
+        if hasattr(self, "action_menu_draw_outline"):
+            self.action_menu_draw_outline.blockSignals(True)
+            self.action_menu_draw_cutout.blockSignals(True)
+            self.action_menu_draw_outline.setChecked(mode == DrawingCanvas.MODE_DRAW_PLANE)
+            self.action_menu_draw_cutout.setChecked(mode == DrawingCanvas.MODE_DRAW_CUT)
+            self.action_menu_draw_outline.blockSignals(False)
+            self.action_menu_draw_cutout.blockSignals(False)
 
     def _active_canvas_mode(self) -> str:
         canvas = getattr(self, "primary_canvas", None)
@@ -1365,6 +1378,7 @@ class MainWindow(QMainWindow):
 
     def _start_draw_cutout(self) -> None:
         if self._active_with_outline_or_warn() is None:
+            self._set_mode_indicator(self._active_canvas_mode())
             return
         self._begin_polygon_capture(mode=DrawingCanvas.MODE_DRAW_CUT, handler=self._on_cutout_closed)
 

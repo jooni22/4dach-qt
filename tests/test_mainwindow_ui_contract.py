@@ -33,6 +33,18 @@ from ui.dialogs.settings_dialog import SettingsDialog
 from ui.drawing_canvas import CommittedOutlineEdit
 
 
+def _menu_action(window: MainWindow, menu_title: str, action_text: str):
+    for top_level_action in window.menuBar().actions():
+        if top_level_action.text() != menu_title:
+            continue
+        menu = top_level_action.menu()
+        assert isinstance(menu, QMenu)
+        for action in menu.actions():
+            if action.text() == action_text:
+                return action
+    raise AssertionError(f"Menu action not found: {menu_title} > {action_text}")
+
+
 def _accepted_project_dialog(*, selected_path: Path, project_name: str = "Projekt", project_meta: dict | None = None):
     class FakeProjectManagerDialog:
         def __init__(self, *, mode, projects_dir, default_name="Nowy projekt", parent=None) -> None:
@@ -137,8 +149,8 @@ def test_mainwindow_exposes_expected_ui_contract(qtbot):
     sheets_actions = [action.text() for action in sheets_menu.actions() if not action.isSeparator()]
 
     assert menu_titles == ["Plik", "Kształt", "Wycinki", "Katalog", "Arkusze", "Ustawienia"]
-    assert shape_actions == ["Kreator połaci..."]
-    assert cutout_actions == ["Dodaj prostokątny wycinek..."]
+    assert shape_actions == ["Kreator połaci...", "Rysuj połać"]
+    assert cutout_actions == ["Dodaj prostokątny wycinek...", "Rysuj wycinek"]
     assert window.workspace_tabs.count() >= 2
     assert window.variant_combo.count() >= 1
     assert window.variant_combo.currentText() == "PD510"
@@ -207,21 +219,59 @@ def test_mainwindow_toolbar_draw_actions_start_modes_and_sync_checked_state(qtbo
 
     plane = window.project_state.add_roof_plane(build_rectangle_outline(320, 180), selected_material_id="PD510")
     window._refresh_canvas_from_state()
+    draw_outline_menu_action = _menu_action(window, "Kształt", "Rysuj połać")
+    draw_cutout_menu_action = _menu_action(window, "Wycinki", "Rysuj wycinek")
 
     window._tb_ctrl.action_draw_outline.trigger()
     assert window.primary_canvas.mode() == window.primary_canvas.MODE_DRAW_PLANE
     assert window._tb_ctrl.action_draw_outline.isChecked() is True
     assert window._tb_ctrl.action_draw_cutout.isChecked() is False
+    assert draw_outline_menu_action.isChecked() is True
+    assert draw_cutout_menu_action.isChecked() is False
 
     window._tb_ctrl.action_draw_cutout.trigger()
     assert window.primary_canvas.roof_plane is plane
     assert window.primary_canvas.mode() == window.primary_canvas.MODE_DRAW_CUT
     assert window._tb_ctrl.action_draw_outline.isChecked() is False
     assert window._tb_ctrl.action_draw_cutout.isChecked() is True
+    assert draw_outline_menu_action.isChecked() is False
+    assert draw_cutout_menu_action.isChecked() is True
+
+    draw_outline_menu_action.trigger()
+    assert window.primary_canvas.mode() == window.primary_canvas.MODE_DRAW_PLANE
+    assert window._tb_ctrl.action_draw_outline.isChecked() is True
+    assert window._tb_ctrl.action_draw_cutout.isChecked() is False
+    assert draw_outline_menu_action.isChecked() is True
+    assert draw_cutout_menu_action.isChecked() is False
+
+    draw_cutout_menu_action.trigger()
+    assert window.primary_canvas.mode() == window.primary_canvas.MODE_DRAW_CUT
+    assert window._tb_ctrl.action_draw_outline.isChecked() is False
+    assert window._tb_ctrl.action_draw_cutout.isChecked() is True
+    assert draw_outline_menu_action.isChecked() is False
+    assert draw_cutout_menu_action.isChecked() is True
 
     window.primary_canvas.set_mode(window.primary_canvas.MODE_IDLE)
     assert window._tb_ctrl.action_draw_outline.isChecked() is False
     assert window._tb_ctrl.action_draw_cutout.isChecked() is False
+    assert draw_outline_menu_action.isChecked() is False
+    assert draw_cutout_menu_action.isChecked() is False
+
+
+def test_mainwindow_draw_cutout_menu_action_resets_checked_state_without_outline(qtbot, monkeypatch):
+    monkeypatch.setattr("ui.main_window.show_information", lambda *args, **kwargs: None)
+    window = MainWindow(auto_startup=False)
+    qtbot.addWidget(window)
+    window.project_state.add_empty_roof_plane(selected_material_id="PD510")
+    window._refresh_canvas_from_state()
+    draw_cutout_menu_action = _menu_action(window, "Wycinki", "Rysuj wycinek")
+
+    draw_cutout_menu_action.trigger()
+
+    assert window.primary_canvas.mode() == window.primary_canvas.MODE_IDLE
+    assert window._tb_ctrl.action_draw_outline.isChecked() is False
+    assert window._tb_ctrl.action_draw_cutout.isChecked() is False
+    assert draw_cutout_menu_action.isChecked() is False
 
 
 def test_mainwindow_material_combo_is_non_editable_and_draws_own_chevron(qtbot):
@@ -1058,7 +1108,7 @@ def test_mainwindow_toolbar_grid_toggle_updates_canvas_grid_visibility_only(qtbo
     assert window.project_state.app_settings.snap_to_grid is True
 
 
-def test_mainwindow_cutout_menu_exposes_only_rectangular_cutout_action(qtbot):
+def test_mainwindow_cutout_menu_exposes_rectangular_and_draw_cutout_actions(qtbot):
     window = MainWindow(auto_startup=False)
     qtbot.addWidget(window)
     window.show()
@@ -1068,7 +1118,7 @@ def test_mainwindow_cutout_menu_exposes_only_rectangular_cutout_action(qtbot):
 
     assert isinstance(cutouts_menu, QMenu)
     cutout_actions = [action.text() for action in cutouts_menu.actions() if not action.isSeparator()]
-    assert cutout_actions == ["Dodaj prostokątny wycinek..."]
+    assert cutout_actions == ["Dodaj prostokątny wycinek...", "Rysuj wycinek"]
 
 
 def test_mainwindow_toolbar_sheet_toggle_switches_wireframe_mode_without_recalc(qtbot, monkeypatch):

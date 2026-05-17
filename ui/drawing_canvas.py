@@ -1259,19 +1259,17 @@ class _DrawingCanvasInteractionMixin:
             key = event.key()
             text = event.text()
 
-            if event.matches(QKeySequence.StandardKey.Undo):
-                if self.user_points:
-                    self._sketch_redo_points.append(self.user_points.pop())
-                    self.preview_point = self.user_points[-1] if self.user_points else None
-                    self.update()
-                    return
-            if event.matches(QKeySequence.StandardKey.Redo):
-                if self._sketch_redo_points:
-                    point = self._sketch_redo_points.pop()
-                    self.user_points.append(point)
-                    self.preview_point = point
-                    self.update()
-                    return
+            if event.matches(QKeySequence.StandardKey.Undo) and self.user_points:
+                self._sketch_redo_points.append(self.user_points.pop())
+                self.preview_point = self.user_points[-1] if self.user_points else None
+                self.update()
+                return
+            if event.matches(QKeySequence.StandardKey.Redo) and self._sketch_redo_points:
+                point = self._sketch_redo_points.pop()
+                self.user_points.append(point)
+                self.preview_point = point
+                self.update()
+                return
 
             if self.user_points and text and (text.isdigit() or text in (".", ",")):
                 self._start_inline_segment_editor(text)
@@ -1305,10 +1303,11 @@ class _DrawingCanvasInteractionMixin:
             ):
                 self._redo()
                 return
-            if event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
-                if self._plane_selected or self._selected_hole_index is not None:
-                    self.delete_requested.emit()
-                    return
+            if event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace) and (
+                self._plane_selected or self._selected_hole_index is not None
+            ):
+                self.delete_requested.emit()
+                return
             if event.key() == Qt.Key.Key_Escape and self._dragging_origin:
                 self._cancel_origin_drag()
                 return
@@ -3362,7 +3361,22 @@ class DrawingCanvas(
             return None
         if self._drag_mapper is not None:
             return self._drag_mapper
-        return self.build_view_mapper(outline.bounds(), QRectF(self.rect()))
+        return self.build_view_mapper(self._view_bounds(outline), QRectF(self.rect()))
+
+    def _view_bounds(self, outline: Polygon2D) -> Bounds2D:
+        bounds = outline.bounds()
+        min_x = bounds.min_x
+        min_y = bounds.min_y
+        max_x = bounds.max_x
+        max_y = bounds.max_y
+        for item in self._sheet_render_items():
+            for polygon in item.polygons:
+                polygon_bounds = polygon.bounds()
+                min_x = min(min_x, polygon_bounds.min_x)
+                min_y = min(min_y, polygon_bounds.min_y)
+                max_x = max(max_x, polygon_bounds.max_x)
+                max_y = max(max_y, polygon_bounds.max_y)
+        return Bounds2D(min_x, min_y, max_x, max_y)
 
     def _active_mapper(self) -> CanvasMapper | None:
         if self._mode == self.MODE_DRAW_OUTLINE:
@@ -3594,9 +3608,7 @@ class DrawingCanvas(
             return True
         if not self.snap_to_grid_enabled():
             return False
-        if self._shift_free_move_active(effective_modifiers):
-            return False
-        return True
+        return not self._shift_free_move_active(effective_modifiers)
 
     def _snap_domain_point(
         self,

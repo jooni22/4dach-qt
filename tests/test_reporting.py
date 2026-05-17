@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from core.layout_engine import generate_layout
 from core.models import Material, Polygon2D, SheetPlacement, almost_equal
 from core.project_state import ProjectState
@@ -72,6 +74,31 @@ def test_build_report_includes_layout_warnings_and_rejected_segments():
     assert "Pominięto 3" in report.warnings[0]
 
 
+def test_build_report_counts_full_width_edge_sheets_in_bom_area():
+    material = Material(
+        id="TEST",
+        nazwa="TEST",
+        type="trapezowa",
+        effective_width_cm=50,
+        module_length_cm=0,
+        bottom_margin_cm=0,
+        top_margin_cm=0,
+        min_sheet_length_cm=1,
+        max_sheet_length_cm=500,
+    )
+    state = ProjectState(materials=[material])
+    plane = state.add_roof_plane(Polygon2D.rectangle(120, 200), selected_material_id=material.id)
+
+    layout_result = generate_layout(plane, material)
+    report = build_report(state, layout_result, material.id, plane.id)
+
+    assert [placement.width_cm for placement in layout_result.placements] == [50.0, 50.0, 50.0]
+    assert almost_equal(report.gross_sheet_area_m2, 3.0)
+    assert [(row.sheet_length_cm, row.quantity, row.total_area_m2) for row in report.bom_rows] == [
+        (200, 3, 3.0),
+    ]
+
+
 def test_build_report_html_contains_summary_bom_and_warnings():
     material = Material(
         id="TEST",
@@ -122,6 +149,53 @@ def test_build_report_html_contains_svg_with_sheet_polygons():
     assert "Ostrzeżenia" in html
 
 
+def test_build_report_html_preview_draws_full_width_edge_sheet():
+    material = Material(
+        id="MAT1",
+        nazwa="Material 1",
+        type="trapezowa",
+        effective_width_cm=50,
+        module_length_cm=0,
+        bottom_margin_cm=0,
+        top_margin_cm=0,
+        min_sheet_length_cm=1,
+        max_sheet_length_cm=500,
+    )
+    state = ProjectState(materials=[material])
+    plane = state.add_roof_plane(Polygon2D.rectangle(120, 200), selected_material_id=material.id)
+    layout_result = generate_layout(plane, material)
+    plane.auto_sheet_placements = list(layout_result.placements)
+    plane.layout_bands = [band.to_dict() for band in layout_result.bands]
+    report = build_report(state, layout_result, material.id, plane.id)
+
+    html = build_report_html(state, report, material.id, plane.id)
+
+    assert layout_result.placements[-1].x_right_cm == 150.0
+    assert 'class="sheet-length-label"' in html
+    assert html.count('fill="#93c5fd"') >= 3
+
+    outline_match = re.search(
+        r'<polygon points="(?P<points>[^"]+)" fill="#eff6ff" stroke="#0f172a"',
+        html,
+    )
+    sheet_matches = re.findall(
+        r'<polygon points="(?P<points>[^"]+)" fill="#93c5fd" stroke="#1e293b"',
+        html,
+    )
+    assert outline_match is not None
+    assert sheet_matches
+    outline_max_x = max(
+        float(point.split(",")[0])
+        for point in outline_match.group("points").split()
+    )
+    sheet_max_x = max(
+        float(point.split(",")[0])
+        for points in sheet_matches
+        for point in points.split()
+    )
+    assert sheet_max_x > outline_max_x
+
+
 def test_build_report_html_labels_only_outer_outline_edges_in_preview_svg():
     material = Material(
         id="MAT1",
@@ -147,6 +221,33 @@ def test_build_report_html_labels_only_outer_outline_edges_in_preview_svg():
     assert ">200 cm</text>" in html
     assert ">50 cm</text>" not in html
     assert ">40 cm</text>" not in html
+
+    outline_match = re.search(
+        r'<polygon points="(?P<points>[^"]+)" fill="#eff6ff" stroke="#0f172a"',
+        html,
+    )
+    assert outline_match is not None
+    outline_points = [
+        tuple(float(value) for value in point.split(","))
+        for point in outline_match.group("points").split()
+    ]
+    xs = [point[0] for point in outline_points]
+    ys = [point[1] for point in outline_points]
+    min_x, max_x = min(xs), max(xs)
+    min_y, max_y = min(ys), max(ys)
+
+    label_matches = re.findall(
+        r'<text class="outline-length-label" x="(?P<x>[0-9.]+)" y="(?P<y>[0-9.]+)"'
+        r"[^>]*>(?P<label>[0-9]+ cm)</text>",
+        html,
+    )
+    labels = [(float(x), float(y), label) for x, y, label in label_matches]
+    assert len(labels) == 4
+
+    assert any(label == "300 cm" and y < min_y for _, y, label in labels)
+    assert any(label == "300 cm" and y > max_y for _, y, label in labels)
+    assert any(label == "200 cm" and x < min_x for x, _, label in labels)
+    assert any(label == "200 cm" and x > max_x for x, _, label in labels)
 
 
 def test_build_report_html_uses_readable_sheet_length_label_style():

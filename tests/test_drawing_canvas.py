@@ -1041,7 +1041,7 @@ def test_canvas_multi_step_freehand_draw_keeps_intermediate_points_until_close(q
 
     closed_points = [mapper.unmap_point(point) for point in blocker.args[0]]
     assert len(closed_points) == 3
-    for actual, expected in zip(closed_points, expected_points):
+    for actual, expected in zip(closed_points, expected_points, strict=False):
         assert actual.x == pytest.approx(expected.x, abs=1.0)
         assert actual.y == pytest.approx(expected.y, abs=1.0)
     assert canvas.user_points == []
@@ -1662,7 +1662,7 @@ def test_canvas_draws_vertex_axis_projections_before_outline(qtbot, monkeypatch)
     monkeypatch.setattr(canvas, "_draw_axis_indicator", lambda *args, **kwargs: None)
     monkeypatch.setattr(canvas, "_draw_edit_overlay", lambda *args, **kwargs: None)
 
-    original_draw_polygon = getattr(DrawingCanvas, "_draw_roof_plane")
+    original_draw_polygon = DrawingCanvas._draw_roof_plane
 
     def wrapped_draw_roof_plane(painter):
         calls.append("roof_start")
@@ -2236,6 +2236,35 @@ def test_canvas_render_items_follow_layout_direction_change(qtbot):
 
     assert left_items[0].polygons[0].bounds().min_x == pytest.approx(0.0)
     assert right_items[0].polygons[0].bounds().min_x == pytest.approx(70.0)
+    assert right_items[-1].polygons[0].bounds().min_x == pytest.approx(-30.0)
+
+
+def test_canvas_render_items_keep_full_width_for_edge_sheet(qtbot):
+    outline = Polygon2D.rectangle(120, 100)
+    plane = RoofPlane(id="plane-1", name="Edge", outline=outline)
+    canvas = _make_canvas(qtbot, outline)
+
+    _apply_layout(canvas, plane, _material())
+
+    edge_item = canvas._sheet_render_items()[-1]
+    edge_bounds = edge_item.polygons[0].bounds()
+
+    assert edge_bounds.min_x == pytest.approx(100.0)
+    assert edge_bounds.max_x == pytest.approx(150.0)
+    assert edge_bounds.width == pytest.approx(50.0)
+
+
+def test_canvas_mapper_includes_sheet_overhang_beyond_outline(qtbot):
+    outline = Polygon2D.rectangle(120, 100)
+    plane = RoofPlane(id="plane-1", name="Edge", outline=outline)
+    canvas = _make_canvas(qtbot, outline)
+
+    _apply_layout(canvas, plane, _material())
+
+    mapper = canvas._canvas_mapper()
+
+    assert mapper.bounds.min_x == pytest.approx(0.0)
+    assert mapper.bounds.max_x == pytest.approx(150.0)
 
 
 def test_canvas_partial_cutout_top_sheet_uses_final_length_for_visual_height(qtbot):
@@ -2328,7 +2357,7 @@ def test_canvas_updates_render_items_after_geometry_edit_and_relayout(qtbot):
     _apply_layout(canvas, plane, material)
     items = canvas._sheet_render_items()
     assert len(items) == 4
-    assert items[-1].polygons[0].bounds().max_x == pytest.approx(180.0)
+    assert items[-1].polygons[0].bounds().max_x == pytest.approx(200.0)
 
 
 def test_canvas_hides_sheet_rendering_in_wireframe_mode(qtbot):

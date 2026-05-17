@@ -4,7 +4,6 @@ import logging
 from dataclasses import dataclass, field
 
 from core.app_settings import AppSettings
-from core.rounding import ceil_cm
 from core.geometry import (
     canonicalize_polygon,
     polygon_edges,
@@ -14,6 +13,7 @@ from core.geometry import (
     vertical_segments_for_band,
 )
 from core.models import Material, Point2D, Polygon2D, RoofPlane, SheetPlacement
+from core.rounding import ceil_cm
 
 EPSILON = 1e-6
 logger = logging.getLogger(__name__)
@@ -577,14 +577,14 @@ def _iter_band_ranges(plane: RoofPlane, band_width_cm: float) -> list[tuple[floa
     if plane.generation_settings.layout_origin == "right":
         x_cursor = bounds.max_x
         while x_cursor > bounds.min_x + EPSILON:
-            x_left = max(bounds.min_x, x_cursor - band_width_cm)
+            x_left = x_cursor - band_width_cm
             bands.append((x_left, x_cursor))
             x_cursor -= band_width_cm
         return bands
 
     x_cursor = bounds.min_x
     while x_cursor < bounds.max_x - EPSILON:
-        x_right = min(bounds.max_x, x_cursor + band_width_cm)
+        x_right = x_cursor + band_width_cm
         bands.append((x_cursor, x_right))
         x_cursor += band_width_cm
     return bands
@@ -634,8 +634,8 @@ def _build_band_segments(plane: RoofPlane, band_index: int, x_left: float, x_rig
         band_segments.append(
             LayoutBandSegment(
                 segment_index=segment_index,
-                x_left_cm=min(piece.x_left_cm for piece in component),
-                x_right_cm=max(piece.x_right_cm for piece in component),
+                x_left_cm=x_left,
+                x_right_cm=x_right,
                 y_top_cm=y_top_cm,
                 y_bottom_cm=y_bottom_cm,
                 raw_length_cm=y_bottom_cm - y_top_cm,
@@ -651,7 +651,7 @@ def _band_pieces_for_range(plane: RoofPlane, x_left: float, x_right: float) -> l
     pieces: list[_BandPiece] = []
     piece_index = 0
 
-    for slab_index, (slab_left, slab_right) in enumerate(zip(x_positions, x_positions[1:])):
+    for slab_index, (slab_left, slab_right) in enumerate(zip(x_positions, x_positions[1:], strict=False)):
         slab_width = slab_right - slab_left
         if slab_width <= EPSILON:
             continue
@@ -996,7 +996,6 @@ def _band_shoulder_reference_y(
     if len(touched_bands) < 3:
         return None
 
-    tolerance_cm = 1e-6
     full_band_indices = [band_index for band_index, _, interaction in touched_bands if interaction == "full"]
     if not full_band_indices:
         return None

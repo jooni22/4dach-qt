@@ -29,13 +29,13 @@ def test_layout_engine_generates_deterministic_bands_for_simple_rectangle():
     assert [(placement.band_index, placement.x_left_cm, placement.x_right_cm, placement.final_length_cm) for placement in result.placements] == [
         (0, 0.0, 50.0, 200.0),
         (1, 50.0, 100.0, 200.0),
-        (2, 100.0, 120.0, 200.0),
+        (2, 100.0, 150.0, 200.0),
     ]
     assert [band.band_index for band in result.bands] == [0, 1, 2]
     assert [(band.x_left_cm, band.x_right_cm, len(band.segments)) for band in result.bands] == [
         (0.0, 50.0, 1),
         (50.0, 100.0, 1),
-        (100.0, 120.0, 1),
+        (100.0, 150.0, 1),
     ]
     assert [segment.raw_length_cm for band in result.bands for segment in band.segments] == [200.0, 200.0, 200.0]
     assert result.warnings == []
@@ -137,7 +137,7 @@ def test_layout_engine_uses_single_cross_section_for_skewed_band_lengths():
     expected_lengths = [100.0, 8.333333333333334, 100.0, 8.33333333333334, 100.0, 3.3333333333333286]
     expected_final_lengths = [100.0, 9.0, 100.0, 9.0, 100.0, 4.0]
     assert len(result.placements) == len(expected_lengths)
-    for p, raw_exp, final_exp in zip(result.placements, expected_lengths, expected_final_lengths):
+    for p, raw_exp, final_exp in zip(result.placements, expected_lengths, expected_final_lengths, strict=False):
         assert almost_equal(p.raw_length_cm, raw_exp)
         assert almost_equal(p.final_length_cm, final_exp)
     assert result.requires_transverse_split is False
@@ -178,13 +178,58 @@ def test_layout_engine_supports_layout_direction_change():
     assert [(placement.band_index, placement.x_left_cm, placement.x_right_cm) for placement in left_result.placements] == [
         (0, 0.0, 50.0),
         (1, 50.0, 100.0),
-        (2, 100.0, 120.0),
+        (2, 100.0, 150.0),
     ]
     assert [(placement.band_index, placement.x_left_cm, placement.x_right_cm) for placement in right_result.placements] == [
         (0, 70.0, 120.0),
         (1, 20.0, 70.0),
-        (2, 0.0, 20.0),
+        (2, -30.0, 20.0),
     ]
+
+
+def test_layout_engine_keeps_full_sheet_width_on_left_origin_edge_band():
+    plane = RoofPlane(id="plane-1", name="Wide", outline=Polygon2D.rectangle(850, 200))
+
+    result = generate_layout(plane, _material(effective_width_cm=51))
+
+    assert len(result.placements) == 17
+    assert all(placement.width_cm == 51.0 for placement in result.placements)
+    assert result.placements[-1].x_left_cm == 816.0
+    assert result.placements[-1].x_right_cm == 867.0
+    assert result.bands[-1].x_left_cm == 816.0
+    assert result.bands[-1].x_right_cm == 867.0
+
+
+def test_layout_engine_keeps_full_sheet_width_on_right_origin_edge_band():
+    plane = RoofPlane(id="plane-1", name="Wide", outline=Polygon2D.rectangle(850, 200))
+    plane.generation_settings.layout_origin = "right"
+
+    result = generate_layout(plane, _material(effective_width_cm=51))
+
+    assert len(result.placements) == 17
+    assert all(placement.width_cm == 51.0 for placement in result.placements)
+    assert result.placements[-1].x_left_cm == -17.0
+    assert result.placements[-1].x_right_cm == 34.0
+    assert result.bands[-1].x_left_cm == -17.0
+    assert result.bands[-1].x_right_cm == 34.0
+
+
+def test_layout_engine_keeps_full_sheet_width_when_coverage_is_clipped():
+    plane = RoofPlane(
+        id="plane-1",
+        name="Trap",
+        outline=build_trapezoid_outline("równoramienny", 850, 700, 200),
+    )
+
+    result = generate_layout(plane, _material(effective_width_cm=51))
+
+    edge_placement = result.placements[-1]
+    edge_segment = result.bands[-1].segments[0]
+    coverage_bounds = [polygon.bounds() for polygon in edge_segment.coverage_polygons]
+
+    assert edge_placement.width_cm == 51.0
+    assert edge_segment.x_right_cm - edge_segment.x_left_cm == 51.0
+    assert any(bounds.width < 51.0 for bounds in coverage_bounds)
 
 
 def test_layout_engine_validates_min_and_max_sheet_length_edges():
@@ -209,29 +254,29 @@ def test_layout_engine_cutout_intersection_count():
     # Wycinek 300x300 na środku, czyli od x=350 do x=650
     hole = Polygon2D.rectangle(300, 300, origin_x=350, origin_y=350)
     plane = RoofPlane(id="p1", name="Test", outline=outline, holes=[hole])
-    
+
     # Szerokość arkusza 51 cm
     mat = _material(effective_width_cm=51, module_length_cm=0, max_sheet_length_cm=2000)
     result = generate_layout(plane, mat)
-    
+
     # Sprawdzamy ile pasów zostało przeciętych przez wycinek
-    # Wycinek jest od x=350 do x=650. 
+    # Wycinek jest od x=350 do x=650.
     # Pasy szerokości 51cm:
     # 350 / 51 = 6.86 -> pas nr 6 (zaczyna się od 306, kończy na 357). Przecięty!
     # 650 / 51 = 12.74 -> pas nr 12 (zaczyna się od 612, kończy na 663). Przecięty!
     # Pasy dotknięte przez wycinek to indeksy od 6 do 12 włącznie, czyli 7 pasów.
-    
+
     # Kiedy pas jest przecięty, ma więcej niż 1 segment (czyli generuje więcej niż 1 placement dla danego band_index)
     placements_by_band = {}
     for p in result.placements:
         placements_by_band.setdefault(p.band_index, []).append(p)
-        
+
     intersected_bands = [
-        band_index 
-        for band_index, pl_list in placements_by_band.items() 
+        band_index
+        for band_index, pl_list in placements_by_band.items()
         if len(pl_list) > 1
     ]
-    
+
     assert intersected_bands == [6, 7, 8, 9, 10, 11, 12]
 
 
