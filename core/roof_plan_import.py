@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import atan2, cos, sin
 
 from core.geometry import polygon_edges, segment_length, validate_polygon
 from core.models import Point2D, Polygon2D
@@ -80,6 +81,7 @@ def normalize_polygon_to_reference_edge(
     duplicate_tolerance: float = 1.0,
     collinear_tolerance: float = 0.01,
     rounding_digits: int = 2,
+    axis_snap_tolerance: float = 0.5,
 ) -> Polygon2D:
     if reference_length_cm <= 0:
         raise ValueError("Długość referencyjna musi być dodatnia")
@@ -104,16 +106,55 @@ def normalize_polygon_to_reference_edge(
 
     scale = reference_length_cm / edge_length
     scaled = [Point2D(point.x * scale, point.y * scale) for point in polygon.points]
-    min_x = min(point.x for point in scaled)
-    min_y = min(point.y for point in scaled)
+    scaled_edge_start = Point2D(edge_start.x * scale, edge_start.y * scale)
+    scaled_edge_end = Point2D(edge_end.x * scale, edge_end.y * scale)
+    edge_center = Point2D(
+        (scaled_edge_start.x + scaled_edge_end.x) / 2.0,
+        (scaled_edge_start.y + scaled_edge_end.y) / 2.0,
+    )
+    angle = atan2(
+        scaled_edge_end.y - scaled_edge_start.y,
+        scaled_edge_end.x - scaled_edge_start.x,
+    )
+    cos_angle = cos(-angle)
+    sin_angle = sin(-angle)
+    rotated = [
+        _snap_point_to_axis(
+            _rotate_point_around_center(point, edge_center, cos_angle, sin_angle),
+            tolerance=axis_snap_tolerance,
+        )
+        for point in scaled
+    ]
+    min_x = min(point.x for point in rotated)
+    min_y = min(point.y for point in rotated)
     normalized = [
         Point2D(
             round(point.x - min_x, rounding_digits),
             round(point.y - min_y, rounding_digits),
         )
-        for point in scaled
+        for point in rotated
     ]
     return Polygon2D(normalized)
+
+
+def _rotate_point_around_center(
+    point: Point2D,
+    center: Point2D,
+    cos_angle: float,
+    sin_angle: float,
+) -> Point2D:
+    relative_x = point.x - center.x
+    relative_y = point.y - center.y
+    return Point2D(
+        center.x + relative_x * cos_angle - relative_y * sin_angle,
+        center.y + relative_x * sin_angle + relative_y * cos_angle,
+    )
+
+
+def _snap_point_to_axis(point: Point2D, *, tolerance: float) -> Point2D:
+    x = 0.0 if abs(point.x) < tolerance else point.x
+    y = 0.0 if abs(point.y) < tolerance else point.y
+    return Point2D(x, y)
 
 
 def _is_nearly_collinear(

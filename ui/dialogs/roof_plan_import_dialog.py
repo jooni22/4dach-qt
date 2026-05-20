@@ -3,9 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from PySide6.QtCore import QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QKeyEvent, QMouseEvent, QPainter, QPen, QPixmap, QPolygonF
+from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QFont, QKeyEvent, QMouseEvent, QPainter, QPen, QPixmap, QPolygonF
 from PySide6.QtWidgets import (
+    QButtonGroup,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -42,6 +43,8 @@ class _ImportDraft:
 class RoofPlanImportCanvas(QWidget):
     crop_changed = Signal()
     draft_closed = Signal(list)
+    draft_points_changed = Signal()
+    mode_changed = Signal(str)
 
     MODE_CROP = "crop"
     MODE_DRAW = "draw"
@@ -56,18 +59,37 @@ class RoofPlanImportCanvas(QWidget):
         self._drag_start: Point2D | None = None
         self._zoom_mode = "fit"
         self._zoom_factor = 1.0
+        self._pan_offset = QPointF(0, 0)
+        self._pan_drag_start: QPointF | None = None
+        self._space_pressed = False
+        self._invalid_cursor_active = False
+        self._highlighted: tuple[int, int] | None = None
         self.image_opacity = 0.75
         self.line_opacity = 1.0
         self.show_image = True
         self.setMinimumSize(520, 360)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self._sync_cursor()
 
     def set_mode(self, mode: str) -> None:
+        if mode not in {self.MODE_CROP, self.MODE_DRAW}:
+            return
+        if self._mode == mode:
+            self._sync_cursor()
+            self.update()
+            return
         self._mode = mode
+        self._sync_cursor()
+        self.mode_changed.emit(mode)
         self.update()
 
     def set_crop_rect(self, rect: QRectF) -> None:
         self._crop_rect = rect.normalized()
+        self.crop_changed.emit()
+        self.update()
+
+    def reset_crop(self) -> None:
+        self._crop_rect = QRectF()
         self.crop_changed.emit()
         self.update()
 
@@ -79,11 +101,16 @@ class RoofPlanImportCanvas(QWidget):
 
     def set_fit_zoom(self) -> None:
         self._zoom_mode = "fit"
+        self._reset_pan()
+        self._sync_cursor()
         self.update()
 
     def set_zoom_factor(self, factor: float) -> None:
         self._zoom_mode = "manual"
         self._zoom_factor = max(0.1, min(8.0, factor))
+        if self._zoom_factor == 1.0:
+            self._reset_pan()
+        self._sync_cursor()
         self.update()
 
     def zoom_in(self) -> None:
@@ -102,12 +129,36 @@ class RoofPlanImportCanvas(QWidget):
         self._drafts = [[Point2D(point.x, point.y) for point in draft] for draft in drafts]
         self.update()
 
+    def set_highlighted_draft(self, draft_index: int, edge_index: int) -> None:
+        if draft_index < 0 or draft_index >= len(self._drafts):
+            self._highlighted = None
+        else:
+            draft = self._drafts[draft_index]
+            self._highlighted = (
+                draft_index,
+                edge_index if 0 <= edge_index < len(draft) else 0,
+            )
+        self.update()
+
+    def clear_highlighted_draft(self) -> None:
+        self._highlighted = None
+        self.update()
+
     def draft_points(self) -> list[Point2D]:
         return list(self._draft_points)
 
     def add_sketch_point(self, point: Point2D) -> None:
         self._draft_points.append(point)
+        self.draft_points_changed.emit()
         self.update()
+
+    def undo_last_point(self) -> bool:
+        if not self._draft_points:
+            return False
+        self._draft_points.pop()
+        self.draft_points_changed.emit()
+        self.update()
+        return True
 
     def close_active_sketch(self) -> bool:
         issues = validate_import_polygon(self._draft_points)
@@ -117,6 +168,7 @@ class RoofPlanImportCanvas(QWidget):
         self._drafts.append(points)
         self._draft_points = []
         self.draft_closed.emit(points)
+        self.draft_points_changed.emit()
         self.update()
         return True
 
@@ -134,24 +186,49 @@ class RoofPlanImportCanvas(QWidget):
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
         if event.key() == Qt.Key.Key_Z and event.modifiers() & Qt.KeyboardModifier.ControlModifier:
-            if self._draft_points:
-                self._draft_points.pop()
-                self.update()
+            self.undo_last_point()
+            event.accept()
+            return
+        if event.key() == Qt.Key.Key_Space and not event.isAutoRepeat():
+            self._space_pressed = True
+            self._sync_cursor()
             event.accept()
             return
         if event.key() == Qt.Key.Key_Escape:
-            self._draft_points = []
-            self.update()
+            if self._draft_points:
+                self._draft_points = []
+                self.draft_points_changed.emit()
+                self.update()
             event.accept()
             return
         super().keyPressEvent(event)
 
+    def keyReleaseEvent(self, event: QKeyEvent) -> None:
+        if event.key() == Qt.Key.Key_Space and not event.isAutoRepeat():
+            self._space_pressed = False
+            self._sync_cursor()
+            event.accept()
+            return
+        super().keyReleaseEvent(event)
+
     def mousePressEvent(self, event: QMouseEvent) -> None:
         self.setFocus()
+        if event.button() == Qt.MouseButton.MiddleButton:
+            self._begin_pan(event.position())
+            event.accept()
+            return
+        if (
+            event.button() == Qt.MouseButton.LeftButton
+            and self._space_pressed
+            and self._zoom_mode == "manual"
+        ):
+            self._begin_pan(event.position())
+            event.accept()
+            return
         if event.button() != Qt.MouseButton.LeftButton:
             return
         if self._mode == self.MODE_CROP:
-            point = self._canvas_to_image_point(event.position())
+            point = self._canvas_to_full_image_point(event.position())
             if point is None:
                 return
             self._drag_start = point
@@ -159,6 +236,7 @@ class RoofPlanImportCanvas(QWidget):
             return
         point = self._canvas_to_image_point(event.position())
         if point is None:
+            self._show_forbidden_cursor()
             return
         if len(self._draft_points) >= 3 and segment_length(point, self._draft_points[0]) <= 8:
             self.close_active_sketch()
@@ -166,9 +244,13 @@ class RoofPlanImportCanvas(QWidget):
         self.add_sketch_point(self._snap_point(point))
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
+        if self._pan_drag_start is not None:
+            self._continue_pan(event.position())
+            event.accept()
+            return
         if self._mode != self.MODE_CROP or self._drag_start is None:
             return
-        point = self._canvas_to_image_point(event.position())
+        point = self._canvas_to_full_image_point(event.position())
         if point is not None:
             self.set_crop_rect(
                 QRectF(
@@ -180,8 +262,16 @@ class RoofPlanImportCanvas(QWidget):
             )
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        if self._pan_drag_start is not None and event.button() in {
+            Qt.MouseButton.MiddleButton,
+            Qt.MouseButton.LeftButton,
+        }:
+            self._pan_drag_start = None
+            self._sync_cursor()
+            event.accept()
+            return
         if self._mode == self.MODE_CROP and self._drag_start is not None:
-            point = self._canvas_to_image_point(event.position())
+            point = self._canvas_to_full_image_point(event.position())
             if point is not None:
                 self.set_crop_rect(
                     QRectF(
@@ -192,6 +282,8 @@ class RoofPlanImportCanvas(QWidget):
                     )
                 )
             self._drag_start = None
+            if self.has_crop():
+                self.set_mode(self.MODE_DRAW)
 
     def paintEvent(self, _event) -> None:
         painter = QPainter(self)
@@ -199,8 +291,9 @@ class RoofPlanImportCanvas(QWidget):
         painter.fillRect(self.rect(), QColor("#f8fafc"))
         target = self._image_target_rect()
         if not self._pixmap.isNull() and self.show_image:
+            source = self._image_source_rect()
             painter.setOpacity(self.image_opacity)
-            painter.drawPixmap(target, self._pixmap, self._pixmap.rect())
+            painter.drawPixmap(target, self._pixmap, source.toRect())
             painter.setOpacity(1.0)
         painter.setPen(QPen(QColor("#cbd5e1"), 1))
         painter.drawRect(target)
@@ -210,10 +303,15 @@ class RoofPlanImportCanvas(QWidget):
             painter.drawRect(self._image_to_canvas_rect(self._crop_rect))
 
         painter.setOpacity(self.line_opacity)
-        for draft in self._drafts:
+        for index, draft in enumerate(self._drafts):
             painter.setBrush(QColor(37, 99, 235, 45))
-            self._draw_polyline(painter, draft, QColor("#2563eb"), closed=True)
+            self._draw_polyline(painter, draft, QColor("#2563eb"), closed=True, draft_index=index)
         self._draw_polyline(painter, self._draft_points, QColor("#dc2626"), closed=False)
+        if len(self._draft_points) >= 3:
+            first_point = self._image_to_canvas_point(self._draft_points[0])
+            painter.setFont(QFont(painter.font().family(), 9))
+            painter.setPen(QPen(QColor("#64748b"), 1))
+            painter.drawText(first_point + QPointF(8, -8), "← kliknij aby zamknąć")
         painter.setOpacity(1.0)
 
     def _draw_polyline(
@@ -223,6 +321,7 @@ class RoofPlanImportCanvas(QWidget):
         color: QColor,
         *,
         closed: bool,
+        draft_index: int | None = None,
     ) -> None:
         if not points:
             return
@@ -236,6 +335,13 @@ class RoofPlanImportCanvas(QWidget):
         painter.setBrush(color)
         for point in mapped:
             painter.drawEllipse(point, 3.5, 3.5)
+        if closed and draft_index is not None and self._highlighted is not None:
+            highlighted_draft, highlighted_edge = self._highlighted
+            if highlighted_draft == draft_index and len(mapped) >= 2:
+                start = mapped[highlighted_edge]
+                end = mapped[(highlighted_edge + 1) % len(mapped)]
+                painter.setPen(QPen(QColor("#f59e0b"), 3))
+                painter.drawLine(start, end)
 
     def _snap_point(self, point: Point2D) -> Point2D:
         if not self._draft_points:
@@ -257,9 +363,12 @@ class RoofPlanImportCanvas(QWidget):
         return point
 
     def _image_target_rect(self) -> QRectF:
+        return self._image_target_rect_for_source(self._image_source_rect())
+
+    def _image_target_rect_for_source(self, source: QRectF) -> QRectF:
         if self._pixmap.isNull():
             return QRectF(self.rect())
-        bounds = Bounds2D(0, 0, self._pixmap.width(), self._pixmap.height())
+        bounds = Bounds2D(0, 0, source.width(), source.height())
         available = QRectF(self.rect()).adjusted(12, 12, -12, -12)
         if self._zoom_mode == "manual":
             scale = self._zoom_factor
@@ -267,33 +376,59 @@ class RoofPlanImportCanvas(QWidget):
             scale = min(available.width() / bounds.width, available.height() / bounds.height)
         width = bounds.width * scale
         height = bounds.height * scale
-        return QRectF(
+        rect = QRectF(
             available.left() + (available.width() - width) / 2.0,
             available.top() + (available.height() - height) / 2.0,
             width,
             height,
         )
+        if self._zoom_mode == "manual":
+            rect.translate(self._pan_offset)
+        return rect
+
+    def _image_source_rect(self) -> QRectF:
+        if self._pixmap.isNull():
+            return QRectF(self.rect())
+        if self._drag_start is None and self.has_crop():
+            return QRectF(self._crop_rect)
+        return QRectF(0, 0, self._pixmap.width(), self._pixmap.height())
 
     def _canvas_to_image_point(self, point: QPointF) -> Point2D | None:
-        target = self._image_target_rect()
+        return self._canvas_to_image_point_for_source(point, self._image_source_rect())
+
+    def _canvas_to_full_image_point(self, point: QPointF) -> Point2D | None:
+        if self._pixmap.isNull():
+            return self._canvas_to_image_point_for_source(point, QRectF(self.rect()))
+        return self._canvas_to_image_point_for_source(
+            point,
+            QRectF(0, 0, self._pixmap.width(), self._pixmap.height()),
+        )
+
+    def _canvas_to_image_point_for_source(
+        self,
+        point: QPointF,
+        source: QRectF,
+    ) -> Point2D | None:
+        target = self._image_target_rect_for_source(source)
         if not target.contains(point):
             return None
         if self._pixmap.isNull():
             return Point2D(point.x(), point.y())
-        scale_x = self._pixmap.width() / target.width()
-        scale_y = self._pixmap.height() / target.height()
+        scale_x = source.width() / target.width()
+        scale_y = source.height() / target.height()
         return Point2D(
-            (point.x() - target.left()) * scale_x,
-            (point.y() - target.top()) * scale_y,
+            source.left() + (point.x() - target.left()) * scale_x,
+            source.top() + (point.y() - target.top()) * scale_y,
         )
 
     def _image_to_canvas_point(self, point: Point2D) -> QPointF:
         target = self._image_target_rect()
         if self._pixmap.isNull():
             return QPointF(point.x, point.y)
+        source = self._image_source_rect()
         return QPointF(
-            target.left() + point.x * target.width() / self._pixmap.width(),
-            target.top() + point.y * target.height() / self._pixmap.height(),
+            target.left() + (point.x - source.left()) * target.width() / source.width(),
+            target.top() + (point.y - source.top()) * target.height() / source.height(),
         )
 
     def _image_to_canvas_rect(self, rect: QRectF) -> QRectF:
@@ -312,6 +447,45 @@ class RoofPlanImportCanvas(QWidget):
             bottom_right.x - top_left.x,
             bottom_right.y - top_left.y,
         ).normalized()
+
+    def _begin_pan(self, point: QPointF) -> None:
+        self._pan_drag_start = QPointF(point)
+        self._sync_cursor()
+
+    def _continue_pan(self, point: QPointF) -> None:
+        if self._zoom_mode == "manual":
+            delta = point - self._pan_drag_start
+            self._pan_offset = QPointF(
+                self._pan_offset.x() + delta.x(),
+                self._pan_offset.y() + delta.y(),
+            )
+            self.update()
+        self._pan_drag_start = QPointF(point)
+
+    def _reset_pan(self) -> None:
+        self._pan_offset = QPointF(0, 0)
+        self._pan_drag_start = None
+
+    def _show_forbidden_cursor(self) -> None:
+        if self._mode != self.MODE_DRAW:
+            return
+        self._invalid_cursor_active = True
+        self._sync_cursor()
+        QTimer.singleShot(400, self._clear_forbidden_cursor)
+
+    def _clear_forbidden_cursor(self) -> None:
+        self._invalid_cursor_active = False
+        self._sync_cursor()
+
+    def _sync_cursor(self) -> None:
+        if self._invalid_cursor_active:
+            self.setCursor(Qt.CursorShape.ForbiddenCursor)
+        elif self._pan_drag_start is not None:
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
+        elif self._zoom_mode == "manual":
+            self.setCursor(Qt.CursorShape.OpenHandCursor)
+        else:
+            self.setCursor(Qt.CursorShape.ArrowCursor)
 
 
 class RoofPlanImportWidget(QWidget):
@@ -364,6 +538,14 @@ class RoofPlanImportWidget(QWidget):
         controls = QHBoxLayout()
         self.crop_mode_button = QPushButton("Kadruj", self)
         self.draw_mode_button = QPushButton("Rysuj", self)
+        self.crop_mode_button.setCheckable(True)
+        self.draw_mode_button.setCheckable(True)
+        self._mode_button_group = QButtonGroup(self)
+        self._mode_button_group.setExclusive(True)
+        self._mode_button_group.addButton(self.crop_mode_button)
+        self._mode_button_group.addButton(self.draw_mode_button)
+        self.draw_mode_button.setChecked(True)
+        self.undo_button = QPushButton("Cofnij", self)
         self.fit_button = QPushButton("Dopasuj", self)
         self.zoom_100_button = QPushButton("100%", self)
         self.zoom_in_button = QPushButton("+", self)
@@ -374,6 +556,7 @@ class RoofPlanImportWidget(QWidget):
         self.line_opacity_slider = self._opacity_slider(100)
         controls.addWidget(self.crop_mode_button)
         controls.addWidget(self.draw_mode_button)
+        controls.addWidget(self.undo_button)
         controls.addWidget(self.fit_button)
         controls.addWidget(self.zoom_100_button)
         controls.addWidget(self.zoom_in_button)
@@ -409,12 +592,17 @@ class RoofPlanImportWidget(QWidget):
 
         self.canvas.crop_changed.connect(self._sync_buttons)
         self.canvas.draft_closed.connect(self.add_import_draft)
-        self.crop_mode_button.clicked.connect(
-            lambda: self.canvas.set_mode(RoofPlanImportCanvas.MODE_CROP)
+        self.canvas.draft_points_changed.connect(self._sync_buttons)
+        self.canvas.mode_changed.connect(self._sync_mode_buttons)
+        self.crop_mode_button.toggled.connect(
+            lambda checked: self._start_new_crop() if checked else None
         )
-        self.draw_mode_button.clicked.connect(
-            lambda: self.canvas.set_mode(RoofPlanImportCanvas.MODE_DRAW)
+        self.draw_mode_button.toggled.connect(
+            lambda checked: self.canvas.set_mode(RoofPlanImportCanvas.MODE_DRAW)
+            if checked
+            else None
         )
+        self.undo_button.clicked.connect(lambda _checked=False: self.canvas.undo_last_point())
         self.fit_button.clicked.connect(self.canvas.set_fit_zoom)
         self.zoom_100_button.clicked.connect(lambda: self.canvas.set_zoom_factor(1.0))
         self.zoom_in_button.clicked.connect(self.canvas.zoom_in)
@@ -429,6 +617,11 @@ class RoofPlanImportWidget(QWidget):
         self.import_button.clicked.connect(self.accept)
         self.cancel_button.clicked.connect(self.cancelled.emit)
         self.add_plane_button.clicked.connect(self._close_active_sketch_or_warn)
+        self._sync_mode_buttons(self.canvas._mode)
+
+    def _start_new_crop(self) -> None:
+        self.canvas.reset_crop()
+        self.canvas.set_mode(RoofPlanImportCanvas.MODE_CROP)
 
     def _opacity_slider(self, value: int) -> QSlider:
         slider = QSlider(Qt.Orientation.Horizontal, self)
@@ -443,12 +636,29 @@ class RoofPlanImportWidget(QWidget):
     def _rebuild_dimension_step(self) -> None:
         self._clear_layout(self._dimensions_layout)
         self._dimension_rows = []
-        self._dimensions_layout.addWidget(QLabel("Wybierz krawędź i wpisz długość w cm.", self))
+        self._dimensions_layout.addWidget(
+            QLabel(
+                "Wybierz krawędź o znanych wymiarach – połać zostanie przeskalowana "
+                "proporcjonalnie.",
+                self,
+            )
+        )
         for index, draft in enumerate(self._drafts):
             row_widget = QWidget(self)
             row = QFormLayout(row_widget)
-            row.addRow(QLabel(f"Połać {index + 1}: {len(draft.points)} pkt", row_widget))
+            header_widget = QWidget(row_widget)
+            header = QHBoxLayout(header_widget)
+            header.setContentsMargins(0, 0, 0, 0)
+            header.addWidget(QLabel(f"Połać {index + 1}: {len(draft.points)} pkt", header_widget))
+            header.addStretch(1)
+            delete_button = QPushButton("Usuń", header_widget)
+            delete_button.clicked.connect(
+                lambda _checked=False, draft_index=index: self._delete_import_draft(draft_index)
+            )
+            header.addWidget(delete_button)
+            row.addRow(header_widget)
             edge_combo = QComboBox(row_widget)
+            edge_combo.setToolTip("Automatycznie wybrano najdłuższą krawędź – możesz zmienić")
             for edge_index, (start, end) in enumerate(polygon_edges(Polygon2D(draft.points))):
                 edge_combo.addItem(
                     f"Krawędź {edge_index + 1} ({segment_length(start, end):.1f} px)",
@@ -470,14 +680,28 @@ class RoofPlanImportWidget(QWidget):
             row.addRow("Długość:", length_spin)
             self._dimensions_layout.addWidget(row_widget)
             self._dimension_rows.append((edge_combo, length_spin))
+        self._sync_highlight_to_last_draft()
         self._dimensions_layout.addStretch(1)
 
+    def _delete_import_draft(self, index: int) -> None:
+        if index < 0 or index >= len(self._drafts):
+            return
+        del self._drafts[index]
+        self.canvas.set_drafts(self.imported_drafts())
+        self._rebuild_dimension_step()
+        self._sync_buttons()
+
     def _update_reference_edge(self, draft_index: int) -> None:
+        if draft_index < 0 or draft_index >= len(self._drafts):
+            return
         combo = self._dimension_rows[draft_index][0]
         self._drafts[draft_index].reference_edge_index = int(combo.currentData())
+        self.canvas.set_highlighted_draft(draft_index, self._drafts[draft_index].reference_edge_index)
         self._sync_buttons()
 
     def _update_reference_length(self, draft_index: int, value: float) -> None:
+        if draft_index < 0 or draft_index >= len(self._drafts):
+            return
         self._drafts[draft_index].reference_length_cm = float(value)
         self._sync_buttons()
 
@@ -486,6 +710,25 @@ class RoofPlanImportWidget(QWidget):
 
     def _sync_buttons(self) -> None:
         self.import_button.setEnabled(self._all_dimensions_ready())
+        self.undo_button.setEnabled(len(self.canvas.draft_points()) > 0)
+
+    def _sync_mode_buttons(self, mode: str) -> None:
+        crop_blocked = self.crop_mode_button.blockSignals(True)
+        draw_blocked = self.draw_mode_button.blockSignals(True)
+        self.crop_mode_button.setChecked(mode == RoofPlanImportCanvas.MODE_CROP)
+        self.draw_mode_button.setChecked(mode == RoofPlanImportCanvas.MODE_DRAW)
+        self.crop_mode_button.blockSignals(crop_blocked)
+        self.draw_mode_button.blockSignals(draw_blocked)
+
+    def _sync_highlight_to_last_draft(self) -> None:
+        if not self._drafts:
+            self.canvas.clear_highlighted_draft()
+            return
+        draft_index = len(self._drafts) - 1
+        self.canvas.set_highlighted_draft(
+            draft_index,
+            self._drafts[draft_index].reference_edge_index,
+        )
 
     def _clear_layout(self, layout) -> None:
         while layout.count():

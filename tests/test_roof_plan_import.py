@@ -25,6 +25,46 @@ def test_normalize_polygon_to_reference_edge_scales_and_moves_to_local_origin():
     ]
 
 
+def test_normalize_polygon_to_reference_edge_rotates_45_degree_reference_edge_to_horizontal():
+    polygon = normalize_polygon_to_reference_edge(
+        [Point2D(10, 20), Point2D(110, 120), Point2D(60, 170), Point2D(-40, 70)],
+        reference_edge_index=0,
+        reference_length_cm=200,
+    )
+
+    assert polygon.points == [
+        Point2D(0.0, 0.0),
+        Point2D(200.0, 0.0),
+        Point2D(200.0, 100.0),
+        Point2D(0.0, 100.0),
+    ]
+
+
+def test_normalize_polygon_to_reference_edge_rotates_vertical_reference_edge_to_horizontal():
+    polygon = normalize_polygon_to_reference_edge(
+        [Point2D(10, 10), Point2D(10, 110), Point2D(-30, 110), Point2D(-30, 10)],
+        reference_edge_index=0,
+        reference_length_cm=200,
+    )
+
+    assert polygon.points == [
+        Point2D(0.0, 0.0),
+        Point2D(200.0, 0.0),
+        Point2D(200.0, 80.0),
+        Point2D(0.0, 80.0),
+    ]
+
+
+def test_normalize_polygon_to_reference_edge_snaps_rotated_points_near_axis_to_zero():
+    polygon = normalize_polygon_to_reference_edge(
+        [Point2D(0, 0), Point2D(100, 0), Point2D(100, 50), Point2D(50, 0.2), Point2D(0, 50)],
+        reference_edge_index=0,
+        reference_length_cm=100,
+    )
+
+    assert polygon.points[3] == Point2D(50.0, 0.0)
+
+
 def test_validate_import_polygon_rejects_too_few_points_self_intersections_and_zero_edges():
     assert validate_import_polygon([Point2D(0, 0), Point2D(10, 0)]) == [
         "Połać musi mieć co najmniej 3 punkty"
