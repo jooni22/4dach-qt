@@ -1,1 +1,0 @@
-After meaningful changes: run relevant `uv run pytest` tests, compare against known baseline failures if full suite is not green, review `docs/review-backlog.md` for touched areas, and summarize modified files, test results, branch/PR actions, and backlog handling. Do not claim PR or stack actions unless actually performed.

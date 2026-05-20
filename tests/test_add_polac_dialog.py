@@ -243,8 +243,8 @@ def test_add_polac_dialog_cutout_position_sliders_update_preview_geometry(qtbot)
     assert set(dialog.cutout_position_sliders) == {"X", "Y"}
     assert isinstance(dialog.cutout_position_sliders["X"], QSlider)
     assert isinstance(dialog.cutout_position_sliders["Y"], QSlider)
-    assert dialog.cutout_position_sliders["X"].value() == 50
-    assert dialog.cutout_position_sliders["Y"].value() == 50
+    assert dialog.cutout_position_sliders["X"].value() == 0
+    assert dialog.cutout_position_sliders["Y"].value() == 0
 
     dialog.cutout_position_sliders["X"].setValue(25)
     dialog.cutout_position_sliders["Y"].setValue(75)
@@ -252,8 +252,8 @@ def test_add_polac_dialog_cutout_position_sliders_update_preview_geometry(qtbot)
     cutout = dialog._current_cutout()
 
     assert cutout is not None
-    assert cutout.points[0].x == pytest.approx(82.5)
-    assert cutout.points[0].y == pytest.approx(112.5)
+    assert cutout.points[0].x == pytest.approx(25)
+    assert cutout.points[0].y == pytest.approx(75)
 
 
 def test_add_polac_dialog_hydrates_from_add_polac_dialog_cache(qtbot):
@@ -305,7 +305,7 @@ def test_add_polac_dialog_accept_updates_cache_and_result(qtbot):
     assert result.shape_key == "pieciokat2"
     assert result.shape_values == {"A": 640, "B": 280}
     assert result.cutout_kind == "lukarna3"
-    assert result.cutout_values == {"A": 140, "H1": 50, "H": 90, "X": 50, "Y": 50}
+    assert result.cutout_values == {"A": 140, "H1": 50, "H": 90, "X": 0, "Y": 0}
     assert result.flip_h is True
     assert result.flip_v is True
 
@@ -326,9 +326,9 @@ def test_add_polac_dialog_accept_updates_cache_and_result(qtbot):
             "pieciokat2": {"A": 640, "B": 280},
         },
         "cutouts": {
-            "lukarna1": {"A": 80, "H1": 60, "X": 50, "Y": 50},
-            "lukarna2": {"A": 80, "H": 60, "X": 50, "Y": 50},
-            "lukarna3": {"A": 140, "H1": 50, "H": 90, "X": 50, "Y": 50},
+            "lukarna1": {"A": 80, "H1": 60, "X": 0, "Y": 0},
+            "lukarna2": {"A": 80, "H": 60, "X": 0, "Y": 0},
+            "lukarna3": {"A": 140, "H1": 50, "H": 90, "X": 0, "Y": 0},
         },
     }
     assert config["ksztalty"] == _legacy_shape_config()["ksztalty"]

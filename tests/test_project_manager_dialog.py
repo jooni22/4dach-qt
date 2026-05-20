@@ -88,7 +88,7 @@ def test_project_manager_save_mode_builds_4dach_path(qtbot, tmp_path):
 def test_project_manager_requires_non_empty_project_name(qtbot, monkeypatch, tmp_path):
     warnings: list[str] = []
     monkeypatch.setattr(
-        "ui.dialogs.project_manager_dialog.QMessageBox.warning",
+        "ui.dialogs.project_manager_dialog.show_warning",
         lambda _parent, _title, message: warnings.append(message),
     )
     dialog = ProjectManagerDialog(mode=Mode.NEW, projects_dir=tmp_path, default_name="Nowy")
@@ -302,7 +302,7 @@ def test_project_manager_delete_removes_selected_project_after_confirmation(qtbo
     project_path = project_config_path(project_dir)
     _write_project(project_dir, name="Usuń mnie", modified_at=datetime.now(UTC))
     monkeypatch.setattr(
-        "ui.dialogs.project_manager_dialog.QMessageBox.question",
+        "ui.dialogs.project_manager_dialog.show_question",
         lambda *args, **kwargs: QMessageBox.StandardButton.Yes,
     )
     dialog = ProjectManagerDialog(mode=Mode.OPEN, projects_dir=tmp_path)
@@ -321,7 +321,7 @@ def test_project_manager_delete_is_cancelled_when_confirmation_rejected(qtbot, m
     project_path = project_config_path(project_dir)
     _write_project(project_dir, name="Zostaw mnie", modified_at=datetime.now(UTC))
     monkeypatch.setattr(
-        "ui.dialogs.project_manager_dialog.QMessageBox.question",
+        "ui.dialogs.project_manager_dialog.show_question",
         lambda *args, **kwargs: QMessageBox.StandardButton.No,
     )
     dialog = ProjectManagerDialog(mode=Mode.OPEN, projects_dir=tmp_path)
@@ -341,7 +341,7 @@ def test_project_manager_delete_blocks_currently_open_project(qtbot, monkeypatch
     _write_project(project_dir, name="Bieżący", modified_at=datetime.now(UTC))
     warnings: list[str] = []
     monkeypatch.setattr(
-        "ui.dialogs.project_manager_dialog.QMessageBox.warning",
+        "ui.dialogs.project_manager_dialog.show_warning",
         lambda _parent, _title, message: warnings.append(message),
     )
     dialog = ProjectManagerDialog(

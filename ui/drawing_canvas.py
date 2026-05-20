@@ -338,6 +338,10 @@ class _DrawingCanvasInteractionMixin:
         return None
 
     def _hit_test_hole_edge_midpoint(self, pos: QPointF, mapper: CanvasMapper) -> tuple[int, int] | None:
+        for hole_index, hole in enumerate(self.display_holes()):
+            edge_index = self._hit_test_edge_midpoint(pos, mapper, hole)
+            if edge_index is not None:
+                return hole_index, edge_index
         return None
 
     def _set_active_midpoint_handle(

@@ -9,7 +9,7 @@ pytest_plugins = ("pytestqt",)
 def test_project_details_dialog_requires_non_empty_project_name(qtbot, monkeypatch, tmp_path):
     warnings: list[str] = []
     monkeypatch.setattr(
-        "ui.dialogs.project_details_dialog.QMessageBox.warning",
+        "ui.dialogs.project_details_dialog.show_warning",
         lambda _parent, _title, message: warnings.append(message),
     )
     dialog = ProjectDetailsDialog(projects_dir=tmp_path, default_name="Nowy")

@@ -1,7 +1,15 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-The application is a PySide6 desktop app. Root files contain entrypoints and assets such as `__main__.py`, `mainwindow.py`, `form.ui`, `config.json`, `app_icons.py`, and `persistence.py`. Put domain logic in `core/` (`geometry.py`, `layout_engine.py`, `models.py`, `project_state.py`, `reporting.py`, `canvas_mapper.py`). Keep Qt Widgets code in `ui/`, with dialog classes under `ui/dialogs/` and canvas helpers under `ui/canvas/`. Tests live in `tests/`. Local reference material may exist under `docs/`; treat `_TODO/` and user-linked briefs as the primary handoff sources.
+The application is a PySide6 desktop app. `README.md` is the current developer
+overview. Root files contain entrypoints and assets such as `__main__.py`,
+`mainwindow.py`, `form.ui`, `config.json`, `app_icons.py`, and `persistence.py`.
+Put domain logic in `core/` (`geometry.py`, `layout_engine.py`, `models.py`,
+`project_state.py`, `reporting.py`, `canvas_mapper.py`). Keep Qt Widgets code
+in `ui/`, with dialog classes under `ui/dialogs/` and canvas helpers under
+`ui/canvas/`. Tests live in `tests/`. `docs/` is ignored local scratch/reference
+material; do not treat it or historical plans as source of truth unless the user
+explicitly points to a file.
 
 ## Build, Test, and Development Commands
 Use `uv` for the local environment.
@@ -104,7 +112,8 @@ Priority order:
 5. reference documentation
 6. historical plans, TODOs, and workflow logs
 
-Historical plans and workflow transcripts are reference-only unless the user explicitly points to them.
+Historical plans, workflow transcripts, and local `docs/` material are
+reference-only unless the user explicitly points to them.
 
 ## Commit & Pull Request Guidelines
 Recent commits favor short imperative subjects with prefixes such as `fix:`, `refactor:`, `docs:`, and `test:`. Keep each commit scoped to one concern. For pull requests, summarize the user-visible change, list the verification commands you ran, and include screenshots or short recordings for canvas or window-level UI changes. If a change touches Qt wiring, mention any signal/slot or persistence risk explicitly.

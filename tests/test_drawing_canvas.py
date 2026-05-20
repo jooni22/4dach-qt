@@ -9,7 +9,7 @@ pytest.importorskip("PySide6")
 pytest.importorskip("pytestqt")
 
 from PySide6.QtCore import QEvent, QPoint, QPointF, QRectF, Qt
-from PySide6.QtGui import QImage, QMouseEvent, QPainter, QPalette
+from PySide6.QtGui import QColor, QImage, QMouseEvent, QPainter, QPalette
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
@@ -1263,6 +1263,9 @@ def test_edge_measurement_badge_uses_light_background_with_red_text(qtbot):
     outline = Polygon2D.rectangle(300, 200)
     canvas = _make_canvas(qtbot, outline)
     canvas._plane_selected = True
+    palette = QPalette(canvas.palette())
+    palette.setColor(QPalette.ColorRole.Base, QColor("#fffdf4"))
+    canvas.setPalette(palette)
     mapper = canvas._canvas_mapper()
     assert mapper is not None
     image = QImage(canvas.size(), QImage.Format.Format_ARGB32_Premultiplied)
