@@ -76,3 +76,31 @@ def test_workspace_controller_set_sheet_visibility_updates_workspace_state(qtbot
     workspace.set_sheet_visibility(False)
 
     assert workspace._sheets_visible is False
+
+
+def test_workspace_controller_import_tab_is_not_a_plane_and_can_cancel(qtbot):
+    parent = QWidget()
+    qtbot.addWidget(parent)
+    workspace = WorkspaceController(
+        parent,
+        project_state=object(),
+        get_material_fn=lambda _material_id: None,
+    )
+    import_widget = QWidget()
+    cancelled: list[bool] = []
+
+    index = workspace.open_import_tab(
+        import_widget,
+        title="Import rzutu",
+        on_cancel=lambda: cancelled.append(True),
+    )
+
+    assert workspace.tabs.tabText(index) == "Import rzutu"
+    assert workspace.plane_id_for_tab_index(index) is None
+    assert workspace.is_import_tab(index) is True
+    assert workspace.import_tab_index() == index
+
+    workspace.close_import_tab(cancel=True)
+
+    assert cancelled == [True]
+    assert workspace.import_tab_index() == -1

@@ -16,15 +16,17 @@ from project_files import project_config_path, project_report_path
 pytest.importorskip("PySide6")
 pytest.importorskip("pytestqt")
 
-from PySide6.QtCore import QPointF, QUrl
+from PySide6.QtCore import QPointF, QUrl, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
+    QFileDialog,
     QInputDialog,
     QLabel,
     QMenu,
     QMessageBox,
+    QWidget,
 )
 
 from mainwindow import MainWindow
@@ -149,7 +151,7 @@ def test_mainwindow_exposes_expected_ui_contract(qtbot):
     sheets_actions = [action.text() for action in sheets_menu.actions() if not action.isSeparator()]
 
     assert menu_titles == ["Plik", "Kształt", "Wycinki", "Katalog", "Arkusze", "Ustawienia"]
-    assert shape_actions == ["Kreator połaci...", "Rysuj połać"]
+    assert shape_actions == ["Kreator połaci...", "Importuj z rzutu...", "Rysuj połać"]
     assert cutout_actions == ["Dodaj prostokątny wycinek...", "Rysuj wycinek"]
     assert window.workspace_tabs.count() >= 2
     assert window.variant_combo.count() >= 1
@@ -698,6 +700,64 @@ def test_mainwindow_wizard_commits_outline_and_cutout_as_single_undo_entry(qtbot
     assert redone_plane.outline is not None
     assert redone_plane.outline.points == build_rectangle_outline(500, 300).points
     assert redone_plane.holes == [expected_hole]
+
+
+def test_mainwindow_imports_roof_plan_polygons_as_new_planes_single_undo(qtbot, monkeypatch, tmp_path):
+    window = MainWindow(auto_startup=False)
+    qtbot.addWidget(window)
+
+    window.project_state = ProjectState(materials=window.project_state.materials)
+    window._workspace.bind_project_state(window.project_state, window.project_state.material_by_id)
+    window._refresh_canvas_from_state()
+
+    image_path = tmp_path / "rzut.png"
+    image_path.write_bytes(b"not-used-by-fake-widget")
+    imported_polygons = [
+        build_rectangle_outline(100, 80),
+        build_rectangle_outline(120, 90),
+        build_rectangle_outline(140, 110),
+    ]
+
+    class FakeRoofPlanImportWidget(QWidget):
+        accepted = Signal(list)
+        cancelled = Signal()
+
+        def __init__(self, image_path_arg, app_settings, parent=None) -> None:
+            super().__init__(parent)
+            self.image_path_arg = image_path_arg
+            self.app_settings = app_settings
+
+    monkeypatch.setattr(
+        QFileDialog,
+        "getOpenFileName",
+        staticmethod(lambda *args, **kwargs: (str(image_path), "Images (*.png)")),
+    )
+    monkeypatch.setattr("ui.main_window.RoofPlanImportWidget", FakeRoofPlanImportWidget)
+
+    action = _menu_action(window, "Kształt", "Importuj z rzutu...")
+    action.trigger()
+
+    import_index = window._workspace.import_tab_index()
+    assert import_index >= 0
+    assert window._workspace.plane_id_for_tab_index(import_index) is None
+    assert len(window.project_state.roof_planes) == 0
+
+    import_widget = window.workspace_tabs.widget(import_index)
+    assert isinstance(import_widget, FakeRoofPlanImportWidget)
+    import_widget.accepted.emit(imported_polygons)
+
+    assert len(window.project_state.roof_planes) == 3
+    assert [plane.outline for plane in window.project_state.roof_planes] == imported_polygons
+    assert window.workspace_tabs.count() == 3
+    assert window._workspace.import_tab_index() == -1
+    assert len(window._undo_stack) == 1
+    assert window._has_unsaved_changes is True
+
+    window._undo()
+
+    assert window.project_state.roof_planes == []
+    assert window.workspace_tabs.count() == 1
+    assert window._workspace.plane_id_for_tab_index(0) is None
 
 
 def test_mainwindow_keeps_generated_shapes_separate_per_tab_and_persists_geometry(qtbot, monkeypatch):

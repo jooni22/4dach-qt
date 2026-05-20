@@ -40,6 +40,8 @@ class WorkspaceController:
         # primary_canvas is assigned in sync() — never create a floating one here
         self.primary_canvas: DrawingCanvas | None = None
         self._sheets_visible: bool = False
+        self._import_tab_widget: QWidget | None = None
+        self._import_tab_cancel_callback: Callable[[], None] | None = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -52,6 +54,7 @@ class WorkspaceController:
     def sync(self) -> None:
         """Rebuild all tabs from current ProjectState."""
         self.tabs.blockSignals(True)
+        self.close_import_tab(cancel=False)
         self.tabs.clear()
         self._plane_tab_canvases = {}
 
@@ -82,6 +85,46 @@ class WorkspaceController:
             return None
         widget = self.tabs.widget(index)
         return widget.property("plane_id") if widget is not None else None
+
+    def open_import_tab(
+        self,
+        widget: QWidget,
+        *,
+        title: str = "Import rzutu",
+        on_cancel: Callable[[], None] | None = None,
+    ) -> int:
+        self.close_import_tab(cancel=False)
+        widget.setProperty("plane_id", None)
+        widget.setProperty("tab_kind", "roof_plan_import")
+        index = self.tabs.addTab(widget, title)
+        self._import_tab_widget = widget
+        self._import_tab_cancel_callback = on_cancel
+        self.tabs.setCurrentIndex(index)
+        return index
+
+    def close_import_tab(self, *, cancel: bool = False) -> None:
+        index = self.import_tab_index()
+        callback = self._import_tab_cancel_callback
+        self._import_tab_widget = None
+        self._import_tab_cancel_callback = None
+        if index >= 0:
+            widget = self.tabs.widget(index)
+            self.tabs.removeTab(index)
+            if widget is not None:
+                widget.deleteLater()
+        if cancel and callback is not None:
+            callback()
+
+    def import_tab_index(self) -> int:
+        if self._import_tab_widget is None:
+            return -1
+        return self.tabs.indexOf(self._import_tab_widget)
+
+    def is_import_tab(self, index: int) -> bool:
+        if index < 0 or index >= self.tabs.count():
+            return False
+        widget = self.tabs.widget(index)
+        return widget is not None and widget.property("tab_kind") == "roof_plan_import"
 
     def tab_index_for_plane(self, plane_id: str | None) -> int:
         if plane_id is None:

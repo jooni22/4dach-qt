@@ -3,6 +3,7 @@ from ui.dialogs.add_polac_dialog import AddPolacDialog
 from ui.dialogs.company_dialog import DaneFirmyDialog
 from ui.dialogs.material_dialog import BlachyDialog, DaneBlachyDialog
 from ui.dialogs.project_details_dialog import ProjectDetailsDialog
+from ui.dialogs.roof_plan_import_dialog import RoofPlanImportDialog, RoofPlanImportWidget
 from ui.dialogs.settings_dialog import SettingsDialog
 from ui.dialogs.shape_dialogs import (
     CutoutRectangleDialog,
@@ -21,5 +22,7 @@ __all__ = [
     "DaneBlachyDialog",
     "DaneFirmyDialog",
     "ProjectDetailsDialog",
+    "RoofPlanImportDialog",
+    "RoofPlanImportWidget",
     "SettingsDialog",
 ]

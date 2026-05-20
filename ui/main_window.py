@@ -16,6 +16,7 @@ from pathlib import Path
 from PySide6.QtCore import QRectF, QSettings, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QKeySequence
 from PySide6.QtWidgets import (
+    QFileDialog,
     QInputDialog,
     QLabel,
     QMainWindow,
@@ -49,6 +50,7 @@ from ui.dialogs import (
     DaneFirmyDialog,
     ProjectDetailsDialog,
     ProstokatDialog,
+    RoofPlanImportWidget,
     TrapezDialog,
     TrojkatDialog,
 )
@@ -219,6 +221,7 @@ class MainWindow(QMainWindow):
 
         ksztalt = mb.addMenu("Kształt")
         ksztalt.addAction(act("Kreator połaci...", None, self._dlg_add_polac))
+        ksztalt.addAction(act("Importuj z rzutu...", None, self._dlg_import_roof_plan))
         self.action_menu_draw_outline = act("Rysuj połać", None, self._start_draw_outline)
         self.action_menu_draw_outline.setCheckable(True)
         ksztalt.addAction(self.action_menu_draw_outline)
@@ -1222,6 +1225,9 @@ class MainWindow(QMainWindow):
                 self._delete_active_roof_plane()
 
     def _on_tab_close_requested(self, index: int) -> None:
+        if self._workspace.is_import_tab(index):
+            self._workspace.close_import_tab(cancel=True)
+            return
         plane_id = self._workspace.plane_id_for_tab_index(index)
         if plane_id is not None:
             self._delete_roof_plane_by_id(plane_id)
@@ -1571,6 +1577,47 @@ class MainWindow(QMainWindow):
             label="Kreator połaci",
         ):
             self._focus_active_plane_tab()
+
+    def _dlg_import_roof_plan(self) -> None:
+        image_path, _selected_filter = QFileDialog.getOpenFileName(
+            self,
+            "Wybierz zdjęcie rzutu",
+            "",
+            "Obrazy (*.png *.jpg *.jpeg)",
+        )
+        if not image_path:
+            return
+        widget = RoofPlanImportWidget(image_path, self.project_state.app_settings, self)
+        selected_material_id = self._selected_material_id_from_combo()
+
+        def _cancel_import() -> None:
+            widget.cancelled.emit()
+
+        def _on_cancelled() -> None:
+            self._workspace.close_import_tab(cancel=False)
+
+        def _on_accepted(polygons: list[Polygon2D]) -> None:
+            if not polygons:
+                return
+
+            def _apply_import() -> None:
+                for polygon in polygons:
+                    self.project_state.add_roof_plane(
+                        polygon,
+                        selected_material_id=selected_material_id,
+                    )
+
+            if self._edit(
+                _apply_import,
+                f"Zaimportowano {len(polygons)} połacie z rzutu",
+                label="Import połaci z rzutu",
+            ):
+                self._workspace.close_import_tab(cancel=False)
+                self._focus_active_plane_tab()
+
+        widget.accepted.connect(_on_accepted)
+        widget.cancelled.connect(_on_cancelled)
+        self._workspace.open_import_tab(widget, title="Import rzutu", on_cancel=_cancel_import)
 
     def _dlg_prostokat(self) -> None:
         dlg = ProstokatDialog(self._config, self)
